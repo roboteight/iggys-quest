@@ -1,6 +1,6 @@
 import type { ThemeName } from './music';
 
-export type LevelStyle = 'city' | 'hollow';
+export type LevelStyle = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores';
 
 /** One entry per level. The scene, art and music all read from here. */
 export interface LevelDef {
@@ -30,8 +30,26 @@ export const LEVELS: LevelDef[] = [
     blurb: 'Crooked striped houses, twisted trees and a swirly moon.',
     style: 'hollow', music: 'hollow', precip: { vx: 14, vy: -70 }, lightning: false, bg: '#0a0a1a',
   },
-  // PLANNED, not built yet (art in a new art-levels.ts + a music theme each): 'wastes' Rust Wastes, 'drowned' Drowned Metropolis,
-  // 'void' Neon Void, 'spores' Spore Garden. See the project notes in Claude's memory for the design of each.
+  {
+    id: 'wastes', number: 3, name: 'Rust Wastes',
+    blurb: 'A dust-choked desert of skeleton towers and a broken highway.',
+    style: 'wastes', music: 'wastes', precip: { vx: 320, vy: -20 }, lightning: false, bg: '#2b1210',
+  },
+  {
+    id: 'drowned', number: 4, name: 'Drowned Metropolis',
+    blurb: 'Half-sunken towers, hanging vines and drifting green spores.',
+    style: 'drowned', music: 'drowned', precip: { vx: 6, vy: 40 }, lightning: false, bg: '#06191c',
+  },
+  {
+    id: 'void', number: 5, name: 'Neon Void',
+    blurb: 'Floating islands, a ringed planet and a neon grid horizon.',
+    style: 'void', music: 'void', precip: { vx: 10, vy: 60 }, lightning: false, bg: '#0a0224',
+  },
+  {
+    id: 'spores', number: 6, name: 'Spore Garden',
+    blurb: 'Giant glowing mushrooms under twin moons and an aurora.',
+    style: 'spores', music: 'spores', precip: { vx: 8, vy: 36 }, lightning: false, bg: '#020c14',
+  },
 ];
 
 export const levelById = (id?: string | null): LevelDef => LEVELS.find((l) => l.id === id) ?? LEVELS[0];

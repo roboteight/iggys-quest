@@ -4,6 +4,7 @@ import {
   H, SUITS, W, drawBuilding, drawHollowBuilding, drawRobot, makeFlakes, makeFog, makeHollowFog, makeHollowLayer, makeHollowSky,
   makeRain, makeSky, makeSkyline, makeSmallTextures, suitFor,
 } from './art';
+import { ensureStyle, drawLevelBuilding, makeEnemyTextures, makeRingTextures, ExtraStyle } from './art-levels';
 import { LEVEL_GOAL, LevelDef, levelById } from './levels';
 import { Sfx } from './sfx';
 import { Music } from './music';
@@ -30,9 +31,9 @@ export interface GameOverState {
   best: number;
   newBest: boolean;
 }
-export interface TouchInput { left: boolean; right: boolean; jump: boolean; fire: boolean }
+export interface TouchInput { left: boolean; right: boolean; jump: boolean; fire: boolean; duck: boolean }
 
-type PowerId = 'spring' | 'magnet' | 'shield' | 'turbo' | 'gun';
+type PowerId = 'spring' | 'magnet' | 'shield' | 'turbo' | 'star' | 'gun';
 const GUN_NAMES = ['', 'Blaster', 'Twin blaster', 'Spread gun', 'Rocket launcher'];
 const GUN_MAX = 4;
 const GUN_AMMO = 30; // shots per gun pickup; ammo never times out, so players can save it
@@ -42,12 +43,13 @@ const POWER: Record<PowerId, { label: string; secs: number | null; tex: string; 
   magnet: { label: 'Magnet', secs: 12, tex: 'pu-magnet', text: 'Magnet! Breadboards fly to you.' },
   shield: { label: 'Shield', secs: null, tex: 'pu-shield', text: 'Shield! Blocks the next hit.' },
   turbo: { label: 'Overclock', secs: 10, tex: 'pu-turbo', text: 'Overclock! Faster running.' },
+  star: { label: 'Invincible', secs: 8, tex: 'pu-star', text: 'Invincible for 8 seconds! Pylons, walls and enemies are smashed when you touch them. Gaps are still dangerous.' },
   gun: { label: 'Gun', secs: null, tex: 'pu-blaster', text: '' }, // power.gun holds the ammo count
 };
 
 interface Shot { s: Phaser.GameObjects.Image; vx: number; vy: number; kind: 'bolt' | 'rocket'; trail: number }
 interface Building { x: number; top: number; w: number; gfx: Phaser.GameObjects.Graphics; zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }
-interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall'; hp?: number; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean }
+interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring'; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean }
 
 const RUN = 250;
 const GRAVITY = 1500;
@@ -69,7 +71,7 @@ export class PlayScene extends Phaser.Scene {
   private hc = false;
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private keys!: Record<'A' | 'D' | 'W' | 'X' | 'F', Phaser.Input.Keyboard.Key>;
+  private keys!: Record<'A' | 'D' | 'W' | 'X' | 'F' | 'S', Phaser.Input.Keyboard.Key>;
   private touch!: TouchInput;
 
   private player!: Phaser.GameObjects.Zone;
@@ -113,12 +115,17 @@ export class PlayScene extends Phaser.Scene {
   private fireAnim = 0;
   private slowT = 0;
   private bonus = 0;
+  private ringChain = 0;
+  private ringTimer = 0;
   private airJumps = 1; // extra jumps left in the air (double jump)
   private spinT = 0; // seconds left of the double-jump flip
   private partTimer = 2;
   private tripTimer = 6;
   private facing = 1;
-  private power: Record<PowerId, number> = { spring: 0, magnet: 0, shield: 0, turbo: 0, gun: 0 };
+  /** 0 standing .. 1 fully crouched (smoothed, drives the pose); `ducked` is the hitbox state */
+  private duckAmt = 0;
+  private ducked = false;
+  private power: Record<PowerId, number> = { spring: 0, magnet: 0, shield: 0, turbo: 0, star: 0, gun: 0 };
   private lastSafe = { x: 100, top: 400 };
   private hudTimer = 0;
   private lastHud = '';
@@ -129,7 +136,7 @@ export class PlayScene extends Phaser.Scene {
 
   create() {
     this.settings = this.registry.get('settings') as Settings;
-    this.touch = (this.registry.get('touch') as TouchInput | undefined) ?? { left: false, right: false, jump: false, fire: false };
+    this.touch = (this.registry.get('touch') as TouchInput | undefined) ?? { left: false, right: false, jump: false, fire: false, duck: false };
     this.reduced = this.settings.reducedMotion;
     this.hc = this.settings.highContrast;
     this.level = levelById(this.registry.get('level') as string | undefined);
@@ -163,6 +170,8 @@ export class PlayScene extends Phaser.Scene {
     this.layers = [];
     this.t = 0;
     this.over = false;
+    this.duckAmt = 0;
+    this.ducked = false;
     this.breadboards = 0;
     this.lives = 3;
     this.suitIdx = 0;
@@ -180,8 +189,10 @@ export class PlayScene extends Phaser.Scene {
     this.fireAnim = 0;
     this.slowT = 0;
     this.bonus = 0;
+    this.ringChain = 0;
+    this.ringTimer = 0;
     this.stumble = 0;
-    this.power = { spring: 0, magnet: 0, shield: 0, turbo: 0, gun: 0 };
+    this.power = { spring: 0, magnet: 0, shield: 0, turbo: 0, star: 0, gun: 0 };
     this.gunLevel = 0;
     this.lastHud = '';
     this.nextLightning = 10 + Math.random() * 10;
@@ -206,7 +217,7 @@ export class PlayScene extends Phaser.Scene {
 
     const kb = this.input.keyboard!;
     this.cursors = kb.createCursorKeys();
-    this.keys = kb.addKeys('A,D,W,X,F') as typeof this.keys;
+    this.keys = kb.addKeys('A,D,W,X,F,S') as typeof this.keys;
 
     this.cameras.main.setBackgroundColor(this.level.bg);
     this.cameras.main.scrollX = -20;
@@ -218,9 +229,17 @@ export class PlayScene extends Phaser.Scene {
   // ------------------------------------------------------------------ backdrop
   private buildBackdrop() {
     if (!this.textures.exists('dust')) makeSmallTextures(this);
-    const hollow = this.level.style === 'hollow';
+    makeEnemyTextures(this);
+    makeRingTextures(this);
+    const style = this.level.style;
     let sky: string, layers: [string, number][], fogKey: string, precipKey: string;
-    if (hollow) {
+    if (style !== 'city' && style !== 'hollow') {
+      const a = ensureStyle(this, style);
+      sky = a.sky;
+      layers = a.layers;
+      fogKey = a.fog;
+      precipKey = a.precip;
+    } else if (style === 'hollow') {
       if (!this.textures.exists('h-sky')) {
         makeHollowSky(this);
         makeHollowFog(this);
@@ -266,7 +285,10 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private addBuilding(x: number, top: number, w: number) {
-    const gfx = this.level.style === 'hollow' ? drawHollowBuilding(this, x, top, w, this.hc) : drawBuilding(this, x, top, w, this.hc);
+    const st = this.level.style;
+    const gfx = st === 'hollow' ? drawHollowBuilding(this, x, top, w, this.hc)
+      : st === 'city' ? drawBuilding(this, x, top, w, this.hc)
+      : drawLevelBuilding(this, st as ExtraStyle, x, top, w, this.hc);
     const zone = this.add.zone(x + w / 2, top + 300, w, 600);
     this.physics.add.existing(zone, true);
     const collider = this.physics.add.collider(this.player, zone);
@@ -323,6 +345,14 @@ export class PlayScene extends Phaser.Scene {
         this.addItem('wall', wx, b.top - 32);
       }
     }
+    // rings to jump through: a short arc of one to three hoops floating above the roof
+    if (b.w > 200 && this.maxX > 100 && this.rand() < 0.3) {
+      const n = Phaser.Math.Between(1, Math.min(3, Math.floor((b.w - 80) / 90)));
+      const x0 = b.x + (b.w - (n - 1) * 90) / 2;
+      for (let i = 0; i < n; i++) this.addRing(x0 + i * 90, b.top - (n > 1 && i % 2 === 0 ? 92 : 105));
+    }
+    // a patrolling enemy walking back and forth across a clear roof
+    if (hazards.length === 0 && b.w > 220 && this.maxX > 200 && this.rand() < 0.22 + d * 0.3) this.addPatrol(b);
     // rooftop breadboards: a trail along the roof, sometimes higher
     if (this.rand() < 0.65) {
       const n = Phaser.Math.Between(2, 5);
@@ -336,11 +366,46 @@ export class PlayScene extends Phaser.Scene {
     }
     // power-ups
     if (this.maxX > 300 && this.rand() < 0.14) {
-      const ids: PowerId[] = ['spring', 'magnet', 'shield', 'turbo', 'gun', 'gun'];
+      const ids: PowerId[] = ['spring', 'magnet', 'shield', 'turbo', 'star', 'gun', 'gun'];
       const id = ids[Math.floor(this.rand() * ids.length)];
       this.addItem('pu', b.x + b.w / 2, b.top - 75, id);
     }
     void gap;
+  }
+
+  private addRing(x: number, y: number) {
+    const back = this.add.image(x, y, 'ring-back').setDepth(6);
+    const sprite = this.add.image(x, y, 'ring-front').setDepth(11);
+    this.items.push({ kind: 'ring', sprite, back, baseY: y, phase: Math.random() * 6 });
+  }
+
+  /** Iggy flew through a ring. Rings passed in quick succession build a chain worth more each time. */
+  private passRing(it: Item) {
+    it.taken = true;
+    this.ringChain = this.ringTimer > 0 ? this.ringChain + 1 : 1;
+    this.ringTimer = 2.2;
+    const pts = 20 * Math.min(this.ringChain, 5);
+    this.bonus += pts;
+    this.sfx.ring(this.ringChain);
+    this.debris(it.sprite.x, it.sprite.y, 'spark', this.reduced ? 3 : 9, 1);
+    if (!this.reduced) {
+      const echo = this.add.image(it.sprite.x, it.sprite.y, 'ring-front').setDepth(11).setTint(0xffffff);
+      this.tweens.add({ targets: echo, scale: 2.2, alpha: 0, duration: 380, onComplete: () => echo.destroy() });
+    }
+    this.announce(this.ringChain > 1 ? `Ring chain times ${this.ringChain}. Plus ${pts} points.` : `Ring. Plus ${pts} points.`);
+  }
+
+  private addPatrol(b: Building) {
+    const crawler = ['drowned', 'void', 'spores'].includes(this.level.style);
+    const kind = crawler ? 'crawler' : 'skeleton';
+    const half = Math.min(130, (b.w - 60) / 2);
+    const cx = b.x + b.w / 2 + Phaser.Math.Between(-20, 20);
+    const h = crawler ? 22 : 44;
+    const sprite = this.add.image(cx, b.top - h / 2, `${kind}-a`).setDepth(6);
+    this.items.push({
+      kind: 'patrol', sprite, baseY: sprite.y, phase: 0, hp: 2,
+      walker: { kind, min: Math.max(b.x + 24, cx - half), max: Math.min(b.x + b.w - 24, cx + half), dir: this.rand() < 0.5 ? 1 : -1, speed: 55 + this.rand() * 25 + this.difficulty() * 35, frame: 0 },
+    });
   }
 
   private addItem(kind: Item['kind'], x: number, y: number, power?: PowerId) {
@@ -363,6 +428,7 @@ export class PlayScene extends Phaser.Scene {
     this.items = this.items.filter((it) => {
       if (it.taken || it.sprite.x < left) {
         it.sprite.destroy();
+        it.back?.destroy();
         return false;
       }
       return true;
@@ -422,10 +488,19 @@ export class PlayScene extends Phaser.Scene {
     return this.power.gun > 0 ? this.gunLevel : 0;
   }
 
+  /** Crouch / stand. The hitbox keeps its feet where they are and only loses height from the top. */
+  private setDucked(on: boolean) {
+    if (on === this.ducked) return;
+    this.ducked = on;
+    this.body.setSize(22, on ? 26 : 46, false);
+    this.body.setOffset(0, on ? 20 : 0);
+    this.announce(on ? 'Ducking. Shots now fly low, at small targets on the ground.' : '');
+  }
+
   private shoot() {
     const lvl = this.gun();
     const f = this.facing;
-    const x = this.body.center.x + f * 50, y = this.body.bottom - 36;
+    const x = this.body.center.x + f * 50, y = this.body.bottom - (this.ducked ? 23 : 36);
     const spawn = (kind: 'bolt' | 'rocket', angle: number, yOff: number) => {
       const speed = kind === 'rocket' ? ROCKET_SPEED : BLASTER_BOLT_SPEED;
       const vx = f * speed * Math.cos(angle), vy = speed * Math.sin(angle);
@@ -476,12 +551,12 @@ export class PlayScene extends Phaser.Scene {
           this.dust(s.x - Math.sign(sh.vx) * 12, s.y, 1, 4, 6, 0.5);
         }
       }
-      const hitIt = this.items.find((it) => !it.taken && (it.kind === 'pylon' || it.kind === 'wall') && Math.abs(s.x - it.sprite.x) < (it.kind === 'wall' ? 18 : 18) && Math.abs(s.y - it.sprite.y) < (it.kind === 'wall' ? 34 : 24));
+      const hitIt = this.items.find((it) => !it.taken && (it.kind === 'pylon' || it.kind === 'wall' || it.kind === 'patrol') && Math.abs(s.x - it.sprite.x) < (it.kind === 'patrol' ? 16 : 18) && Math.abs(s.y - it.sprite.y) < (it.kind === 'wall' ? 34 : it.kind === 'patrol' ? it.sprite.height / 2 + 4 : 24));
       const hitBuilding = this.buildings.some((b) => s.x >= b.x && s.x <= b.x + b.w && s.y > b.top + 2);
       const off = s.x < cam.scrollX - 60 || s.x > cam.scrollX + W + 120 || s.y < -60 || s.y > H + 60;
       if (hitIt || hitBuilding) {
         if (sh.kind === 'rocket') this.explode(s.x, s.y);
-        else if (hitIt) hitIt.kind === 'pylon' ? this.destroyPylon(hitIt) : this.damageWall(hitIt, 1);
+        else if (hitIt) hitIt.kind === 'pylon' ? this.destroyPylon(hitIt) : hitIt.kind === 'patrol' ? this.damagePatrol(hitIt) : this.damageWall(hitIt, 1);
         else this.debris(s.x, s.y, 'spark', 2, 0.4);
       }
       if (hitIt || hitBuilding || off) {
@@ -490,6 +565,25 @@ export class PlayScene extends Phaser.Scene {
       }
       return true;
     });
+  }
+
+  private damagePatrol(it: Item) {
+    it.hp = (it.hp ?? 1) - 1;
+    it.sprite.setTint(0xff8080);
+    this.time.delayedCall(80, () => it.sprite.active && it.sprite.clearTint());
+    this.debris(it.sprite.x, it.sprite.y, 'spark', 2, 0.6);
+    if (it.hp <= 0) this.defeatPatrol(it, 'shot');
+  }
+
+  private defeatPatrol(it: Item, how: 'shot' | 'stomp') {
+    it.taken = true;
+    this.bonus += how === 'stomp' ? 50 : 40;
+    this.sfx.bricks();
+    const name = it.walker?.kind === 'crawler' ? 'crawler' : 'skeleton';
+    this.debris(it.sprite.x, it.sprite.y, 'cog', 3, 1.2);
+    this.debris(it.sprite.x, it.sprite.y, 'brick', this.reduced ? 4 : 10, 1.2);
+    this.dust(it.sprite.x, it.sprite.y + 10, 5, 24, 14);
+    this.announce(`${how === 'stomp' ? 'Stomped' : 'Shot'} a ${name}. Plus ${how === 'stomp' ? 50 : 40} points.`);
   }
 
   private destroyPylon(it: Item) {
@@ -524,9 +618,10 @@ export class PlayScene extends Phaser.Scene {
     this.dust(x, y + 10, 8, 50, 26, 1.6);
     if (!this.reduced) this.cameras.main.shake(140, 0.004);
     for (const it of this.items) {
-      if (it.taken || (it.kind !== 'pylon' && it.kind !== 'wall')) continue;
+      if (it.taken || (it.kind !== 'pylon' && it.kind !== 'wall' && it.kind !== 'patrol')) continue;
       if (Math.hypot(it.sprite.x - x, it.sprite.y - y) < 85) {
         if (it.kind === 'pylon') this.destroyPylon(it);
+        else if (it.kind === 'patrol') this.defeatPatrol(it, 'shot');
         else this.breakWall(it, true);
       }
     }
@@ -608,15 +703,16 @@ export class PlayScene extends Phaser.Scene {
     this.emitHud(true);
   }
 
-  private hit(reason: 'pylon' | 'fall') {
+  private hit(reason: 'pylon' | 'enemy' | 'fall') {
     if (this.over) return;
-    if (reason === 'pylon') {
-      if (this.invuln > 0) return;
+    if (reason === 'fall') this.setDucked(false);
+    if (reason !== 'fall') {
+      if (this.invuln > 0 || this.power.star > 0) return;
       if (this.power.shield > 0) {
         this.power.shield = 0;
         this.invuln = 1;
         this.sfx.hurt();
-        this.announce('Shield absorbed the zap and broke.');
+        this.announce(reason === 'enemy' ? 'Shield absorbed the hit and broke.' : 'Shield absorbed the zap and broke.');
         this.debris(this.body.center.x, this.body.center.y, 'spark', 10, 1.4);
         this.emitHud(true);
         return;
@@ -633,13 +729,13 @@ export class PlayScene extends Phaser.Scene {
       this.gameOver();
       return;
     }
-    this.announce(reason === 'fall' ? `Iggy fell. ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.` : `Zapped! ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.`);
+    this.announce(reason === 'fall' ? `Iggy fell. ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.` : `${reason === 'enemy' ? 'Bonked' : 'Zapped'}! ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.`);
     this.invuln = 1.8;
     if (reason === 'fall') {
       const safe = this.lastSafe;
       this.body.reset(safe.x, safe.top - 30);
       this.items.forEach((it) => {
-        if (it.kind === 'pylon' && Math.abs(it.sprite.x - safe.x) < 90) it.taken = true;
+        if ((it.kind === 'pylon' || it.kind === 'patrol') && Math.abs(it.sprite.x - safe.x) < 90) it.taken = true;
       });
       this.body.setVelocity(0, 0);
     } else {
@@ -735,7 +831,13 @@ export class PlayScene extends Phaser.Scene {
       if (ground) this.airJumps = 1;
 
       const speed = RUN * (this.power.turbo > 0 ? 1.35 : 1) * (this.slowT > 0 ? 0.45 : 1);
-      const target = left === right ? 0 : left ? -speed : speed;
+      // duck: crouch on the ground (can still turn round and shoot, but can't run); the hitbox gets shorter
+      this.setDucked(ground && (this.cursors.down.isDown || this.keys.S.isDown || this.touch.duck));
+      let target = left === right ? 0 : left ? -speed : speed;
+      if (this.ducked) {
+        if (target !== 0) this.facing = Math.sign(target);
+        target = 0;
+      }
       if (target !== 0) this.facing = Math.sign(target);
       // wall contact: remember which side, with a little grace time after leaving it
       const wallL = !ground && body.touching.left, wallR = !ground && body.touching.right;
@@ -819,7 +921,7 @@ export class PlayScene extends Phaser.Scene {
       if (ground) {
         for (const b of this.buildings) {
           if (body.center.x > b.x + 40 && body.center.x < b.x + b.w - 40 && Math.abs(body.bottom - b.top) < 3) {
-            if (!this.items.some((i) => i.kind === 'pylon' && !i.taken && Math.abs(i.sprite.x - body.center.x) < 80)) {
+            if (!this.items.some((i) => (i.kind === 'pylon' || i.kind === 'patrol') && !i.taken && Math.abs(i.sprite.x - body.center.x) < 80)) {
               this.lastSafe = { x: body.center.x, top: b.top };
             }
             break;
@@ -845,8 +947,33 @@ export class PlayScene extends Phaser.Scene {
       for (const it of this.items) {
         if (it.taken) continue;
         const s = it.sprite;
-        if (it.kind === 'wall') {
-          if (Math.abs(px - s.x) < 24 && body.bottom > s.y - 32 && body.top < s.y + 32) this.crashWall(it);
+        if (it.kind === 'ring') {
+          if (!this.reduced) {
+            const k = 1 + Math.sin(this.t * 4 + it.phase) * 0.04;
+            s.setScale(k);
+            it.back?.setScale(k);
+          }
+          if (Math.abs(px - s.x) < 14 && Math.abs(py - s.y) < 44) this.passRing(it);
+        } else if (it.kind === 'patrol' && it.walker) {
+          const w = it.walker;
+          s.x += w.dir * w.speed * dt;
+          if (s.x < w.min) { s.x = w.min; w.dir = 1; }
+          if (s.x > w.max) { s.x = w.max; w.dir = -1; }
+          w.frame += dt * 6;
+          s.setTexture(`${w.kind}-${Math.floor(w.frame) % 2 ? 'b' : 'a'}`).setFlipX(w.dir < 0);
+          const half = s.height / 2;
+          if (Math.abs(px - s.x) < 17 && body.bottom > s.y - half + 4 && body.top < s.y + half) {
+            if (this.power.star > 0) this.defeatPatrol(it, 'stomp');
+            else if (body.velocity.y > 60 && body.bottom < s.y - half + 18) {
+              this.defeatPatrol(it, 'stomp');
+              body.setVelocityY(-430);
+            } else this.hit('enemy');
+          }
+        } else if (it.kind === 'wall') {
+          if (Math.abs(px - s.x) < 24 && body.bottom > s.y - 32 && body.top < s.y + 32) {
+            if (this.power.star > 0) this.breakWall(it, true);
+            else this.crashWall(it);
+          }
         } else if (it.kind !== 'pylon') {
           if (!this.reduced) s.y = it.baseY + Math.sin(this.t * 3 + it.phase) * 4;
           if (it.kind === 'bb' && this.power.magnet > 0) {
@@ -863,7 +990,8 @@ export class PlayScene extends Phaser.Scene {
             else this.collectPower(it);
           }
         } else if (Math.abs(px - s.x) < 17 && body.bottom > s.y - 18 && body.top < s.y + 21) {
-          this.hit('pylon');
+          if (this.power.star > 0) this.destroyPylon(it);
+          else this.hit('pylon');
         }
       }
 
@@ -872,10 +1000,13 @@ export class PlayScene extends Phaser.Scene {
 
       // timers
       this.invuln = Math.max(0, this.invuln - dt);
+      this.ringTimer = Math.max(0, this.ringTimer - dt);
       this.slowT = Math.max(0, this.slowT - dt);
-      (['spring', 'magnet', 'turbo'] as const).forEach((id) => {
+      (['spring', 'magnet', 'turbo', 'star'] as const).forEach((id) => {
         if (this.power[id] > 0) {
+          const before = this.power[id];
           this.power[id] -= dt;
+          if (id === 'star' && before > 2 && this.power[id] <= 2 && this.power[id] > 0) this.announce('Invincibility is about to run out.');
           if (this.power[id] <= 0) {
             this.power[id] = 0;
             this.announce(`${POWER[id].label} ran out.`);
@@ -922,7 +1053,8 @@ export class PlayScene extends Phaser.Scene {
     const grounded = body.touching.down || body.blocked.down;
     const stretch = this.reduced || grounded ? 0 : Phaser.Math.Clamp(Math.abs(body.velocity.y) / 1800, 0, 0.18);
     const squash = this.reduced ? 0 : this.landSquash * 0.28;
-    this.robot.setScale(this.facing * 1.15 * (1 - stretch * 0.6 + squash), 1.15 * (1 + stretch - squash));
+    this.duckAmt += ((this.ducked ? 1 : 0) - this.duckAmt) * Math.min(1, dt * (this.reduced ? 60 : 20));
+    this.robot.setScale(this.facing * 1.15 * (1 - stretch * 0.6 + squash), 1.15 * (1 + stretch - squash) * (1 - 0.1 * this.duckAmt));
     this.spinT = Math.max(0, this.spinT - dt);
     const sp = this.spinT > 0 ? 1 - this.spinT / 0.5 : 1;
     const spin = this.spinT > 0 ? Math.PI * 2 * (1 - Math.pow(1 - sp, 2)) : 0;
@@ -938,9 +1070,11 @@ export class PlayScene extends Phaser.Scene {
       spin,
       shield: this.power.shield > 0,
       turbo: this.power.turbo > 0,
+      star: this.power.star,
       reduced: this.reduced,
       gun: this.gun(),
       fire: this.fireAnim,
+      duck: this.duckAmt,
     });
 
     // -- HUD (throttled)

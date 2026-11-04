@@ -270,6 +270,14 @@ export function makeSmallTextures(scene: Phaser.Scene) {
   orb('pu-turbo', 0xffb347, (o) => {
     o.fillTriangle(30, 17, 21, 30, 28, 30).fillTriangle(26, 41, 35, 27, 28, 27);
   });
+  orb('pu-star', 0xffe14d, (o) => {
+    const pts: number[] = [];
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 5, r = i % 2 ? 4.5 : 11;
+      pts.push(28 + Math.cos(a) * r, 30 + Math.sin(a) * r);
+    }
+    o.fillPoints(flat(pts), true);
+  });
   orb('pu-blaster', 0xff7ad9, (o) => {
     o.fillRect(17, 23, 20, 7).fillRect(21, 29, 6, 9).fillRect(36, 25, 4, 3);
   });
@@ -379,9 +387,11 @@ export interface Pose {
   spin: number; // radians, for the double-jump flip
   shield: boolean;
   turbo: boolean;
+  star?: number; // seconds of invincibility left (0 = none)
   reduced: boolean;
   gun?: number; // 1 blaster, 2 twin blaster, 3 spread gun, 4 rocket launcher
   fire?: number; // 0..1 recoil
+  duck?: number; // 0 standing .. 1 crouched
 }
 
 const OUTLINE = 0x2b1710;
@@ -484,9 +494,10 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   const rusty = suit.name === 'Rusty Original';
   const bob = p.onGround ? Math.abs(Math.sin(cyc)) * 1.8 * run : 0;
   const lean = 0.04 + run * 0.08 + p.stumble * 0.3 + Math.sin(p.t * 3.1) * 0.025 * clumsy;
-  const tx = Math.sin(lean) * 3;
+  const duck = p.duck ?? 0;
+  const tx = Math.sin(lean) * 3 + 3 * duck;
   const cream = 0xeadfc8, steel = 0x9aa3ad, steelDark = 0x5d6670;
-  const hipY = -21 - bob;
+  const hipY = -21 - bob + 8 * duck;
   const torsoBottom = hipY - 2, torsoTop = torsoBottom - 12;
   const shellBase = torsoTop + 1, shellTop = shellBase - 9;
   const domeY = shellTop - 4;
@@ -508,7 +519,8 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   const leg = (hx: number, ang: number, boot: number) => {
     const sx = hx, sy = hipY + 4;
     const lift = p.onGround ? Math.max(0, Math.sin(ang * 1.2)) * 3 * run : 0;
-    const ax = sx + Math.sin(ang) * 9, ay = sy + Math.cos(ang) * 9 - lift;
+    const len = 9 - 8 * duck;
+    const ax = sx + Math.sin(ang) * len, ay = sy + Math.cos(ang) * len - lift;
     for (const off of [-1.7, 1.7]) {
       P.stroke([sx + off, sy, ax + off, ay], 3.6, OUTLINE);
     }
@@ -683,6 +695,17 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   } else if (rusty) limbArm(tx + 16, torsoTop + 3, 0.28 + Math.sin(p.t * 4) * 0.2 + (air ? -1.3 : 0) + Math.sin(cyc) * 0.45 * run, suit.body, steel, true);
   else limbArm(tx + 16, torsoTop + 3, -arm, suit.body, cream, false);
 
+  if ((p.star ?? 0) > 0) {
+    // golden aura; cycles through colours (and flickers faster in the last two seconds) unless motion is reduced
+    const ending = (p.star ?? 0) < 2;
+    const hue = p.reduced ? 0xffe14d : [0xffe14d, 0xff7ad9, 0x7dd3ff, 0x9dffb0][Math.floor(p.t * (ending ? 14 : 8)) % 4];
+    const on = p.reduced || !ending || Math.sin(p.t * 30) > -0.3;
+    if (on) {
+      g.fillStyle(hue, 0.2).fillEllipse(0, -30, 62, 78);
+      g.lineStyle(3, hue, 1).strokeEllipse(0, -30, 62, 78);
+      g.lineStyle(1.5, 0x1a1208, 0.8).strokeEllipse(0, -30, 67, 83);
+    }
+  }
   if (p.shield) {
     g.lineStyle(2, 0x7dd3ff, 0.9).strokeEllipse(0, -30, 56, 72);
     g.fillStyle(0x7dd3ff, 0.12).fillEllipse(0, -30, 56, 72);

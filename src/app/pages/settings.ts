@@ -7,12 +7,13 @@ import { FocusOnLoad } from './focus-heading';
   selector: 'app-settings',
   imports: [RouterLink, FocusOnLoad],
   styles: `
-    fieldset { border: 2px solid var(--border); border-radius: 8px; padding: 1rem; margin: 0 0 1rem; max-width: 24rem; width: 100%; }
+    main { max-width: 34rem; }
+    fieldset { border: 2px solid var(--border); border-radius: 14px; background: var(--panel); padding: 1rem 1.25rem; margin: 0; width: 100%; text-align: left; }
     legend { padding: 0 .5rem; }
     label { display: flex; align-items: center; gap: .75rem; min-height: 44px; }
     input[type='checkbox'] { width: 1.5rem; height: 1.5rem; accent-color: var(--accent); }
     input[type='range'] { width: 100%; accent-color: var(--accent); }
-    .hint { margin: 0 0 .5rem; font-size: .9rem; opacity: .85; }
+    .hint { margin: 0; font-size: .9rem; opacity: .85; }
   `,
   template: `
     <main class="page">

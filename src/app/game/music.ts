@@ -3,6 +3,10 @@
  * Each level has its own theme:
  *  - city:   driving A-minor chiptune, 150 BPM, 4/4
  *  - hollow: creepy music-box waltz in D minor, 3/4
+ *  - wastes: gritty E-phrygian square lead, 118 BPM
+ *  - drowned: dreamy C-minor sine lead, 88 BPM
+ *  - void: F-minor synthwave, 128 BPM
+ *  - spores: marimba-like triangle lead in C/D/Em, 100 BPM
  */
 
 const NAMES: Record<string, number> = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 };
@@ -22,6 +26,10 @@ interface Theme {
   lead: string[][];
   leadWave: OscillatorType;
   leadGain: number;
+  /** lead note length as a multiple of its steps (default 0.92, or 1.6 for sine) */
+  leadLen?: number;
+  kickGain?: number;
+  bassLen?: number;
   /** arpeggio index per step, or null for none */
   arp: number[] | null;
   /** chord stabs (all arp notes at once) on these steps, or null */
@@ -33,7 +41,7 @@ interface Theme {
   hat: (s: number) => number; // gain, 0 = none
 }
 
-export type ThemeName = 'city' | 'hollow';
+export type ThemeName = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores';
 
 const THEMES: Record<ThemeName, Theme> = {
   city: {
@@ -93,6 +101,129 @@ const THEMES: Record<ThemeName, Theme> = {
     kick: (s) => s === 0,
     snare: () => false,
     hat: (s) => (s === 4 || s === 8 ? 0.05 : 0),
+  },
+  wastes: {
+    bpm: 118,
+    steps: 16,
+    chords: [
+      { root: 40, arp: [64, 67, 71] }, // Em
+      { root: 41, arp: [65, 69, 72] }, // F
+      { root: 38, arp: [62, 65, 69] }, // Dm
+      { root: 43, arp: [67, 71, 74] }, // G
+    ],
+    progression: [0, 0, 1, 0, 0, 2, 1, 3],
+    lead: parse([
+      'E5 _ _ _ . . F5 _ E5 _ _ _ B4 _ . .',
+      'E5 _ G5 _ B5 _ _ _ A5 _ G5 _ E5 _ . .',
+      'F5 _ _ _ . . A5 _ F5 _ _ _ C5 _ . .',
+      'E5 _ _ F5 E5 _ B4 _ E5 _ _ _ . . . .',
+      'B5 _ _ _ A5 _ G5 _ E5 _ _ G5 A5 _ _ _',
+      'F5 _ A5 _ C6 _ _ _ A5 _ F5 _ D5 _ . .',
+      'C6 _ _ A5 F5 _ _ _ A5 _ _ F5 C5 _ . .',
+      'D5 _ G5 _ B5 _ _ _ A5 _ F5 _ D5 _ E5 _',
+    ]),
+    leadWave: 'square',
+    leadGain: 0.17,
+    arp: null,
+    stabs: [6, 14],
+    bass: (s) => (s % 4 === 0 ? 0 : s % 8 === 6 ? 1 : null),
+    kick: (s) => s % 4 === 0,
+    snare: (s) => s === 4 || s === 12,
+    hat: (s) => (s % 4 === 2 ? 0.09 : s % 2 === 1 ? 0.03 : 0),
+    bassLen: 2.2,
+  },
+  drowned: {
+    bpm: 88,
+    steps: 16,
+    chords: [
+      { root: 36, arp: [60, 63, 67] }, // Cm
+      { root: 32, arp: [56, 60, 63] }, // Ab
+      { root: 39, arp: [58, 63, 67] }, // Eb
+      { root: 34, arp: [58, 62, 65] }, // Bb
+    ],
+    progression: [0, 1, 2, 3, 0, 1, 3, 2],
+    lead: parse([
+      'G5 _ _ _ _ _ _ _ D#5 _ _ _ F5 _ _ _',
+      'C5 _ _ _ _ _ D#5 _ _ _ _ _ G5 _ _ _',
+      'A#5 _ _ _ _ _ G5 _ _ _ _ _ D#5 _ _ _',
+      'D5 _ _ _ F5 _ _ _ A#5 _ _ _ _ _ _ _',
+      'G5 _ _ _ A#5 _ _ _ C6 _ _ _ A#5 _ _ _',
+      'G#5 _ _ _ _ _ G5 _ _ _ D#5 _ _ _ _ _',
+      'F5 _ _ _ D5 _ _ _ A#4 _ _ _ D5 _ F5 _',
+      'D#5 _ _ _ _ _ _ _ G5 _ _ _ . . . .',
+    ]),
+    leadWave: 'sine',
+    leadGain: 0.3,
+    arp: null,
+    stabs: [0, 8],
+    bass: (s) => (s === 0 || s === 10 ? 0 : null),
+    kick: (s) => s === 0 || s === 10,
+    snare: () => false,
+    hat: (s) => (s === 4 || s === 12 ? 0.03 : 0),
+    kickGain: 0.28,
+    bassLen: 3.6,
+  },
+  void: {
+    bpm: 128,
+    steps: 16,
+    chords: [
+      { root: 41, arp: [65, 68, 72] }, // Fm
+      { root: 37, arp: [61, 65, 68] }, // Db
+      { root: 44, arp: [68, 72, 75] }, // Ab
+      { root: 39, arp: [63, 67, 70] }, // Eb
+    ],
+    progression: [0, 1, 2, 3, 0, 1, 2, 3],
+    lead: parse([
+      'C6 _ _ _ . . G#5 _ C6 _ _ _ D#6 _ . .',
+      'C#6 _ _ _ . . G#5 _ F5 _ _ _ . . . .',
+      'C6 _ _ _ . . D#6 _ G6 _ _ _ D#6 _ . .',
+      'D#6 _ _ _ A#5 _ _ _ G5 _ _ _ . . . .',
+      'F6 _ _ _ D#6 _ C6 _ G#5 _ _ _ C6 _ . .',
+      'C#6 _ _ _ G#5 _ F5 _ G#5 _ C#6 _ F6 _ _ _',
+      'G6 _ _ _ D#6 _ C6 _ G5 _ C6 _ D#6 _ _ _',
+      'D#6 _ C6 _ A#5 _ G5 _ A#5 _ D#6 _ . . . .',
+    ]),
+    leadWave: 'sawtooth',
+    leadGain: 0.09,
+    arp: [0, 1, 2, 1, 0, 1, 2, 1, 0, 1, 2, 1, 0, 1, 2, 1],
+    stabs: null,
+    bass: (s) => (s % 4 === 2 ? 12 : s % 2 === 0 ? 0 : null),
+    kick: (s) => s % 4 === 0,
+    snare: (s) => s === 4 || s === 12,
+    hat: (s) => (s % 2 === 1 ? 0.07 : 0.03),
+    bassLen: 1.3,
+  },
+  spores: {
+    bpm: 100,
+    steps: 16,
+    chords: [
+      { root: 36, arp: [60, 64, 67] }, // C
+      { root: 38, arp: [62, 66, 69] }, // D
+      { root: 40, arp: [64, 67, 71] }, // Em
+      { root: 43, arp: [62, 67, 71] }, // G
+    ],
+    progression: [0, 1, 2, 3, 0, 1, 2, 1],
+    lead: parse([
+      'E5 _ G5 _ C6 _ G5 _ E5 _ G5 _ C6 _ _ _',
+      'F#5 _ A5 _ D6 _ A5 _ F#5 _ A5 _ D6 _ _ _',
+      'G5 _ B5 _ E6 _ B5 _ G5 _ B5 _ E6 _ _ _',
+      'D6 _ B5 _ G5 _ B5 _ D6 _ _ _ . . . .',
+      'C6 _ E6 _ G6 _ E6 _ C6 _ E6 _ G6 _ _ _',
+      'A5 _ D6 _ F#6 _ D6 _ A5 _ D6 _ F#6 _ _ _',
+      'B5 _ E6 _ G6 _ E6 _ B5 _ E6 _ G6 _ _ _',
+      'F#6 _ D6 _ A5 _ F#5 _ D5 _ . . . . . .',
+    ]),
+    leadWave: 'triangle',
+    leadGain: 0.3,
+    leadLen: 1.1,
+    arp: null,
+    stabs: [8],
+    bass: (s) => (s === 0 || s === 6 || s === 10 ? 0 : null),
+    kick: (s) => s === 0 || s === 8,
+    snare: (s) => s === 12,
+    hat: (s) => (s % 4 === 2 ? 0.05 : 0),
+    kickGain: 0.4,
+    bassLen: 2,
   },
 };
 
@@ -203,14 +334,14 @@ export class Music {
     if (tok !== '_' && tok !== '.') {
       let len = 1;
       while (s + len < th.steps && th.lead[bar][s + len] === '_') len++;
-      this.tone(th.leadWave, freq(midi(tok)), t, len * sd * (th.leadWave === 'sine' ? 1.6 : 0.92), th.leadGain, 0.012);
+      this.tone(th.leadWave, freq(midi(tok)), t, len * sd * (th.leadLen ?? (th.leadWave === 'sine' ? 1.6 : 0.92)), th.leadGain, 0.012);
     }
     // arpeggio or chord stabs
     if (th.arp) this.tone('square', freq(chord.arp[th.arp[s]]), t, sd * 0.85, 0.07, 0.004);
     if (th.stabs?.includes(s)) chord.arp.forEach((n) => this.tone('square', freq(n), t, sd * 1.6, 0.045, 0.004));
     // bass
     const b = th.bass(s);
-    if (b !== null) this.tone('triangle', freq(chord.root + b), t, sd * (th.steps === 12 ? 3.2 : 1.7), 0.42, 0.005);
+    if (b !== null) this.tone('triangle', freq(chord.root + b), t, sd * (th.bassLen ?? (th.steps === 12 ? 3.2 : 1.7)), 0.42, 0.005);
     // drums
     if (th.kick(s, bar)) this.kick(t);
     if (th.snare(s)) this.snare(t);
@@ -239,7 +370,7 @@ export class Music {
     const amp = ctx.createGain();
     osc.frequency.setValueAtTime(150, t);
     osc.frequency.exponentialRampToValueAtTime(42, t + 0.12);
-    amp.gain.setValueAtTime(this.theme.steps === 12 ? 0.3 : 0.55, t);
+    amp.gain.setValueAtTime(this.theme.kickGain ?? (this.theme.steps === 12 ? 0.3 : 0.55), t);
     amp.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
     osc.connect(amp).connect(this.master!);
     osc.start(t);

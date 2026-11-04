@@ -99,6 +99,8 @@ export class Sfx {
     for (let i = 0; i < 4; i++) this.tick(3000 + Math.random() * 3500, 0.025, 0.6, 0.02 + Math.random() * 0.12);
   }
   collect() { this.tone(880, 1320, 0.09, 'sine'); this.tone(1320, 1760, 0.1, 'sine', 1, 0.07); }
+  /** a bright rising chime; each ring in a chain is a step higher */
+  ring(chain = 1) { const f = 660 * Math.pow(1.122, Math.min(chain, 6) - 1); this.tone(f, f * 1.5, 0.14, 'triangle', 0.9); this.tone(f * 1.5, f * 2, 0.18, 'sine', 0.7, 0.08); }
   power() { [440, 554, 659, 880].forEach((f, i) => this.tone(f, f * 1.02, 0.12, 'square', 0.5, i * 0.07)); }
   hurt() { this.tone(240, 70, 0.3, 'sawtooth', 0.9); }
   suit() { [330, 415, 494, 659, 830].forEach((f, i) => this.tone(f, f * 1.01, 0.18, 'triangle', 1, i * 0.09)); }
