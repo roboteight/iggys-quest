@@ -16,8 +16,29 @@ export interface LevelDef {
   bg: string;
 }
 
-/** Score needed to finish a level (placeholder rule: we will revisit this later). */
-export const LEVEL_GOAL = 5000;
+/** Score at which the level's boss arena appears. Defeating the boss finishes the level. */
+export const BOSS_SCORE = 4000;
+
+export type BossAttack = 'volley' | 'spread' | 'mortar' | 'stomp';
+export interface BossDef {
+  name: string;
+  blurb: string;
+  hp: number;
+  /** walking speed in px/s (0 = hovers in place) */
+  speed: number;
+  attacks: BossAttack[];
+  /** where shots leave the mech, relative to the middle of its feet (facing left) */
+  muzzle: [number, number];
+}
+
+export const BOSSES: Record<LevelStyle, BossDef> = {
+  city: { name: 'Enforcer Nine', blurb: 'A hunched, bird-legged peacekeeper with cannons for arms.', hp: 24, speed: 50, attacks: ['volley', 'volley', 'stomp'], muzzle: [-80, -92] },
+  hollow: { name: 'Jack-in-the-Boxer', blurb: 'A crooked jester on a spring that lobs exploding gifts.', hp: 26, speed: 40, attacks: ['mortar', 'mortar', 'stomp'], muzzle: [-10, -150] },
+  wastes: { name: 'Dune Scorpion', blurb: 'A four-legged walker with a cannon on its tail.', hp: 28, speed: 60, attacks: ['spread', 'volley', 'stomp'], muzzle: [40, -150] },
+  drowned: { name: 'Deep Diver', blurb: 'A diving-suit mech with a glass dome and heavy claws.', hp: 30, speed: 35, attacks: ['volley', 'mortar', 'stomp'], muzzle: [-60, -60] },
+  void: { name: 'Neon Warden', blurb: 'A hovering sentinel on a ring of light.', hp: 30, speed: 70, attacks: ['spread', 'volley', 'spread', 'stomp'], muzzle: [-70, -88] },
+  spores: { name: 'Spore Mother', blurb: 'A tripod walker under a giant mushroom cap.', hp: 34, speed: 30, attacks: ['mortar', 'spread', 'stomp'], muzzle: [-70, -45] },
+};
 
 export const LEVELS: LevelDef[] = [
   {

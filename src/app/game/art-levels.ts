@@ -589,3 +589,31 @@ export function makeRingTextures(scene: Phaser.Scene) {
   rim('ring-back', 26, 0xb8860b, 0xffd24a);
   rim('ring-front', 18, 0xffd24a, 0xffd24a);
 }
+
+// ====================================================================== platforms and checkpoint flags
+export function makePlatformTextures(scene: Phaser.Scene) {
+  if (scene.textures.exists('plat-moving')) return;
+  const slab = (key: string, top: number, side: number, mark: number) => {
+    const g = gfx(scene);
+    g.fillStyle(0x000000, 1).fillRoundedRect(0, 0, 84, 16, 3);
+    g.fillStyle(side, 1).fillRoundedRect(2, 2, 80, 12, 2);
+    g.fillStyle(top, 1).fillRect(2, 2, 80, 4);
+    g.fillStyle(mark, 1);
+    for (let x = 8; x < 78; x += 14) g.fillRect(x, 8, 7, 3);
+    g.generateTexture(key, 84, 16);
+    g.destroy();
+  };
+  slab('plat-moving', 0x7fd0ff, 0x2f6f8f, 0xffffff); // blue steel with white stripes: moves
+  slab('plat-crumble', 0xe0b070, 0x8a5a2a, 0x3a2410); // cracked wood: falls apart
+  const flag = (key: string, cloth: number) => {
+    const g = gfx(scene);
+    g.fillStyle(0x000000, 1).fillRect(0, 0, 8, 76);
+    g.fillStyle(0xcfd6e0, 1).fillRect(2, 2, 4, 72);
+    g.fillStyle(0x000000, 1).fillTriangle(6, 2, 40, 16, 6, 30);
+    g.fillStyle(cloth, 1).fillTriangle(6, 5, 35, 16, 6, 27);
+    g.generateTexture(key, 42, 76);
+    g.destroy();
+  };
+  flag('flag-off', 0x8a8f99);
+  flag('flag-on', 0x3ddc84);
+}

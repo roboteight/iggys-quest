@@ -25,6 +25,7 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
     .hud b { font-size: 1.15rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
     .hud .sub { font-size: .8rem; opacity: .8; }
     .hud .lvl { grid-column: span 2; }
+    .hud .boss { grid-column: span 2; } .hud .boss meter { width: 100%; height: 1rem; }
     .pills { display: flex; flex-wrap: wrap; gap: .35rem; }
     .pill { display: inline-block; padding: 0 .6rem; border: 2px solid var(--accent); border-radius: 999px; font-size: .9rem; }
     /* Fill the window: as wide as fits while keeping 16:9 and leaving room for the HUD and buttons */
@@ -64,6 +65,46 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
     @media (pointer: coarse) and (orientation: landscape) {
       main { --stage-w: min(100%, calc((100dvh - 7.5rem) * 16 / 9)); }
     }
+
+    /* Touch devices: the game fills the whole screen. Portrait stacks status, game, controls (taking the free height) and
+       buttons; landscape gives the game everything under a one-line header and floats the controls over its lower corners. */
+    :host:has(.screen.touch) { padding: 0; }
+    .screen.touch { height: 100dvh; width: 100%; box-sizing: border-box; gap: .4rem; overflow: hidden; align-content: stretch;
+                    padding: max(.4rem, env(safe-area-inset-top)) max(.5rem, env(safe-area-inset-right)) max(.4rem, env(safe-area-inset-bottom)) max(.5rem, env(safe-area-inset-left)); }
+    .screen.touch > * { width: 100%; min-width: 0; }
+    .screen.touch .hud { grid-area: hud; display: flex; flex-wrap: nowrap; align-items: start; padding: .25rem .6rem; gap: .1rem .9rem; border-radius: 10px; overflow: hidden; }
+    .screen.touch .hud li { position: relative; flex: 0 0 auto; }
+    .screen.touch .hud .lvl, .screen.touch .hud li:nth-child(5) { flex: 0 1 auto; }
+    .screen.touch .hud b { font-size: 1rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .screen.touch .hud .label { font-size: .62rem; }
+    /* the small print stays for screen readers, just not on screen */
+    .screen.touch .hud .sub { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    @media (orientation: landscape) and (max-width: 760px) { .screen.touch .hud .lvl, .screen.touch .hud li:nth-child(5) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; } }
+    .screen.touch .stage { grid-area: stage; }
+    .screen.touch .controls { grid-area: controls; position: relative; inset: auto; margin: 0; padding: 0 .25rem .25rem; }
+    .screen.touch .bar { grid-area: bar; flex-wrap: nowrap; gap: .4rem; }
+    .screen.touch .bar .btn { min-width: 0; min-height: 2.5rem; padding: .25rem .5rem; font-size: .9rem; flex: 0 1 auto; white-space: nowrap; }
+    .screen.touch .bar .spacer { flex: 1; }
+    @media (orientation: portrait) {
+      .screen.touch { grid-template: "hud" auto "stage" auto "controls" minmax(0, 1fr) "bar" auto / minmax(0, 1fr); }
+      .screen.touch .stage { margin: 0; overflow: clip; }
+      .screen.touch .controls { align-self: end; }
+      .screen.touch .pad { --cell: 60px; }
+      .screen.touch .actions button { width: 72px; height: 72px; }
+    }
+    @media (orientation: landscape) {
+      .screen.touch { grid-template: "hud bar" auto "stage stage" minmax(0, 1fr) / minmax(0, 1fr) auto; column-gap: .5rem; }
+      .screen.touch .stage { aspect-ratio: auto; height: 100%; min-height: 0; }
+      .screen.touch .controls { grid-area: stage; align-self: end; z-index: 2; padding: 0 .75rem .5rem; }
+      .screen.touch .pad { --cell: 52px; }
+      .screen.touch .actions button { width: 64px; height: 64px; }
+      .screen.touch .actions .jump { margin-bottom: 1rem; }
+    }
+    @media (orientation: landscape) and (max-height: 420px) {
+      .screen.touch .pad { --cell: 46px; }
+      .screen.touch .actions button { width: 58px; height: 58px; font-size: .95rem; }
+      .screen.touch .actions .jump { margin-bottom: .8rem; }
+    }
     @media (prefers-reduced-motion: no-preference) { .controls button { transition: background-color .08s; } }
     @media (forced-colors: active) { .controls button { border-color: ButtonText; } .controls button.on { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
     .bar { display: flex; gap: .75rem; flex-wrap: wrap; align-items: center; }
@@ -83,15 +124,21 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
     <main>
       <h1 class="visually-hidden">Iggy’s Quest – game</h1>
 
-      <div #screen class="screen">
+      <div #screen class="screen" [class.touch]="touchUi()">
       <ul class="hud" aria-label="Game status">
         <li class="lvl"><span class="label">Level</span><b>{{ hud().level }}</b></li>
-        <li><span class="label">Score</span><b>{{ hud().score }}</b><span class="sub">of {{ hud().goal }} to finish</span></li>
+        <li><span class="label">Score</span><b>{{ hud().score }}</b><span class="sub">of {{ hud().goal }} to reach the boss</span></li>
         <li><span class="label">Breadboards</span><b>{{ hud().breadboards }}</b><span class="sub">{{ hud().nextLifeIn }} to a free life</span></li>
         <li><span class="label">Lives</span><b>{{ hud().lives }}</b></li>
         <li><span class="label">Suit</span><b>{{ hud().suit }}</b>
-          @if (hud().nextSuit) { <span class="sub">{{ hud().nextSuitNeed }} more for {{ hud().nextSuit }}</span> }
+          @if (hud().nextSuit) { <span class="sub">{{ hud().nextSuitNeed }} {{ hud().nextSuitNeed === 1 ? 'ring' : 'rings' }} to {{ hud().nextSuit }}</span> }
         </li>
+        @if (hud().boss; as boss) {
+          <li class="boss"><span class="label">Boss: {{ boss.name }}</span>
+            <meter [min]="0" [max]="boss.max" [value]="boss.hp" [attr.aria-label]="boss.name + ' health'" [attr.title]="boss.hp + ' of ' + boss.max"></meter>
+            <span class="sub">{{ boss.hp }} of {{ boss.max }} health</span>
+          </li>
+        }
         @if (hud().powerUps.length) {
           <li><span class="label">Power-ups</span>
             <span class="pills">
@@ -133,22 +180,22 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
             </div>
           </div>
         }
-        @if (touchUi()) {
-          <div class="controls" [attr.inert]="overlay() !== 'none' ? '' : null" (contextmenu)="$event.preventDefault()">
-            <div class="pad" role="group" aria-label="Directional pad"
-                 (pointerdown)="padMove($event, true)" (pointermove)="padMove($event, false)" (pointerup)="padEnd($event)" (pointercancel)="padEnd($event)">
-              <button class="up" type="button" [class.on]="pad().up" aria-label="Jump up" (click)="tap($event, 'up')">▲</button>
-              <button class="left" type="button" [class.on]="pad().left" aria-label="Move left" (click)="tap($event, 'left')">◀</button>
-              <button class="right" type="button" [class.on]="pad().right" aria-label="Move right" (click)="tap($event, 'right')">▶</button>
-              <button class="down" type="button" [class.on]="pad().down" aria-label="Duck" (click)="tap($event, 'down')">▼</button>
-            </div>
-            <div class="actions">
-              <button class="fire" type="button" [class.on]="btn().fire" (pointerdown)="holdBtn('fire', true)" (pointerup)="holdBtn('fire', false)" (pointercancel)="holdBtn('fire', false)" (pointerleave)="holdBtn('fire', false)" (click)="tapBtn($event, 'fire')">Fire</button>
-              <button class="jump" type="button" [class.on]="btn().jump" (pointerdown)="holdBtn('jump', true)" (pointerup)="holdBtn('jump', false)" (pointercancel)="holdBtn('jump', false)" (pointerleave)="holdBtn('jump', false)" (click)="tapBtn($event, 'jump')">Jump</button>
-            </div>
-          </div>
-        }
       </div>
+      @if (touchUi()) {
+        <div class="controls" [attr.inert]="overlay() !== 'none' ? '' : null" (contextmenu)="$event.preventDefault()" (pointerdown)="enterFullscreenOnce()">
+          <div class="pad" role="group" aria-label="Directional pad"
+               (pointerdown)="padMove($event, true)" (pointermove)="padMove($event, false)" (pointerup)="padEnd($event)" (pointercancel)="padEnd($event)">
+            <button class="up" type="button" [class.on]="pad().up" aria-label="Jump up" (click)="tap($event, 'up')">▲</button>
+            <button class="left" type="button" [class.on]="pad().left" aria-label="Move left" (click)="tap($event, 'left')">◀</button>
+            <button class="right" type="button" [class.on]="pad().right" aria-label="Move right" (click)="tap($event, 'right')">▶</button>
+            <button class="down" type="button" [class.on]="pad().down" aria-label="Duck" (click)="tap($event, 'down')">▼</button>
+          </div>
+          <div class="actions">
+            <button class="fire" type="button" [class.on]="btn().fire" (pointerdown)="holdBtn('fire', true)" (pointerup)="holdBtn('fire', false)" (pointercancel)="holdBtn('fire', false)" (pointerleave)="holdBtn('fire', false)" (click)="tapBtn($event, 'fire')">Fire</button>
+            <button class="jump" type="button" [class.on]="btn().jump" (pointerdown)="holdBtn('jump', true)" (pointerup)="holdBtn('jump', false)" (pointercancel)="holdBtn('jump', false)" (pointerleave)="holdBtn('jump', false)" (click)="tapBtn($event, 'jump')">Jump</button>
+          </div>
+        </div>
+      }
 
       <div class="bar">
         <button class="btn" type="button" (click)="pause()" [disabled]="overlay() !== 'none'">Pause (Esc)</button>
@@ -180,7 +227,7 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
           <div>
             <h3>Collect</h3>
             <ul>
-              <li><strong>Breadboards</strong> unlock new suits; every 100 earns a free life.</li>
+              <li><strong>Breadboards</strong>: every 100 earns a free life. <strong>Rings</strong> upgrade Iggy's suit.</li>
               <li><strong>Golden rings:</strong> jump through them for bonus points. Rings passed in quick succession build a chain worth more each time, up to 100 points a ring.</li>
               <li><strong>Glowing power-ups:</strong> spring legs, magnet, shield, overclock, the golden star and guns.</li>
               <li><strong>Golden star:</strong> Iggy is invincible for 8 seconds. Pylons, walls and enemies are smashed when you touch them, but falling into a gap still costs a life.</li>
@@ -190,8 +237,8 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
           <div>
             <h3>Watch out for</h3>
             <ul>
-              <li><strong>Sparking pylons</strong> zap you. Jump them or shoot them.</li>
-              <li><strong>Brick walls</strong> don’t hurt, but crashing through slows you down for a couple of seconds. Shoot them to keep your speed.</li>
+              <li><strong>Sparking pylons</strong> zap you from the side. Land on top of one to smash it and bounce, or shoot it.</li>
+              <li><strong>Brick walls</strong> don’t hurt, but crashing through slows you down for a couple of seconds. Land on top to shatter one with no penalty, or shoot it to keep your speed.</li>
               <li><strong>Skeletons and crawlers</strong> patrol the rooftops and cost a life if you touch them from the side. Land on top of them to stomp them, or shoot them.</li>
               <li><strong>Gaps</strong> between buildings cost a life.</li>
             </ul>
@@ -221,7 +268,7 @@ export class PlayPage implements OnDestroy {
     const i = LEVELS.findIndex((l) => l.id === o?.level);
     return i >= 0 ? LEVELS[i + 1] : undefined;
   });
-  protected readonly hud = signal<HudState>({ level: '', goal: 5000, score: 0, breadboards: 0, lives: 3, nextLifeIn: 100, suit: 'Rusty Original', nextSuit: 'Patchwork', nextSuitNeed: 5, powerUps: [] });
+  protected readonly hud = signal<HudState>({ level: '', goal: 5000, score: 0, breadboards: 0, lives: 3, nextLifeIn: 100, suit: 'Rusty Original', nextSuit: 'Patchwork', nextSuitNeed: 3, powerUps: [], boss: null });
   private readonly touch: TouchInput = { left: false, right: false, jump: false, fire: false, duck: false };
   /** show the on-screen controls on touch devices, or anywhere with ?controls=1 in the address */
   protected readonly touchUi = signal(false);
@@ -286,6 +333,15 @@ export class PlayPage implements OnDestroy {
   @HostListener('window:resize')
   protected onResize() {
     setTimeout(() => this.game?.scale.refresh(), 50);
+  }
+
+  private triedFullscreen = false;
+
+  /** First press on the touch controls: go fullscreen where the browser allows it (it needs a tap to start). */
+  protected enterFullscreenOnce() {
+    if (this.triedFullscreen) return;
+    this.triedFullscreen = true;
+    if (this.canFullscreen && !document.fullscreenElement) void this.screen().nativeElement.requestFullscreen().catch(() => undefined);
   }
 
   protected async toggleFullscreen() {

@@ -4,8 +4,9 @@ import {
   H, SUITS, W, drawBuilding, drawHollowBuilding, drawRobot, makeFlakes, makeFog, makeHollowFog, makeHollowLayer, makeHollowSky,
   makeRain, makeSky, makeSkyline, makeSmallTextures, suitFor,
 } from './art';
-import { ensureStyle, drawLevelBuilding, makeEnemyTextures, makeRingTextures, ExtraStyle } from './art-levels';
-import { LEVEL_GOAL, LevelDef, levelById } from './levels';
+import { ensureStyle, drawLevelBuilding, makeEnemyTextures, makeRingTextures, makePlatformTextures, ExtraStyle } from './art-levels';
+import { BOSSES, BOSS_SCORE, BossAttack, BossDef, LevelDef, levelById } from './levels';
+import { BOSS_H, makeBossTextures } from './boss-art';
 import { Sfx } from './sfx';
 import { Music } from './music';
 
@@ -13,6 +14,7 @@ import { Music } from './music';
 export interface HudState {
   level: string;
   goal: number;
+  boss: { name: string; hp: number; max: number } | null;
   score: number;
   breadboards: number;
   lives: number;
@@ -47,9 +49,22 @@ const POWER: Record<PowerId, { label: string; secs: number | null; tex: string; 
   gun: { label: 'Gun', secs: null, tex: 'pu-blaster', text: '' }, // power.gun holds the ammo count
 };
 
-interface Shot { s: Phaser.GameObjects.Image; vx: number; vy: number; kind: 'bolt' | 'rocket'; trail: number }
+interface Shot { s: Phaser.GameObjects.Image; vx: number; vy: number; kind: 'bolt' | 'rocket'; trail: number; big?: boolean; bossHit?: boolean; hit?: Set<Item> }
 interface Building { x: number; top: number; w: number; gfx: Phaser.GameObjects.Graphics; zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }
-interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring'; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean }
+interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring'; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
+
+interface Plat {
+  kind: 'moving' | 'crumble'; img: Phaser.Physics.Arcade.Image; baseX: number; baseY: number; amp: number; phase: number;
+  stood: boolean; timer: number; state: 'idle' | 'shaking' | 'falling';
+}
+interface BossState {
+  def: BossDef; sprite: Phaser.GameObjects.Image; hp: number; max: number;
+  state: 'intro' | 'walk' | 'telegraph' | 'stagger' | 'dead';
+  timer: number; cd: number; attack: BossAttack; stomped: boolean; touchCD: number; said: number;
+}
+interface BossShot { img: Phaser.GameObjects.Image; vx: number; vy: number; g: number; mortar: boolean }
+interface BossWave { img: Phaser.GameObjects.Image; vx: number }
+interface Flag { x: number; top: number; sprite: Phaser.GameObjects.Image; on: boolean }
 
 const RUN = 250;
 const GRAVITY = 1500;
@@ -59,6 +74,8 @@ const LIFE_EVERY = 100;
 const MAX_LIVES = 9;
 const BLASTER_BOLT_SPEED = 640;
 const ROCKET_SPEED = 380;
+const CHARGE_MIN = 0.35; // hold at least this long (secs) and the release is a charged shot
+const CHARGE_FULL = 0.9;
 const BEST_KEY = 'iggys-quest.best';
 const OLD_BEST_KEY = 'side-scroller.best'; // project's old name: still read once so level 1's best score carries over
 
@@ -79,6 +96,16 @@ export class PlayScene extends Phaser.Scene {
   private robot!: Phaser.GameObjects.Graphics;
   private buildings: Building[] = [];
   private items: Item[] = [];
+  private plats: Plat[] = [];
+  private flags: Flag[] = [];
+  private nextFlagX = 1800;
+  private arenaX: number | null = null;
+  private arenaTop = 400;
+  private camLock: number | null = null;
+  private boss?: BossState;
+  private bossShots: BossShot[] = [];
+  private bossWaves: BossWave[] = [];
+  private bossAmmoT = 8;
   private nextX = 0;
   private lastTop = 400;
   private rand = Math.random;
@@ -94,6 +121,7 @@ export class PlayScene extends Phaser.Scene {
   private breadboards = 0;
   private lives = 3;
   private suitIdx = 0;
+  private rings = 0;
   private maxX = 0;
   private invuln = 0;
   private coyote = 0;
@@ -113,6 +141,8 @@ export class PlayScene extends Phaser.Scene {
   private gunLevel = 0; // 0 = no gun, 1..4 = Blaster, Twin blaster, Spread gun, Rocket launcher
   private fireCD = 0;
   private fireAnim = 0;
+  private charge = 0; // seconds the fire button has been held
+  private chargeFx?: Phaser.GameObjects.Arc;
   private slowT = 0;
   private bonus = 0;
   private ringChain = 0;
@@ -156,17 +186,34 @@ export class PlayScene extends Phaser.Scene {
     const onResume = () => this.music?.resume();
     this.events.on('pause', onPause);
     this.events.on('resume', onResume);
-    this.events.once('shutdown', () => {
+    // A restart emits 'shutdown', but destroying the whole game (leaving the page) only emits 'destroy': listen to both, or the
+    // old level's music keeps playing and the next level's plays on top of it.
+    let tornDown = false;
+    const teardown = () => {
+      if (tornDown) return;
+      tornDown = true;
       this.registry.events.off('changedata-music', onMusic);
       this.events.off('pause', onPause);
       this.events.off('resume', onResume);
       this.music?.stop();
       this.music = undefined;
-    });
+      this.sfx.close();
+    };
+    this.events.once('shutdown', teardown);
+    this.events.once('destroy', teardown);
 
     // reset state (scene.restart re-runs create)
     this.buildings = [];
     this.items = [];
+    this.plats = [];
+    this.flags = [];
+    this.nextFlagX = 1800;
+    this.arenaX = null;
+    this.camLock = null;
+    this.boss = undefined;
+    this.bossShots = [];
+    this.bossWaves = [];
+    this.bossAmmoT = 8;
     this.layers = [];
     this.t = 0;
     this.over = false;
@@ -175,6 +222,7 @@ export class PlayScene extends Phaser.Scene {
     this.breadboards = 0;
     this.lives = 3;
     this.suitIdx = 0;
+    this.rings = 0;
     this.maxX = 0;
     this.invuln = 0;
     this.coyote = 0;
@@ -187,6 +235,7 @@ export class PlayScene extends Phaser.Scene {
     this.shots = [];
     this.fireCD = 0;
     this.fireAnim = 0;
+    this.charge = 0;
     this.slowT = 0;
     this.bonus = 0;
     this.ringChain = 0;
@@ -231,6 +280,8 @@ export class PlayScene extends Phaser.Scene {
     if (!this.textures.exists('dust')) makeSmallTextures(this);
     makeEnemyTextures(this);
     makeRingTextures(this);
+    makePlatformTextures(this);
+    makeBossTextures(this, this.level.style);
     const style = this.level.style;
     let sky: string, layers: [string, number][], fogKey: string, precipKey: string;
     if (style !== 'city' && style !== 'hollow') {
@@ -298,6 +349,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private generate() {
+    if (this.arenaX !== null) return; // the boss arena is the end of the road
     const lim = this.cameras.main.scrollX + W + 900;
     while (this.nextX < lim) {
       const d = this.difficulty();
@@ -312,6 +364,11 @@ export class PlayScene extends Phaser.Scene {
       const prev = this.buildings[this.buildings.length - 1];
       const b = this.addBuilding(x, top, w);
       this.populate(b, prev, gap);
+      if (prev) this.addPlatform(prev, b, gap);
+      if (b.x >= this.nextFlagX && b.w >= 240) {
+        this.addFlag(b);
+        this.nextFlagX = b.x + 1800 + this.rand() * 600;
+      }
       this.nextX = x + w;
       this.lastTop = top;
     }
@@ -373,6 +430,308 @@ export class PlayScene extends Phaser.Scene {
     void gap;
   }
 
+  /** A one-way platform floating in a wide gap: sliding sideways, or crumbling a moment after Iggy lands on it. */
+  private addPlatform(prev: Building, b: Building, gap: number) {
+    if (gap < 120 || this.maxX < 400 || this.rand() > 0.3) return;
+    const moving = gap >= 150 && this.rand() < 0.5;
+    const x = prev.x + prev.w + gap / 2;
+    const y = Math.min(480, prev.top + 20);
+    const img = this.physics.add.image(x, y, moving ? 'plat-moving' : 'plat-crumble').setDepth(7);
+    const body = img.body as Phaser.Physics.Arcade.Body;
+    body.setAllowGravity(false).setImmovable(true);
+    body.setSize(84, 12).setOffset(0, 2);
+    const plat: Plat = { kind: moving ? 'moving' : 'crumble', img, baseX: x, baseY: y, amp: moving ? Math.min(45, (gap - 90) / 2) : 0, phase: this.rand() * 6, stood: false, timer: 0, state: 'idle' };
+    // one-way: only solid while Iggy is falling onto it from above
+    this.physics.add.collider(this.player, img, undefined, () => {
+      if (plat.state === 'falling') return false;
+      const ok = this.body.velocity.y >= 0 && this.body.prev.y + this.body.height <= body.top + 6;
+      if (ok) plat.stood = true;
+      return ok;
+    });
+    this.plats.push(plat);
+    void b;
+  }
+
+  // ------------------------------------------------------------------ boss
+  private openArena() {
+    const top = Phaser.Math.Clamp(400, this.lastTop - 60, this.lastTop + 60);
+    this.arenaTop = top;
+    this.arenaX = this.nextX + 110;
+    this.addBuilding(this.arenaX, top, 1300);
+    this.banner('Something big is ahead...');
+    this.announce('A boss arena lies ahead. Keep going right.');
+  }
+
+  private spawnBoss() {
+    const def = BOSSES[this.level.style];
+    const sprite = this.add.image(this.camLock! + W - 150, this.arenaTop, `boss-${this.level.style}-a`).setOrigin(0.5, 1).setDepth(8);
+    this.boss = { def, sprite, hp: def.hp, max: def.hp, state: 'intro', timer: 2.2, cd: 1.5, attack: 'volley', stomped: false, touchCD: 0, said: 0 };
+    this.banner(`Boss: ${def.name}`);
+    this.announce(`Boss fight: ${def.name}. ${def.blurb} Shoot it, or stomp on its head when it kneels.`);
+    this.sfx.suit();
+    for (let i = 0; i < 3; i++) this.time.delayedCall(400 + i * 900, () => this.boss && this.dropBossPowerUp(this.camLock!, true));
+    this.bossAmmoT = 4;
+    this.emitHud(true);
+  }
+
+  private bossBox(b: BossState) {
+    const s = b.sprite;
+    return { x0: s.x - 52, x1: s.x + 52, y0: s.y - s.displayHeight + 8, y1: s.y };
+  }
+
+  private inBossRect(x: number, y: number) {
+    if (!this.boss || this.boss.state === 'dead') return false;
+    const r = this.bossBox(this.boss);
+    return x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1;
+  }
+
+  private damageBoss(n: number) {
+    const b = this.boss;
+    if (!b || b.state === 'dead' || b.state === 'intro') return;
+    b.hp -= n;
+    b.sprite.setTint(0xff9090);
+    this.time.delayedCall(90, () => b.sprite.active && b.sprite.clearTint());
+    this.sfx.bricks();
+    this.debris(b.sprite.x + Phaser.Math.Between(-30, 30), b.sprite.y - Phaser.Math.Between(30, b.sprite.displayHeight - 20), 'spark', 3, 1);
+    const frac = Math.max(0, b.hp) / b.max;
+    const step = frac <= 0.25 ? 3 : frac <= 0.5 ? 2 : frac <= 0.75 ? 1 : 0;
+    if (b.hp > 0 && step > b.said) {
+      b.said = step;
+      this.announce(step === 2 ? `${b.def.name} is half destroyed and fighting harder.` : `${b.def.name} at ${Math.round(frac * 100)} percent.`);
+    }
+    if (b.hp <= 0) this.defeatBoss(b);
+    this.emitHud(true);
+  }
+
+  private defeatBoss(b: BossState) {
+    b.state = 'dead';
+    this.bonus += 1000;
+    this.invuln = 10;
+    this.bossShots.forEach((s) => s.img.destroy());
+    this.bossWaves.forEach((w) => w.img.destroy());
+    this.bossShots = [];
+    this.bossWaves = [];
+    this.banner(`${b.def.name} destroyed!`);
+    this.announce(`${b.def.name} destroyed! Plus 1000 points.`);
+    b.sprite.setTexture(`boss-${this.level.style}-a`).setScale(1);
+    for (let i = 0; i < 6; i++) {
+      this.time.delayedCall(i * 260, () => {
+        if (!b.sprite.active) return;
+        this.explode(b.sprite.x + Phaser.Math.Between(-45, 45), b.sprite.y - Phaser.Math.Between(20, 140), 40);
+      });
+    }
+    this.tweens.add({ targets: b.sprite, alpha: 0, duration: 400, delay: 1500 });
+    this.time.delayedCall(2000, () => {
+      if (!this.over) this.endRun(true);
+    });
+  }
+
+  private fireBossShot(x: number, y: number, tx: number, ty: number, speed: number) {
+    const a = Math.atan2(ty - y, tx - x);
+    const img = this.add.image(x, y, 'boss-orb').setDepth(9);
+    this.bossShots.push({ img, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, g: 0, mortar: false });
+  }
+
+  private lobBossShot(x: number, y: number, tx: number) {
+    const T = 0.95, g = 900;
+    const img = this.add.image(x, y, 'boss-orb').setDepth(9).setScale(1.3);
+    this.bossShots.push({ img, vx: (tx - x) / T, vy: (this.arenaTop - 8 - y - 0.5 * g * T * T) / T, g, mortar: true });
+  }
+
+  private updateBoss(dt: number) {
+    const b = this.boss;
+    if (!b || this.camLock === null) return;
+    const s = b.sprite, body = this.body;
+    const px = body.center.x;
+    const enraged = b.hp <= b.max / 2;
+    if (b.state !== 'dead') {
+      s.setFlipX(px > s.x);
+      b.timer -= dt;
+      b.touchCD = Math.max(0, b.touchCD - dt);
+      const lo = this.camLock + 140, hi = this.camLock + W - 90;
+      const face = px > s.x ? 1 : -1;
+      if (b.state === 'intro') {
+        if (b.timer <= 0) b.state = 'walk';
+      } else if (b.state === 'walk') {
+        const dx = px - s.x;
+        const want = Math.abs(dx) > 360 ? face : Math.abs(dx) < 250 ? -face : 0;
+        s.x = Phaser.Math.Clamp(s.x + want * b.def.speed * (enraged ? 1.4 : 1) * dt, lo, hi);
+        s.y = this.arenaTop + (!this.reduced && want !== 0 ? Math.abs(Math.sin(this.t * 6)) * -4 : 0);
+        b.cd -= dt;
+        if (b.cd <= 0) {
+          b.attack = b.def.attacks[Math.floor(this.rand() * b.def.attacks.length)];
+          b.state = 'telegraph';
+          b.timer = b.attack === 'stomp' ? 0.9 : 0.6;
+          s.setTexture(`boss-${this.level.style}-b`);
+          if (b.attack === 'stomp') s.y = this.arenaTop - 14;
+        }
+      } else if (b.state === 'telegraph') {
+        if (b.timer <= 0) this.bossAttack(b, enraged);
+      } else if (b.state === 'stagger') {
+        if (b.timer <= 0) {
+          b.state = 'walk';
+          b.cd = enraged ? 1 : 1.6;
+          s.setScale(1);
+          s.y = this.arenaTop;
+        }
+      }
+      // touching the mech
+      const r = this.bossBox(b);
+      if (b.state !== 'intro' && body.right > r.x0 + 6 && body.left < r.x1 - 6 && body.bottom > r.y0 && body.top < r.y1) {
+        if (b.state === 'stagger' && !b.stomped && body.velocity.y > 40 && body.bottom < r.y0 + 26) {
+          b.stomped = true;
+          body.setVelocityY(-480);
+          this.airJumps = 1;
+          this.banner('Head stomp!');
+          this.damageBoss(5);
+        } else if (this.power.star > 0) {
+          if (b.touchCD <= 0) {
+            b.touchCD = 0.4;
+            this.damageBoss(1);
+          }
+        } else if (b.touchCD <= 0 || this.invuln <= 0) {
+          this.hit('enemy');
+        }
+      }
+    }
+
+    // the mech's projectiles
+    const camX = this.camLock;
+    this.bossShots = this.bossShots.filter((sh) => {
+      sh.img.x += sh.vx * dt;
+      sh.img.y += sh.vy * dt;
+      sh.vy += sh.g * dt;
+      let gone = sh.img.x < camX - 40 || sh.img.x > camX + W + 40 || sh.img.y < -40;
+      if (!gone && Math.hypot(sh.img.x - body.center.x, sh.img.y - body.center.y) < 18) {
+        this.hit('enemy');
+        gone = true;
+      }
+      if (!gone && sh.img.y >= this.arenaTop - 8) {
+        gone = true;
+        if (sh.mortar) {
+          this.sfx.boom();
+          this.debris(sh.img.x, this.arenaTop - 10, 'spark', this.reduced ? 3 : 8, 1.2);
+          this.dust(sh.img.x, this.arenaTop, 5, 40, 20, 1.3);
+          if (Math.abs(body.center.x - sh.img.x) < 36 && body.bottom > this.arenaTop - 40) this.hit('enemy');
+        }
+      }
+      if (gone) sh.img.destroy();
+      return !gone;
+    });
+    this.bossWaves = this.bossWaves.filter((w) => {
+      w.img.x += w.vx * dt;
+      let gone = w.img.x < camX - 40 || w.img.x > camX + W + 40;
+      if (!gone && Math.abs(body.center.x - w.img.x) < 20 && body.bottom > this.arenaTop - 22) this.hit('enemy');
+      if (gone) w.img.destroy();
+      return !gone;
+    });
+
+    // plenty of power-ups: a few waiting at the start, then a new one every few seconds (never more than four lying about)
+    if (b.state !== 'dead') {
+      this.bossAmmoT -= dt;
+      if (this.bossAmmoT <= 0) {
+        this.bossAmmoT = 4.5;
+        this.dropBossPowerUp(camX);
+      }
+    }
+  }
+
+  private dropBossPowerUp(camX: number, quiet = false) {
+    if (this.items.filter((i) => i.kind === 'pu' && !i.taken).length >= 4) return;
+    const pool: PowerId[] = ['gun', 'gun', 'shield', 'star', 'spring', 'turbo', 'magnet'];
+    if (this.power.gun < 15) pool.push('gun', 'gun', 'gun'); // short on ammo: guns are far more likely
+    if (this.lives <= 2) pool.push('shield', 'shield', 'star');
+    const id = pool[Math.floor(this.rand() * pool.length)];
+    const x = camX + 160 + this.rand() * (W - 320);
+    this.dropItem(x, this.arenaTop - 75, id);
+    if (!quiet) this.announce(`${id === 'gun' ? 'A blaster crate' : 'A ' + POWER[id].label.toLowerCase() + ' power-up'} is falling into the arena.`);
+  }
+
+  private bossAttack(b: BossState, enraged: boolean) {
+    const s = b.sprite;
+    const mx = s.x + (s.flipX ? -b.def.muzzle[0] : b.def.muzzle[0]);
+    const my = s.y + b.def.muzzle[1];
+    const px = this.body.center.x, py = this.body.center.y;
+    s.setTexture(`boss-${this.level.style}-a`);
+    b.state = 'walk';
+    b.cd = enraged ? 1.1 : 1.8;
+    if (b.attack === 'volley') {
+      const n = enraged ? 3 : 2;
+      for (let i = 0; i < n; i++) this.time.delayedCall(i * 260, () => b.state !== 'dead' && s.active && this.fireBossShot(mx, my, this.body.center.x, this.body.center.y, 270));
+      this.sfx.boom();
+    } else if (b.attack === 'spread') {
+      const a0 = Math.atan2(py - my, px - mx);
+      for (const d of enraged ? [-0.35, -0.17, 0, 0.17, 0.35] : [-0.28, 0, 0.28]) this.fireBossShot(mx, my, mx + Math.cos(a0 + d) * 200, my + Math.sin(a0 + d) * 200, 250);
+      this.sfx.boom();
+    } else if (b.attack === 'mortar') {
+      const n = enraged ? 3 : 2;
+      for (let i = 0; i < n; i++) this.lobBossShot(mx, my, px + (i - (n - 1) / 2) * 110 + this.facing * 30 * i);
+      this.sfx.boom();
+    } else {
+      s.y = this.arenaTop;
+      this.sfx.boom();
+      if (!this.reduced) this.cameras.main.shake(260, 0.01);
+      this.dust(s.x, this.arenaTop, 10, 90, 20, 1.8);
+      for (const dir of [-1, 1]) {
+        const img = this.add.image(s.x + dir * 60, this.arenaTop - 14, 'boss-wave').setDepth(9).setFlipX(dir < 0);
+        this.bossWaves.push({ img, vx: dir * (enraged ? 330 : 260) });
+      }
+      b.state = 'stagger';
+      b.timer = 2;
+      b.stomped = false;
+      s.setScale(1.06, 0.55);
+      this.announce('The mech slammed down and is kneeling. Stomp its head.');
+    }
+  }
+
+  private addFlag(b: Building) {
+    const x = b.x + 60;
+    const sprite = this.add.image(x, b.top - 38, 'flag-off').setDepth(5);
+    this.flags.push({ x, top: b.top, sprite, on: false });
+  }
+
+  private reachFlag(f: Flag) {
+    f.on = true;
+    f.sprite.setTexture('flag-on');
+    this.lastSafe = { x: f.x, top: f.top };
+    const topUp = this.lives < 3;
+    if (topUp) this.lives = 3;
+    this.sfx.suit();
+    this.banner('Checkpoint!');
+    this.announce(`Checkpoint reached.${topUp ? ' Lives topped up to 3.' : ''}`);
+    this.debris(f.x, f.top - 60, 'spark', this.reduced ? 3 : 10, 1);
+    this.emitHud(true);
+  }
+
+  private updatePlatforms(dt: number) {
+    for (const p of this.plats) {
+      const body = p.img.body as Phaser.Physics.Arcade.Body;
+      if (p.kind === 'moving') {
+        const w = 1.6;
+        body.setVelocityX(Math.cos(this.t * w + p.phase) * p.amp * w);
+      } else if (p.state === 'idle' && p.stood) {
+        p.state = 'shaking';
+        p.timer = 0.7;
+      } else if (p.state === 'shaking') {
+        p.timer -= dt;
+        if (!this.reduced) p.img.x = p.baseX + Math.sin(this.t * 60) * 2;
+        if (p.timer <= 0) {
+          p.state = 'falling';
+          body.setAllowGravity(true).setImmovable(false);
+          body.setVelocityY(40);
+          this.debris(p.img.x, p.img.y, 'brick', this.reduced ? 2 : 6, 0.8);
+          this.sfx.step(1, true);
+        }
+      } else if (p.state === 'falling') {
+        p.img.alpha = Math.max(0, p.img.alpha - dt * 1.2);
+      }
+      p.stood = false;
+    }
+    for (const f of this.flags) {
+      if (!f.on && Math.abs(this.body.center.x - f.x) < 26 && Math.abs(this.body.bottom - f.top) < 70) this.reachFlag(f);
+    }
+  }
+
   private addRing(x: number, y: number) {
     const back = this.add.image(x, y, 'ring-back').setDepth(6);
     const sprite = this.add.image(x, y, 'ring-front').setDepth(11);
@@ -382,6 +741,7 @@ export class PlayScene extends Phaser.Scene {
   /** Iggy flew through a ring. Rings passed in quick succession build a chain worth more each time. */
   private passRing(it: Item) {
     it.taken = true;
+    this.rings++;
     this.ringChain = this.ringTimer > 0 ? this.ringChain + 1 : 1;
     this.ringTimer = 2.2;
     const pts = 20 * Math.min(this.ringChain, 5);
@@ -391,6 +751,21 @@ export class PlayScene extends Phaser.Scene {
     if (!this.reduced) {
       const echo = this.add.image(it.sprite.x, it.sprite.y, 'ring-front').setDepth(11).setTint(0xffffff);
       this.tweens.add({ targets: echo, scale: 2.2, alpha: 0, duration: 380, onComplete: () => echo.destroy() });
+    }
+    const idx = suitFor(this.rings);
+    if (idx !== this.suitIdx) {
+      this.suitIdx = idx;
+      const s = SUITS[idx];
+      this.sfx.suit();
+      this.banner(`New suit: ${s.name}`);
+      this.announce(`New suit unlocked: ${s.name}. ${s.blurb}`);
+      this.dust(this.body.center.x, this.body.bottom, 8, 50, 40, 1.4);
+      this.debris(this.body.center.x, this.body.center.y, 'cog', 6, 1.2);
+      this.debris(this.body.center.x, this.body.center.y, 'bolt', 6, 1.2);
+      if (this.flash && !this.reduced) {
+        this.flash.setAlpha(0.18);
+        this.tweens.add({ targets: this.flash, alpha: 0, duration: 400 });
+      }
     }
     this.announce(this.ringChain > 1 ? `Ring chain times ${this.ringChain}. Plus ${pts} points.` : `Ring. Plus ${pts} points.`);
   }
@@ -414,6 +789,15 @@ export class PlayScene extends Phaser.Scene {
     this.items.push({ kind, power, sprite, baseY: y, phase: Math.random() * 6, hp: kind === 'wall' ? 5 : undefined });
   }
 
+  /** A power-up that drifts down from above the screen (it just appears where it lands if motion is reduced). */
+  private dropItem(x: number, y: number, power: PowerId) {
+    this.addItem('pu', x, y, power);
+    const it = this.items[this.items.length - 1];
+    if (this.reduced) return;
+    it.falling = true;
+    it.sprite.y = -40;
+  }
+
   private cull() {
     const left = this.cameras.main.scrollX - 300;
     this.buildings = this.buildings.filter((b) => {
@@ -421,6 +805,20 @@ export class PlayScene extends Phaser.Scene {
         b.collider.destroy();
         b.gfx.destroy();
         b.zone.destroy();
+        return false;
+      }
+      return true;
+    });
+    this.plats = this.plats.filter((p) => {
+      if (p.img.x < left || p.img.y > H + 100 || p.img.alpha <= 0) {
+        p.img.destroy();
+        return false;
+      }
+      return true;
+    });
+    this.flags = this.flags.filter((f) => {
+      if (f.x < left) {
+        f.sprite.destroy();
         return false;
       }
       return true;
@@ -497,7 +895,7 @@ export class PlayScene extends Phaser.Scene {
     this.announce(on ? 'Ducking. Shots now fly low, at small targets on the ground.' : '');
   }
 
-  private shoot() {
+  private shoot(big = false) {
     const lvl = this.gun();
     const f = this.facing;
     const x = this.body.center.x + f * 50, y = this.body.bottom - (this.ducked ? 23 : 36);
@@ -506,7 +904,8 @@ export class PlayScene extends Phaser.Scene {
       const vx = f * speed * Math.cos(angle), vy = speed * Math.sin(angle);
       const img = this.add.image(x, y + yOff, kind === 'rocket' ? 'rocket' : 'shot').setDepth(9);
       img.setRotation(Math.atan2(vy, vx));
-      this.shots.push({ s: img, vx, vy, kind, trail: 0 });
+      if (big) img.setScale(kind === 'rocket' ? 1.5 : 2.4);
+      this.shots.push({ s: img, vx, vy, kind, trail: 0, big, hit: big ? new Set() : undefined });
     };
     if (lvl >= 4) {
       spawn('rocket', 0, 0);
@@ -528,14 +927,29 @@ export class PlayScene extends Phaser.Scene {
     }
     this.fireAnim = 1;
     this.debris(x, y, 'spark', this.reduced ? 1 : 3, 0.5);
-    // ammo: rockets cost 2, everything else 1 per trigger pull
-    this.power.gun -= lvl >= 4 ? 2 : 1;
+    // ammo: rockets cost 2, everything else 1 per trigger pull; a charged shot costs double
+    this.power.gun -= (lvl >= 4 ? 2 : 1) * (big ? 2 : 1);
     if (this.power.gun <= 0) {
       this.power.gun = 0;
       this.gunLevel = 0;
       this.announce('Out of ammo. The gun is gone.');
     }
     this.emitHud();
+  }
+
+  /** Glow around Iggy while the fire button is held: grows, then pulses once it's charged. */
+  private updateChargeFx() {
+    const on = this.charge > 0.08;
+    if (!on) {
+      this.chargeFx?.setVisible(false);
+      return;
+    }
+    if (!this.chargeFx) this.chargeFx = this.add.circle(0, 0, 10, 0xffe14a, 0.35).setStrokeStyle(3, 0xffffff, 0.9).setDepth(11);
+    const ready = this.charge >= CHARGE_MIN;
+    const pulse = ready && !this.reduced ? 1 + 0.12 * Math.sin(this.time.now / 45) : 1;
+    this.chargeFx.setVisible(true).setPosition(this.body.center.x + this.facing * 30, this.body.bottom - (this.ducked ? 23 : 36));
+    this.chargeFx.setRadius((8 + 16 * (this.charge / CHARGE_FULL)) * pulse);
+    this.chargeFx.setFillStyle(ready ? 0xffffff : 0xffe14a, ready ? 0.6 : 0.35);
   }
 
   private updateShots(dt: number) {
@@ -551,15 +965,26 @@ export class PlayScene extends Phaser.Scene {
           this.dust(s.x - Math.sign(sh.vx) * 12, s.y, 1, 4, 6, 0.5);
         }
       }
-      const hitIt = this.items.find((it) => !it.taken && (it.kind === 'pylon' || it.kind === 'wall' || it.kind === 'patrol') && Math.abs(s.x - it.sprite.x) < (it.kind === 'patrol' ? 16 : 18) && Math.abs(s.y - it.sprite.y) < (it.kind === 'wall' ? 34 : it.kind === 'patrol' ? it.sprite.height / 2 + 4 : 24));
+      if (this.boss && !sh.bossHit && this.inBossRect(s.x, s.y)) {
+        if (sh.kind === 'rocket') this.explode(s.x, s.y, sh.big ? 150 : 85);
+        else this.damageBoss(sh.big ? 3 : 1);
+        if (sh.big && sh.kind === 'bolt') sh.bossHit = true;
+        else {
+          s.destroy();
+          return false;
+        }
+      }
+      const hitIt = this.items.find((it) => !it.taken && !sh.hit?.has(it) && (it.kind === 'pylon' || it.kind === 'wall' || it.kind === 'patrol') && Math.abs(s.x - it.sprite.x) < (it.kind === 'patrol' ? 16 : 18) && Math.abs(s.y - it.sprite.y) < (it.kind === 'wall' ? 34 : it.kind === 'patrol' ? it.sprite.height / 2 + 4 : 24));
       const hitBuilding = this.buildings.some((b) => s.x >= b.x && s.x <= b.x + b.w && s.y > b.top + 2);
       const off = s.x < cam.scrollX - 60 || s.x > cam.scrollX + W + 120 || s.y < -60 || s.y > H + 60;
       if (hitIt || hitBuilding) {
-        if (sh.kind === 'rocket') this.explode(s.x, s.y);
-        else if (hitIt) hitIt.kind === 'pylon' ? this.destroyPylon(hitIt) : hitIt.kind === 'patrol' ? this.damagePatrol(hitIt) : this.damageWall(hitIt, 1);
+        const dmg = sh.big ? 3 : 1;
+        if (sh.kind === 'rocket') this.explode(s.x, s.y, sh.big ? 150 : 85);
+        else if (hitIt) hitIt.kind === 'pylon' ? this.destroyPylon(hitIt) : hitIt.kind === 'patrol' ? this.damagePatrol(hitIt, dmg) : this.damageWall(hitIt, dmg);
         else this.debris(s.x, s.y, 'spark', 2, 0.4);
       }
-      if (hitIt || hitBuilding || off) {
+      if (sh.big && sh.kind === 'bolt' && hitIt && !hitBuilding) sh.hit!.add(hitIt); // charged bolts pierce targets
+      else if (hitIt || hitBuilding || off) {
         s.destroy();
         return false;
       }
@@ -567,8 +992,8 @@ export class PlayScene extends Phaser.Scene {
     });
   }
 
-  private damagePatrol(it: Item) {
-    it.hp = (it.hp ?? 1) - 1;
+  private damagePatrol(it: Item, dmg = 1) {
+    it.hp = (it.hp ?? 1) - dmg;
     it.sprite.setTint(0xff8080);
     this.time.delayedCall(80, () => it.sprite.active && it.sprite.clearTint());
     this.debris(it.sprite.x, it.sprite.y, 'spark', 2, 0.6);
@@ -612,19 +1037,39 @@ export class PlayScene extends Phaser.Scene {
     this.dust(it.sprite.x, it.sprite.y + 28, 7, 36, 18, 1.3);
   }
 
-  private explode(x: number, y: number) {
+  private explode(x: number, y: number, radius = 85) {
     this.sfx.boom();
-    this.debris(x, y, 'spark', this.reduced ? 4 : 16, 1.8);
+    this.debris(x, y, 'spark', this.reduced ? 4 : 16, radius > 100 ? 2.6 : 1.8);
     this.dust(x, y + 10, 8, 50, 26, 1.6);
     if (!this.reduced) this.cameras.main.shake(140, 0.004);
+    const bs = this.boss;
+    if (bs && bs.state !== 'dead' && Math.hypot(bs.sprite.x - x, bs.sprite.y - bs.sprite.displayHeight / 2 - y) < radius + 55) this.damageBoss(radius > 100 ? 6 : 3);
     for (const it of this.items) {
       if (it.taken || (it.kind !== 'pylon' && it.kind !== 'wall' && it.kind !== 'patrol')) continue;
-      if (Math.hypot(it.sprite.x - x, it.sprite.y - y) < 85) {
+      if (Math.hypot(it.sprite.x - x, it.sprite.y - y) < radius) {
         if (it.kind === 'pylon') this.destroyPylon(it);
         else if (it.kind === 'patrol') this.defeatPatrol(it, 'shot');
         else this.breakWall(it, true);
       }
     }
+  }
+
+  /**
+   * True when Iggy's feet are at the obstacle's top edge, whether he is coming down onto it or just clipping it on the way up.
+   * Only running into its side (feet well below the top) should cost him anything.
+   */
+  private landedOn(top: number): boolean {
+    return this.body.bottom < top + 28;
+  }
+
+  /** Iggy jumps on top of a pylon or brick wall: it breaks, he bounces off unhurt and keeps his speed. */
+  private stompObstacle(it: Item) {
+    const wall = it.kind === 'wall';
+    if (wall) this.breakWall(it, true);
+    else this.destroyPylon(it);
+    if (this.body.velocity.y >= 0) this.body.setVelocityY(-430);
+    this.announce(wall ? 'Smashed a brick wall from above. Plus 25 points.' : 'Stomped a pylon. Plus 10 points.');
+    this.emitHud(true);
   }
 
   /** Iggy runs into a brick wall: no damage, but he smashes through and loses his speed for a moment. */
@@ -654,21 +1099,6 @@ export class PlayScene extends Phaser.Scene {
       this.announce(`${this.breadboards} breadboards! Free life. You now have ${this.lives} lives.`);
       this.debris(this.body.center.x, this.body.center.y, 'spark', this.reduced ? 3 : 12, 1.2);
     }
-    const idx = suitFor(this.breadboards);
-    if (idx !== this.suitIdx) {
-      this.suitIdx = idx;
-      const s = SUITS[idx];
-      this.sfx.suit();
-      this.banner(`New suit: ${s.name}`);
-      this.announce(`New suit unlocked: ${s.name}. ${s.blurb}`);
-      this.dust(this.body.center.x, this.body.bottom, 8, 50, 40, 1.4);
-      this.debris(this.body.center.x, this.body.center.y, 'cog', 6, 1.2);
-      this.debris(this.body.center.x, this.body.center.y, 'bolt', 6, 1.2);
-      if (this.flash && !this.reduced) {
-        this.flash.setAlpha(0.18);
-        this.tweens.add({ targets: this.flash, alpha: 0, duration: 400 });
-      }
-    }
     this.emitHud(true);
   }
 
@@ -686,7 +1116,7 @@ export class PlayScene extends Phaser.Scene {
       this.banner(active ? `Gun upgrade: ${name}` : name);
       this.announce(
         !active
-          ? `${name} with ${this.power.gun} shots! Press X or F to shoot. Ammo doesn't run out over time, so you can save it. Grab another gun to upgrade this one.`
+          ? `${name} with ${this.power.gun} shots! Tap X or F to shoot, or hold it to charge a big piercing shot and let go to fire. Ammo doesn't run out over time, so you can save it. Grab another gun to upgrade this one.`
           : prev >= GUN_MAX
             ? `${name} ammo topped up to ${this.power.gun} shots.`
             : `Gun upgraded to ${name}, level ${this.gunLevel} of ${GUN_MAX}. ${this.power.gun} shots.`,
@@ -729,10 +1159,17 @@ export class PlayScene extends Phaser.Scene {
       this.gameOver();
       return;
     }
-    this.announce(reason === 'fall' ? `Iggy fell. ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.` : `${reason === 'enemy' ? 'Bonked' : 'Zapped'}! ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.`);
+    // losing a life strips the upgrades: back to the first suit, and the ring count starts again
+    const lostSuit = this.suitIdx > 0;
+    this.suitIdx = 0;
+    this.rings = 0;
+    this.announce(
+      (reason === 'fall' ? `Iggy fell. ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.` : `${reason === 'enemy' ? 'Bonked' : 'Zapped'}! ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.`) +
+        (lostSuit ? ` Back to the ${SUITS[0].name} suit.` : ''),
+    );
     this.invuln = 1.8;
     if (reason === 'fall') {
-      const safe = this.lastSafe;
+      const safe = this.camLock !== null && this.arenaX !== null ? { x: this.arenaX + 200, top: this.arenaTop } : this.lastSafe;
       this.body.reset(safe.x, safe.top - 30);
       this.items.forEach((it) => {
         if ((it.kind === 'pylon' || it.kind === 'patrol') && Math.abs(it.sprite.x - safe.x) < 90) it.taken = true;
@@ -756,7 +1193,7 @@ export class PlayScene extends Phaser.Scene {
     if (won) {
       this.sfx.win();
       this.banner('Level complete!');
-      this.announce(`Level complete! You reached ${LEVEL_GOAL} points.`);
+      this.announce(`Level complete! You destroyed ${BOSSES[this.level.style].name}.`);
     } else {
       this.sfx.over();
     }
@@ -783,14 +1220,15 @@ export class PlayScene extends Phaser.Scene {
     const next = SUITS[this.suitIdx + 1];
     const state: HudState = {
       level: `Level ${this.level.number}: ${this.level.name}`,
-      goal: LEVEL_GOAL,
+      goal: BOSS_SCORE,
+      boss: this.boss && this.boss.state !== 'dead' ? { name: this.boss.def.name, hp: Math.max(0, this.boss.hp), max: this.boss.max } : null,
       score: this.score(),
       breadboards: this.breadboards,
       lives: this.lives,
       nextLifeIn: LIFE_EVERY - (this.breadboards % LIFE_EVERY),
       suit: SUITS[this.suitIdx].name,
       nextSuit: next?.name ?? null,
-      nextSuitNeed: next ? next.need - this.breadboards : 0,
+      nextSuitNeed: next ? next.need - this.rings : 0,
       powerUps: [
         ...(Object.keys(this.power) as PowerId[])
           .filter((k) => this.power[k] > 0)
@@ -972,10 +1410,14 @@ export class PlayScene extends Phaser.Scene {
         } else if (it.kind === 'wall') {
           if (Math.abs(px - s.x) < 24 && body.bottom > s.y - 32 && body.top < s.y + 32) {
             if (this.power.star > 0) this.breakWall(it, true);
+            else if (this.landedOn(s.y - 32)) this.stompObstacle(it);
             else this.crashWall(it);
           }
         } else if (it.kind !== 'pylon') {
-          if (!this.reduced) s.y = it.baseY + Math.sin(this.t * 3 + it.phase) * 4;
+          if (it.falling) {
+            s.y = Math.min(it.baseY, s.y + 170 * dt);
+            if (s.y >= it.baseY) it.falling = false;
+          } else if (!this.reduced) s.y = it.baseY + Math.sin(this.t * 3 + it.phase) * 4;
           if (it.kind === 'bb' && this.power.magnet > 0) {
             const dx = px - s.x, dy = py - s.y, dist = Math.hypot(dx, dy);
             if (dist < 230 && dist > 1) {
@@ -991,9 +1433,13 @@ export class PlayScene extends Phaser.Scene {
           }
         } else if (Math.abs(px - s.x) < 17 && body.bottom > s.y - 18 && body.top < s.y + 21) {
           if (this.power.star > 0) this.destroyPylon(it);
+          else if (this.landedOn(s.y - 18)) this.stompObstacle(it);
           else this.hit('pylon');
         }
       }
+
+      this.updatePlatforms(dt);
+      this.updateBoss(dt);
 
       // fell off the world
       if (body.top > H + 40) this.hit('fall');
@@ -1018,12 +1464,38 @@ export class PlayScene extends Phaser.Scene {
     // -- shooting
     this.fireCD = Math.max(0, this.fireCD - dt);
     this.fireAnim = Math.max(0, this.fireAnim - dt * 6);
-    if (!this.over && (this.keys.X.isDown || this.keys.F.isDown || this.touch.fire) && this.gun() && this.fireCD <= 0) this.shoot();
+    const held = !this.over && !!this.gun() && (this.keys.X.isDown || this.keys.F.isDown || this.touch.fire);
+    if (held) {
+      const before = this.charge;
+      this.charge = Math.min(CHARGE_FULL, this.charge + dt);
+      if (before < CHARGE_MIN && this.charge >= CHARGE_MIN) {
+        this.sfx.charged();
+        this.announce('Charged. Let go to fire a big shot.');
+      }
+    } else if (this.charge > 0) {
+      const big = this.charge >= CHARGE_MIN;
+      this.charge = 0;
+      if (!this.over && this.gun() && (big || this.fireCD <= 0)) this.shoot(big);
+    }
+    this.updateChargeFx();
     this.updateShots(dt);
 
     // -- camera only moves forward; Iggy can't run off the left edge
-    const want = body.center.x - 330;
-    if (want > cam.scrollX) cam.scrollX += this.reduced ? want - cam.scrollX : (want - cam.scrollX) * Math.min(1, dt * 8);
+    if (this.arenaX === null && !this.over && this.score() >= BOSS_SCORE) this.openArena();
+    if (this.arenaX !== null && this.camLock === null && !this.over && body.center.x > this.arenaX + 140) {
+      this.camLock = this.arenaX - 20;
+      this.spawnBoss();
+    }
+    const want = this.camLock ?? body.center.x - 330;
+    if (want > cam.scrollX) cam.scrollX += this.reduced ? want - cam.scrollX : (want - cam.scrollX) * Math.min(1, dt * (this.camLock === null ? 8 : 5));
+    if (this.camLock !== null && this.arenaX !== null && body.left < this.arenaX + 6 && body.bottom > this.arenaTop - 4) {
+      body.x = this.arenaX + 6; // a wall at the arena's edge: no wandering back into the gap
+      if (body.velocity.x < 0) body.setVelocityX(0);
+    }
+    if (this.camLock !== null && body.right > cam.scrollX + W - 8) {
+      body.x = cam.scrollX + W - 8 - body.width;
+      if (body.velocity.x > 0) body.setVelocityX(0);
+    }
     if (body.left < cam.scrollX + 8) {
       body.x = cam.scrollX + 8;
       if (body.velocity.x < 0) body.setVelocityX(0);
@@ -1078,7 +1550,6 @@ export class PlayScene extends Phaser.Scene {
     });
 
     // -- HUD (throttled)
-    if (!this.over && this.score() >= LEVEL_GOAL) this.endRun(true);
     this.hudTimer -= dt;
     if (this.hudTimer <= 0) {
       this.hudTimer = 0.2;

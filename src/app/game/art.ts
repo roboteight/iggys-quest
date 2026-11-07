@@ -31,7 +31,7 @@ export function gfx(scene: Phaser.Scene) {
 export interface Suit {
   name: string;
   blurb: string;
-  /** breadboards needed to unlock */
+  /** rings jumped through needed to unlock */
   need: number;
   body: number;
   trim: number;
@@ -48,20 +48,20 @@ export interface Suit {
 export const SUITS: Suit[] = [
   { name: 'Rusty Original', blurb: 'Dented, leaking and held together by hope.', need: 0,
     body: 0xd8643a, trim: 0xa8472a, dark: 0x4a2a1c, eye: 0x2f7f95, loose: 1, cape: false, ears: false, glow: false, plates: false },
-  { name: 'Patchwork', blurb: 'Fresh copper patches and a new left arm.', need: 5,
+  { name: 'Patchwork', blurb: 'Fresh copper patches and a new left arm.', need: 3,
     body: 0xcf7a45, trim: 0x3f8f8a, dark: 0x3c2a22, eye: 0x2f7f95, loose: 0.65, cape: false, ears: false, glow: false, plates: false },
-  { name: 'Steel Sentinel', blurb: 'Riveted steel plating. Hardly rattles.', need: 12,
+  { name: 'Steel Sentinel', blurb: 'Riveted steel plating. Hardly rattles.', need: 8,
     body: 0x8fa0b4, trim: 0x5a6a82, dark: 0x1f2735, eye: 0x1aa7c8, loose: 0.35, cape: false, ears: false, glow: false, plates: true },
-  { name: 'Night Guardian', blurb: 'Matte black, a cape and pointed ears.', need: 22,
+  { name: 'Night Guardian', blurb: 'Matte black, a cape and pointed ears.', need: 15,
     body: 0x2f3547, trim: 0x59627a, dark: 0x0d1017, eye: 0xffc44a, loose: 0.15, cape: true, ears: true, glow: false, plates: true },
-  { name: 'Gold Circuit', blurb: 'Gleaming. Everything finally works.', need: 35,
+  { name: 'Gold Circuit', blurb: 'Gleaming. Everything finally works.', need: 25,
     body: 0xe2b53c, trim: 0xfff0a8, dark: 0x5a3d0a, eye: 0x25b866, loose: 0.02, cape: true, ears: true, glow: true, plates: true },
 ];
 
-export function suitFor(breadboards: number) {
+export function suitFor(rings: number) {
   let idx = 0;
   SUITS.forEach((s, i) => {
-    if (breadboards >= s.need) idx = i;
+    if (rings >= s.need) idx = i;
   });
   return idx;
 }

@@ -1,11 +1,20 @@
 /** Tiny synthesised sound effects (no audio files). Volume comes from the Settings page (0–100). */
 export class Sfx {
   private ctx?: AudioContext;
+  private closed = false;
 
   constructor(private volume: number) {}
 
+  /** Release the audio context (the scene is over); later calls make no sound. */
+  close() {
+    this.closed = true;
+    const ctx = this.ctx;
+    this.ctx = undefined;
+    if (ctx) void ctx.close().catch(() => undefined);
+  }
+
   private ensure(): AudioContext | undefined {
-    if (this.volume <= 0) return undefined;
+    if (this.volume <= 0 || this.closed) return undefined;
     try {
       this.ctx ??= new AudioContext();
       if (this.ctx.state === 'suspended') void this.ctx.resume();
@@ -86,6 +95,7 @@ export class Sfx {
   }
 
   shoot() { this.tone(900, 220, 0.09, 'square', 0.55); this.tick(5000, 0.02, 0.4); }
+  charged() { this.tone(500, 1200, 0.12, 'triangle', 0.6); }
   rocket() { this.tone(180, 60, 0.3, 'sawtooth', 0.8); this.tick(1200, 0.18, 0.7); }
   boom() { this.tone(110, 28, 0.5, 'sawtooth', 1.2); this.tick(700, 0.3, 1.2); this.tick(1800, 0.2, 0.8, 0.03); }
   bricks() { this.tone(90, 45, 0.18, 'triangle', 1); for (let i = 0; i < 8; i++) this.tick(900 + Math.random() * 1800, 0.03, 0.8, Math.random() * 0.25); }
