@@ -2,6 +2,7 @@ import { Component, computed, effect, input, isDevMode, ElementRef, HostListener
 import { RouterLink } from '@angular/router';
 import type Phaser from 'phaser';
 import { SettingsService } from '../settings.service';
+import { ProgressService } from '../progress.service';
 import type { GameOverState, HudState, TouchInput } from '../game/play.scene';
 import { LEVELS, levelById } from '../game/levels';
 
@@ -163,7 +164,8 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
                   <dt>Breadboards</dt><dd>{{ o.breadboards }}</dd>
                   <dt>Distance</dt><dd>{{ o.distance }} m</dd>
                   <dt>Final suit</dt><dd>{{ o.suit }}</dd>
-                  <dt>Best</dt><dd>{{ o.best }}@if (o.newBest) { – new best! }</dd>
+                  <dt>Best</dt><dd>{{ progress.best(o.level) }}@if (rank() === 1) { – new best! }</dd>
+                  @if (rank(); as r) { <dt>High scores</dt><dd>Place {{ r }} of 5</dd> }
                 </dl>
               }
               <div class="stack">
@@ -263,6 +265,9 @@ export class PlayPage implements OnDestroy {
   protected readonly overlay = signal<Overlay>('none');
   protected readonly announcement = signal('');
   protected readonly over = signal<GameOverState | null>(null);
+  /** place on the level's high-score table for the run that just ended (null = not in the top five) */
+  protected readonly rank = signal<number | null>(null);
+  protected readonly progress = inject(ProgressService);
   protected readonly nextLevel = computed(() => {
     const o = this.over();
     const i = LEVELS.findIndex((l) => l.id === o?.level);
@@ -291,6 +296,7 @@ export class PlayPage implements OnDestroy {
       game.scene.getScene('play').scene.restart();
       this.overlay.set('none');
       this.over.set(null);
+      this.rank.set(null);
       this.announcement.set('');
       setTimeout(() => this.host().nativeElement.focus());
     });
@@ -304,12 +310,14 @@ export class PlayPage implements OnDestroy {
       this.game.events.on('complete', (s: GameOverState) =>
         this.zone.run(() => {
           this.over.set(s);
+          this.rank.set(this.progress.record(s.level, this.settings.settings().playerName, s.score, true));
           this.show('complete');
         }),
       );
       this.game.events.on('gameover', (s: GameOverState) =>
         this.zone.run(() => {
           this.over.set(s);
+          this.rank.set(this.progress.record(s.level, this.settings.settings().playerName, s.score, false));
           this.show('gameover');
         }),
       );
@@ -433,6 +441,7 @@ export class PlayPage implements OnDestroy {
   protected restart() {
     this.overlay.set('none');
     this.over.set(null);
+      this.rank.set(null);
     this.announcement.set('New game');
     this.game?.scene.getScene('play').scene.restart();
     this.host().nativeElement.focus();

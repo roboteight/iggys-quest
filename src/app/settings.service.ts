@@ -6,6 +6,8 @@ export interface Settings {
   musicOn: boolean;
   reducedMotion: boolean;
   highContrast: boolean;
+  /** name shown on the high-score table */
+  playerName: string;
 }
 
 const KEY = 'iggys-quest.settings';
@@ -18,6 +20,7 @@ function load(): Settings {
     musicOn: true,
     reducedMotion: window.matchMedia('(prefers-reduced-motion: reduce)').matches,
     highContrast: window.matchMedia('(prefers-contrast: more)').matches,
+    playerName: 'Iggy',
   };
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY) ?? '{}') };

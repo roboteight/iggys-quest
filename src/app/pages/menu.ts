@@ -1,4 +1,5 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { ProgressService } from '../progress.service';
 import { LEVELS } from '../game/levels';
 import { RouterLink } from '@angular/router';
 import { FocusOnLoad } from './focus-heading';
@@ -23,6 +24,8 @@ const ACCENT: Record<string, string> = {
     .num { font-size: .75rem; letter-spacing: .1em; text-transform: uppercase; color: var(--c); font-weight: 700; }
     .name { font-size: 1.2rem; font-weight: 700; }
     .blurb { font-size: .95rem; opacity: .88; }
+    .status { font-size: .85rem; font-weight: 700; }
+    .locked { opacity: .6; border-style: dashed; }
     .start { color: var(--accent); font-size: .8rem; font-weight: 700; }
     .bottom { display: flex; gap: .75rem; flex-wrap: wrap; justify-content: center; width: 100%; margin-top: .5rem; }
     .bottom .btn { width: auto; min-width: 12rem; }
@@ -31,27 +34,38 @@ const ACCENT: Record<string, string> = {
   template: `
     <main class="page">
       <h1 tabindex="-1" appFocusOnLoad>Iggy’s Quest</h1>
-      <p class="tag">Help Iggy, an old and very clumsy robot, run across the rooftops of strange places. Collect breadboards to upgrade his suit.</p>
+      <p class="tag">Help Iggy, an old and very clumsy robot, run across the rooftops of strange places. Jump through rings to upgrade his suit, and beat each level's boss mech to open the next.</p>
       <nav aria-label="Levels" style="width:100%">
         <ul class="grid">
           @for (l of levels; track l.id) {
             <li>
-              <a class="card" [style.--c]="accent(l.style)" [routerLink]="['/play', l.id]">
-                <span class="num">Level {{ l.number }}</span>
-                <span class="name">{{ l.name }}</span>
-                <span class="blurb">{{ l.blurb }}</span>
-                @if (l.number === 1) { <span class="start">Start here →</span> }
-              </a>
+              @if (progress.unlocked(l.id)) {
+                <a class="card" [style.--c]="accent(l.style)" [routerLink]="['/play', l.id]">
+                  <span class="num">Level {{ l.number }}</span>
+                  <span class="name">{{ l.name }}</span>
+                  <span class="blurb">{{ l.blurb }}</span>
+                  @if (progress.cleared(l.id)) { <span class="status">Cleared ✓ · best {{ progress.best(l.id) }}</span> }
+                  @else if (progress.best(l.id)) { <span class="status">Best {{ progress.best(l.id) }}</span> }
+                  @else if (l.number === 1) { <span class="start">Start here →</span> }
+                </a>
+              } @else {
+                <div class="card locked" [style.--c]="accent(l.style)">
+                  <span class="num">Level {{ l.number }}</span>
+                  <span class="name">{{ l.name }}</span>
+                  <span class="status">Locked: beat the boss of level {{ l.number - 1 }} first</span>
+                </div>
+              }
             </li>
           }
         </ul>
       </nav>
-      <div class="bottom"><a class="btn" routerLink="/settings">Settings</a></div>
+      <div class="bottom"><a class="btn" routerLink="/scores">High scores</a><a class="btn" routerLink="/settings">Settings</a></div>
     </main>
   `,
 })
 export class MenuPage {
   protected readonly levels = LEVELS;
+  protected readonly progress = inject(ProgressService);
   protected accent(style: string) {
     return ACCENT[style] ?? '#ffd23f';
   }
