@@ -54,7 +54,7 @@ interface Building { x: number; top: number; w: number; gfx: Phaser.GameObjects.
 interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring'; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
 
 interface Plat {
-  kind: 'moving' | 'crumble'; img: Phaser.Physics.Arcade.Image; baseX: number; baseY: number; amp: number; phase: number;
+  kind: 'moving' | 'crumble'; img: Phaser.Physics.Arcade.Image; collider: Phaser.Physics.Arcade.Collider; baseX: number; baseY: number; amp: number; phase: number;
   stood: boolean; timer: number; state: 'idle' | 'shaking' | 'falling';
 }
 interface BossState {
@@ -440,14 +440,16 @@ export class PlayScene extends Phaser.Scene {
     const body = img.body as Phaser.Physics.Arcade.Body;
     body.setAllowGravity(false).setImmovable(true);
     body.setSize(84, 12).setOffset(0, 2);
-    const plat: Plat = { kind: moving ? 'moving' : 'crumble', img, baseX: x, baseY: y, amp: moving ? Math.min(45, (gap - 90) / 2) : 0, phase: this.rand() * 6, stood: false, timer: 0, state: 'idle' };
+    let collider!: Phaser.Physics.Arcade.Collider;
+    const plat: Plat = { collider: undefined as unknown as Phaser.Physics.Arcade.Collider, kind: moving ? 'moving' : 'crumble', img, baseX: x, baseY: y, amp: moving ? Math.min(45, (gap - 90) / 2) : 0, phase: this.rand() * 6, stood: false, timer: 0, state: 'idle' };
     // one-way: only solid while Iggy is falling onto it from above
-    this.physics.add.collider(this.player, img, undefined, () => {
+    collider = this.physics.add.collider(this.player, img, undefined, () => {
       if (plat.state === 'falling') return false;
       const ok = this.body.velocity.y >= 0 && this.body.prev.y + this.body.height <= body.top + 6;
       if (ok) plat.stood = true;
       return ok;
     });
+    plat.collider = collider;
     this.plats.push(plat);
     void b;
   }
@@ -811,6 +813,7 @@ export class PlayScene extends Phaser.Scene {
     });
     this.plats = this.plats.filter((p) => {
       if (p.img.x < left || p.img.y > H + 100 || p.img.alpha <= 0) {
+        p.collider.destroy();
         p.img.destroy();
         return false;
       }
@@ -1248,7 +1251,22 @@ export class PlayScene extends Phaser.Scene {
   }
 
   // ------------------------------------------------------------------ loop
-  override update(_time: number, delta: number) {
+  private errorCount = 0;
+
+  /**
+   * Phaser's loop only schedules the next frame after update() returns, so one thrown error would freeze the canvas for good
+   * (the HTML page keeps working). Catch it, log it, and carry on with the next frame.
+   */
+  override update(time: number, delta: number) {
+    try {
+      this.step(time, delta);
+    } catch (e) {
+      this.errorCount++;
+      if (this.errorCount <= 3 || this.errorCount % 200 === 0) console.error(`[Iggy's Quest] error in game loop (#${this.errorCount})`, e);
+    }
+  }
+
+  private step(_time: number, delta: number) {
     const dt = Math.min(delta, 50) / 1000;
     this.t += dt;
     const cam = this.cameras.main;
