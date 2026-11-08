@@ -1,7 +1,8 @@
 import { Component, computed, effect, input, isDevMode, ElementRef, HostListener, NgZone, OnDestroy, afterNextRender, inject, signal, viewChild } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type Phaser from 'phaser';
-import { SettingsService } from '../settings.service';
+import { Action, SettingsService, keyLabel } from '../settings.service';
+import { OptionsPanel } from './options';
 import { ProgressService } from '../progress.service';
 import type { GameOverState, HudState, TouchInput } from '../game/play.scene';
 import { LEVELS, levelById } from '../game/levels';
@@ -10,7 +11,7 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
 
 @Component({
   selector: 'app-play',
-  imports: [RouterLink],
+  imports: [RouterLink, OptionsPanel],
   styles: `
     :host { display: block; padding: 1rem; }
     main { display: grid; justify-items: center; gap: 1rem; width: min(100%, 1500px); margin: 0 auto;
@@ -36,7 +37,8 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
     #game:focus-visible { outline: none; }
     .stage:has(#game:focus-visible) { border-color: var(--accent); }
     .overlay { position: absolute; inset: 0; display: grid; place-content: center; background: rgb(0 0 0 / .78); }
-    .overlay .panel { background: var(--panel); border: 2px solid var(--border); border-radius: 12px; padding: 1.5rem; min-width: min(22rem, 90%); }
+    .overlay .panel { background: var(--panel); border: 2px solid var(--border); border-radius: 12px; padding: 1.5rem; min-width: min(22rem, 90%); max-width: 100%; max-height: 100%; overflow-y: auto; box-sizing: border-box; }
+    .overlay .panel.wide { width: min(40rem, 96%); }
     .overlay h2 { margin: 0 0 .5rem; }
     .stats { margin: 0 0 1rem; display: grid; grid-template-columns: auto 1fr; gap: .15rem 1rem; }
     .stats dt { opacity: .85; } .stats dd { margin: 0; font-weight: 700; }
@@ -155,8 +157,8 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
         <div #game id="game" tabindex="0" role="application" aria-label="Iggy’s Quest game canvas. Visual game; see the How to play section below the game." aria-describedby="help-intro"></div>
         @if (overlay() !== 'none') {
           <div class="overlay">
-            <div class="panel" role="dialog" aria-modal="true" aria-labelledby="ov-title">
-              <h2 id="ov-title" tabindex="-1">{{ overlay() === 'paused' ? 'Paused' : overlay() === 'complete' ? 'Level complete!' : 'Iggy has fallen apart' }}</h2>
+            <div class="panel" [class.wide]="pauseView() === 'options'" role="dialog" aria-modal="true" aria-labelledby="ov-title" (keydown.tab)="trap($event, false)" (keydown.shift.tab)="trap($event, true)">
+              <h2 id="ov-title" tabindex="-1">{{ overlay() === 'paused' ? (pauseView() === 'options' ? 'Options' : 'Paused') : overlay() === 'complete' ? 'Level complete!' : 'Iggy has fallen apart' }}</h2>
               @if (overlay() === 'complete' && !nextLevel()) { <p>That was the last level for now.</p> }
               @if ((overlay() === 'gameover' || overlay() === 'complete') && over(); as o) {
                 <dl class="stats">
@@ -169,8 +171,12 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
                 </dl>
               }
               <div class="stack">
-                @if (overlay() === 'paused') {
+                @if (overlay() === 'paused' && pauseView() === 'options') {
+                  <app-options [showDisplay]="false" />
+                  <button class="btn primary" type="button" (click)="pauseView.set('main'); refocus()">Back to the pause menu</button>
+                } @else if (overlay() === 'paused') {
                   <button class="btn primary" type="button" (click)="resume()">Resume</button>
+                  <button class="btn" type="button" (click)="pauseView.set('options'); refocus()">Options and controls</button>
                 } @else {
                   @if (overlay() === 'complete' && nextLevel(); as next) {
                     <a class="btn primary" [routerLink]="['/play', next.id]">Next level: {{ next.name }}</a>
@@ -217,12 +223,12 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
           <div>
             <h3>Controls</h3>
             <ul>
-              <li><strong>Move:</strong> <kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd></li>
-              <li><strong>Jump:</strong> <kbd>Space</kbd>, <kbd>↑</kbd> or <kbd>W</kbd>. Hold for a higher jump; press again in mid-air for a double jump.</li>
+              <li><strong>Move left:</strong> @for (c of keys('left'); track c) { <kbd>{{ label(c) }}</kbd> } <strong>right:</strong> @for (c of keys('right'); track c) { <kbd>{{ label(c) }}</kbd> }</li>
+              <li><strong>Jump:</strong> @for (c of keys('jump'); track c) { <kbd>{{ label(c) }}</kbd> }. Hold for a higher jump; press again in mid-air for a double jump.</li>
               <li><strong>Wall kick:</strong> if you fall into a gap, press jump while touching the side of a building.</li>
-              <li><strong>Duck:</strong> hold <kbd>↓</kbd> or <kbd>S</kbd>. Iggy crouches and can’t run, and his shots fly low, so he can hit small targets on the ground, like crawlers, that standing shots pass over.</li>
-              <li><strong>Shoot:</strong> <kbd>X</kbd> or <kbd>F</kbd> (hold to keep firing), once you have a gun.</li>
-              <li><strong>Pause:</strong> <kbd>Esc</kbd> or the Pause button. The Fullscreen button fills your screen; press <kbd>Esc</kbd> to leave it.</li>
+              <li><strong>Duck:</strong> hold @for (c of keys('duck'); track c) { <kbd>{{ label(c) }}</kbd> }. Iggy crouches and can’t run, and his shots fly low, so he can hit small targets on the ground, like crawlers, that standing shots pass over.</li>
+              <li><strong>Shoot:</strong> @for (c of keys('fire'); track c) { <kbd>{{ label(c) }}</kbd> } (hold to keep firing), once you have a gun.</li>
+              <li><strong>Pause:</strong> <kbd>Esc</kbd> or the Pause button. You can change the keys, and make the game easier, under Options in the pause menu or on the Settings page. The Fullscreen button fills your screen; press <kbd>Esc</kbd> to leave it.</li>
               <li><strong>Touch screen:</strong> use the on-screen d-pad (up jumps, down ducks) and the Fire and Jump buttons.</li>
             </ul>
           </div>
@@ -264,6 +270,12 @@ export class PlayPage implements OnDestroy {
   /** From the route: /play/:level */
   readonly level = input<string>();
   protected readonly overlay = signal<Overlay>('none');
+  /** the pause menu shows either its buttons or the options */
+  protected readonly pauseView = signal<'main' | 'options'>('main');
+  protected readonly label = keyLabel;
+  protected keys(a: Action) {
+    return this.settings.settings().keys[a];
+  }
   protected readonly announcement = signal('');
   protected readonly over = signal<GameOverState | null>(null);
   /** place on the level's high-score table for the run that just ended (null = not in the top five) */
@@ -284,6 +296,14 @@ export class PlayPage implements OnDestroy {
   private game?: Phaser.Game;
 
   constructor() {
+    // keep the running game in step with the settings (volume, controls, assists) while paused or playing
+    effect(() => {
+      const st = this.settings.settings();
+      const g = this.game;
+      if (!g) return;
+      g.registry.set('settings', st);
+      g.registry.set('music', { on: st.musicOn, volume: st.musicVolume });
+    });
     const mq = window.matchMedia('(pointer: coarse)');
     const forced = new URLSearchParams(window.location.search).has('controls');
     this.touchUi.set(mq.matches || forced);
@@ -328,7 +348,11 @@ export class PlayPage implements OnDestroy {
 
   @HostListener('document:keydown.escape')
   protected onEscape() {
-    if (this.overlay() === 'paused') this.resume();
+    if (this.settings.capturing()) return; // Esc is cancelling a key capture in the options
+    if (this.overlay() === 'paused' && this.pauseView() === 'options') {
+      this.pauseView.set('main');
+      this.refocus();
+    } else if (this.overlay() === 'paused') this.resume();
     else if (this.overlay() === 'none') this.pause();
   }
 
@@ -429,6 +453,7 @@ export class PlayPage implements OnDestroy {
   }
 
   protected pause() {
+    this.pauseView.set('main');
     this.show('paused');
   }
 
@@ -453,6 +478,27 @@ export class PlayPage implements OnDestroy {
     this.overlay.set(kind);
     // Move focus into the dialog once it has rendered.
     setTimeout(() => document.getElementById('ov-title')?.focus());
+  }
+
+  /** Move focus back to the dialog heading after its content changed. */
+  protected refocus() {
+    setTimeout(() => document.getElementById('ov-title')?.focus());
+  }
+
+  /** Keep Tab and Shift+Tab inside the open dialog. */
+  protected trap(e: Event, back: boolean) {
+    const panel = (e.currentTarget as HTMLElement);
+    const items = Array.from(panel.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex="-1"]#ov-title')).filter((el) => el.offsetParent !== null);
+    if (items.length === 0) return;
+    const first = items[0], last = items[items.length - 1];
+    const active = document.activeElement;
+    if (back && (active === first || !panel.contains(active))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!back && (active === last || !panel.contains(active))) {
+      e.preventDefault();
+      first.focus();
+    }
   }
 
   ngOnDestroy() {

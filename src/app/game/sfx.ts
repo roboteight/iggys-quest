@@ -5,6 +5,10 @@ export class Sfx {
 
   constructor(private volume: number) {}
 
+  setVolume(v: number) {
+    this.volume = v;
+  }
+
   /** Release the audio context (the scene is over); later calls make no sound. */
   close() {
     this.closed = true;

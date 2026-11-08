@@ -96,8 +96,8 @@ export class PlayScene extends Phaser.Scene {
   private reduced = false;
   private hc = false;
 
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private keys!: Record<'A' | 'D' | 'W' | 'X' | 'F' | 'S', Phaser.Input.Keyboard.Key>;
+  /** KeyboardEvent.code of every key that is held down right now */
+  private readonly down = new Set<string>();
   private touch!: TouchInput;
 
   private player!: Phaser.GameObjects.Zone;
@@ -216,6 +216,31 @@ export class PlayScene extends Phaser.Scene {
     this.events.once('shutdown', teardown);
     this.events.once('destroy', teardown);
 
+    // Keyboard: remappable, so read KeyboardEvent.code ourselves. Keys the player bound are kept from scrolling the page while the game has focus.
+    const kb = this.input.keyboard!;
+    const onDown = (e: KeyboardEvent) => this.down.add(e.code);
+    const onUp = (e: KeyboardEvent) => this.down.delete(e.code);
+    const onBlur = () => this.down.clear();
+    const stopScroll = (e: KeyboardEvent) => {
+      const host = this.game.canvas.parentElement;
+      if (host && document.activeElement === host && this.isBound(e.code)) e.preventDefault();
+    };
+    kb.on('keydown', onDown);
+    kb.on('keyup', onUp);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('keydown', stopScroll);
+    const onSettings = () => this.sfx.setVolume(this.live().volume);
+    this.registry.events.on('changedata-settings', onSettings);
+    const offKeys = () => {
+      kb.off('keydown', onDown);
+      kb.off('keyup', onUp);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('keydown', stopScroll);
+      this.registry.events.off('changedata-settings', onSettings);
+    };
+    this.events.once('shutdown', offKeys);
+    this.events.once('destroy', offKeys);
+
     // reset state (scene.restart re-runs create)
     this.buildings = [];
     this.items = [];
@@ -237,7 +262,7 @@ export class PlayScene extends Phaser.Scene {
     this.breadboards = 0;
     this.bbSpawned = 0;
     this.bbMissed = false;
-    this.lives = 3;
+    this.lives = this.live().startLives;
     this.suitIdx = 0;
     this.rings = 0;
     this.maxX = 0;
@@ -281,9 +306,7 @@ export class PlayScene extends Phaser.Scene {
     this.nextX += 1000;
     this.generate();
 
-    const kb = this.input.keyboard!;
-    this.cursors = kb.createCursorKeys();
-    this.keys = kb.addKeys('A,D,W,X,F,S') as typeof this.keys;
+    this.down.clear();
 
     this.cameras.main.setBackgroundColor(this.level.bg);
     this.cameras.main.scrollX = -20;
@@ -608,7 +631,7 @@ export class PlayScene extends Phaser.Scene {
     this.bossShots.push({ img, vx: (tx - x) / T, vy: (this.arenaTop - 8 - y - 0.5 * g * T * T) / T, g, mortar: true });
   }
 
-  private updateBoss(dt: number) {
+  private updateBoss(dt: number, edt: number) {
     const b = this.boss;
     if (!b || this.camLock === null) return;
     const s = b.sprite, body = this.body;
@@ -616,8 +639,8 @@ export class PlayScene extends Phaser.Scene {
     const enraged = b.hp <= b.max / 2;
     if (b.state !== 'dead') {
       s.setFlipX(px > s.x);
-      b.timer -= dt;
-      b.touchCD = Math.max(0, b.touchCD - dt);
+      b.timer -= edt;
+      b.touchCD = Math.max(0, b.touchCD - edt);
       const lo = this.camLock + 140, hi = this.camLock + W - 90;
       const face = px > s.x ? 1 : -1;
       if (b.state === 'intro') {
@@ -625,9 +648,9 @@ export class PlayScene extends Phaser.Scene {
       } else if (b.state === 'walk') {
         const dx = px - s.x;
         const want = Math.abs(dx) > 360 ? face : Math.abs(dx) < 250 ? -face : 0;
-        s.x = Phaser.Math.Clamp(s.x + want * b.def.speed * (enraged ? 1.4 : 1) * dt, lo, hi);
+        s.x = Phaser.Math.Clamp(s.x + want * b.def.speed * (enraged ? 1.4 : 1) * edt, lo, hi);
         s.y = this.arenaTop + (!this.reduced && want !== 0 ? Math.abs(Math.sin(this.t * 6)) * -4 : 0);
-        b.cd -= dt;
+        b.cd -= edt;
         if (b.cd <= 0) {
           b.attack = b.def.attacks[Math.floor(this.rand() * b.def.attacks.length)];
           b.state = 'telegraph';
@@ -669,9 +692,9 @@ export class PlayScene extends Phaser.Scene {
     // the mech's projectiles
     const camX = this.camLock;
     this.bossShots = this.bossShots.filter((sh) => {
-      sh.img.x += sh.vx * dt;
-      sh.img.y += sh.vy * dt;
-      sh.vy += sh.g * dt;
+      sh.img.x += sh.vx * edt;
+      sh.img.y += sh.vy * edt;
+      sh.vy += sh.g * edt;
       let gone = sh.img.x < camX - 40 || sh.img.x > camX + W + 40 || sh.img.y < -40;
       if (!gone && Math.hypot(sh.img.x - body.center.x, sh.img.y - body.center.y) < 18) {
         this.hit('enemy');
@@ -690,7 +713,7 @@ export class PlayScene extends Phaser.Scene {
       return !gone;
     });
     this.bossWaves = this.bossWaves.filter((w) => {
-      w.img.x += w.vx * dt;
+      w.img.x += w.vx * edt;
       let gone = w.img.x < camX - 40 || w.img.x > camX + W + 40;
       if (!gone && Math.abs(body.center.x - w.img.x) < 20 && body.bottom > this.arenaTop - 22) this.hit('enemy');
       if (gone) w.img.destroy();
@@ -765,12 +788,13 @@ export class PlayScene extends Phaser.Scene {
     f.on = true;
     f.sprite.setTexture('flag-on');
     this.checkpoint = { x: f.x, top: f.top, flag: true };
-    const topUp = this.lives < 3;
-    if (topUp) this.lives = 3;
+    const full = this.live().startLives;
+    const topUp = this.lives < full;
+    if (topUp) this.lives = full;
     this.sfx.checkpoint();
     this.burst(f.x + 14, f.top - 60, [0x3ddc84, 0xffffff, 0xffd23a], 26, 230);
     this.banner('Checkpoint!');
-    this.announce(`Checkpoint reached.${topUp ? ' Lives topped up to 3.' : ''}`);
+    this.announce(`Checkpoint reached.${topUp ? ` Lives topped up to ${full}.` : ''}`);
     this.debris(f.x, f.top - 60, 'spark', this.reduced ? 3 : 10, 1);
     this.emitHud(true);
   }
@@ -1324,7 +1348,7 @@ export class PlayScene extends Phaser.Scene {
         this.rings = SUITS[this.suitIdx].need; // the suit comes from the ring count, so drop to exactly that suit's threshold
         this.sfx.hurt();
         this.stumble = 1;
-        this.invuln = 1.8;
+        this.invuln = this.grace();
         this.debris(this.body.center.x, this.body.center.y, 'bolt', 5, 1.4);
         this.debris(this.body.center.x, this.body.center.y, 'cog', 4, 1.3);
         this.debris(this.body.center.x, this.body.center.y, 'spark', this.reduced ? 3 : 8, 1.4);
@@ -1354,7 +1378,7 @@ export class PlayScene extends Phaser.Scene {
       (reason === 'fall' ? `Iggy fell. ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.` : `${reason === 'enemy' ? 'Bonked' : 'Zapped'}! ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.`) +
         (lostSuit ? ` Back to the ${SUITS[0].name} suit.` : '') + ` ${where}`,
     );
-    this.invuln = 1.8;
+    this.invuln = this.grace();
     this.emitHud(true);
   }
 
@@ -1418,6 +1442,24 @@ export class PlayScene extends Phaser.Scene {
     return Math.floor(Math.max(0, this.maxX) / 10) + this.breadboards * 25 + this.bonus;
   }
 
+  /** Settings as the player has them right now (the Angular page keeps this registry entry up to date). */
+  private live(): Settings {
+    return (this.registry.get('settings') as Settings | undefined) ?? this.settings;
+  }
+
+  private grace() {
+    return this.live().longGrace ? 3.6 : 1.8;
+  }
+
+  private isBound(code: string) {
+    const k = this.live().keys;
+    return k.left.includes(code) || k.right.includes(code) || k.jump.includes(code) || k.duck.includes(code) || k.fire.includes(code);
+  }
+
+  private held(action: 'left' | 'right' | 'jump' | 'duck' | 'fire') {
+    return this.live().keys[action].some((c) => this.down.has(c));
+  }
+
   private emitHud(force = false) {
     const next = SUITS[this.suitIdx + 1];
     const state: HudState = {
@@ -1468,14 +1510,15 @@ export class PlayScene extends Phaser.Scene {
 
   private step(_time: number, delta: number) {
     const dt = Math.min(delta, 50) / 1000;
+    const edt = dt * (this.live().enemySpeed / 100); // assist: enemies and bosses can run slower than the world
     this.t += dt;
     const cam = this.cameras.main;
     const body = this.body;
 
     // -- input
-    const left = this.cursors.left.isDown || this.keys.A.isDown || this.touch.left;
-    const right = this.cursors.right.isDown || this.keys.D.isDown || this.touch.right;
-    const jumpDown = this.cursors.space.isDown || this.cursors.up.isDown || this.keys.W.isDown || this.touch.jump;
+    const left = this.held('left') || this.touch.left;
+    const right = this.held('right') || this.touch.right;
+    const jumpDown = this.held('jump') || this.touch.jump;
     if (jumpDown && !this.jumpHeld) this.jumpBuffer = 0.12;
     if (!jumpDown && this.jumpHeld && body.velocity.y < -200) body.setVelocityY(body.velocity.y * 0.55); // short hop on early release
     this.jumpHeld = jumpDown;
@@ -1488,7 +1531,7 @@ export class PlayScene extends Phaser.Scene {
 
       const speed = RUN * (this.power.turbo > 0 ? 1.35 : 1) * (this.slowT > 0 ? 0.45 : 1);
       // duck: crouch on the ground (can still turn round and shoot, but can't run); the hitbox gets shorter
-      this.setDucked(ground && (this.cursors.down.isDown || this.keys.S.isDown || this.touch.duck));
+      this.setDucked(ground && (this.held('duck') || this.touch.duck));
       let target = left === right ? 0 : left ? -speed : speed;
       if (this.ducked) {
         if (target !== 0) this.facing = Math.sign(target);
@@ -1600,10 +1643,10 @@ export class PlayScene extends Phaser.Scene {
           if (Math.abs(px - s.x) < 14 && Math.abs(py - s.y) < 44) this.passRing(it);
         } else if (it.kind === 'patrol' && it.walker) {
           const w = it.walker;
-          s.x += w.dir * w.speed * dt;
+          s.x += w.dir * w.speed * edt;
           if (s.x < w.min) { s.x = w.min; w.dir = 1; }
           if (s.x > w.max) { s.x = w.max; w.dir = -1; }
-          w.frame += dt * 6;
+          w.frame += edt * 6;
           s.setTexture(`${w.kind}-${Math.floor(w.frame) % 2 ? 'b' : 'a'}`).setFlipX(w.dir < 0);
           const half = s.height / 2;
           if (Math.abs(px - s.x) < 17 && body.bottom > s.y - half + 4 && body.top < s.y + half) {
@@ -1614,7 +1657,7 @@ export class PlayScene extends Phaser.Scene {
             } else this.hit('enemy');
           }
         } else if (it.kind === 'flyer' && it.flyer) {
-          this.updateFlyer(it, dt);
+          this.updateFlyer(it, edt);
         } else if (it.kind === 'wall') {
           if (Math.abs(px - s.x) < 24 && body.bottom > s.y - 32 && body.top < s.y + 32) {
             if (this.power.star > 0) this.breakWall(it, true);
@@ -1647,7 +1690,7 @@ export class PlayScene extends Phaser.Scene {
       }
 
       this.updatePlatforms(dt);
-      this.updateBoss(dt);
+      this.updateBoss(dt, edt);
 
       // speed trail behind Iggy while overclocked or invincible
       this.trailT -= dt;
@@ -1681,7 +1724,7 @@ export class PlayScene extends Phaser.Scene {
     // -- shooting
     this.fireCD = Math.max(0, this.fireCD - dt);
     this.fireAnim = Math.max(0, this.fireAnim - dt * 6);
-    const held = !this.over && !!this.gun() && (this.keys.X.isDown || this.keys.F.isDown || this.touch.fire);
+    const held = !this.over && !!this.gun() && (this.held('fire') || this.touch.fire);
     if (held) {
       const before = this.charge;
       this.charge = Math.min(CHARGE_FULL, this.charge + dt);
