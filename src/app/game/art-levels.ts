@@ -617,3 +617,61 @@ export function makePlatformTextures(scene: Phaser.Scene) {
   flag('flag-off', 0x8a8f99);
   flag('flag-on', 0x3ddc84);
 }
+
+// ====================================================================== flying enemies (levels 4-6)
+/** Two wing/tentacle frames each: a glowing sea creature, a neon drone and a spore moth. 48x40, symmetrical. */
+export function makeFlyerTextures(scene: Phaser.Scene) {
+  if (scene.textures.exists('flyer-drowned-a')) return;
+  const OUT = 0x04070a;
+  (['a', 'b'] as const).forEach((f, fi) => {
+    // ---- drowned: a glowing jellyfish with a pulsing bell and trailing tentacles
+    let g = gfx(scene);
+    const sway = fi ? 3 : -3;
+    for (const x of [14, 20, 28, 34]) {
+      g.lineStyle(5, OUT, 1).lineBetween(x, 20, x + sway * (x < 24 ? -1 : 1), 36);
+      g.lineStyle(2.4, 0x7affd8, 1).lineBetween(x, 20, x + sway * (x < 24 ? -1 : 1), 36);
+    }
+    const bellH = fi ? 22 : 26;
+    g.fillStyle(0x1fb8a4, 0.35).fillEllipse(24, 16, 46, bellH + 10);
+    g.fillStyle(OUT, 1).fillEllipse(24, 15, 36, bellH + 4);
+    g.fillStyle(0x3fd9c4, 1).fillEllipse(24, 15, 32, bellH);
+    g.fillStyle(0xbaffee, 0.8).fillEllipse(19, 10, 12, 6);
+    g.fillStyle(OUT, 1).fillCircle(19, 17, 2.6).fillCircle(29, 17, 2.6);
+    g.fillStyle(0xff5a5a, 1).fillCircle(19, 17, 1.3).fillCircle(29, 17, 1.3);
+    g.generateTexture(`flyer-drowned-${f}`, 48, 40);
+    g.destroy();
+
+    // ---- void: a neon drone, a saucer with a glass dome and blinking under-lights
+    g = gfx(scene);
+    g.fillStyle(0xff3df0, 0.2).fillEllipse(24, 24, 48, 22);
+    g.lineStyle(3, OUT, 1).lineBetween(24, 10, 24, 2).strokeCircle(24, 2, 2);
+    g.fillStyle(0xff3df0, 1).fillCircle(24, 2, 2);
+    g.fillStyle(OUT, 1).fillEllipse(24, 24, 44, 17);
+    g.fillStyle(0x2a1055, 1).fillEllipse(24, 24, 40, 13);
+    g.lineStyle(2, 0x3df0ff, 1).strokeEllipse(24, 24, 40, 13);
+    g.fillStyle(OUT, 1).fillEllipse(24, 17, 22, 17);
+    g.fillStyle(0x7fe8ff, 0.9).fillEllipse(24, 17, 18, 13);
+    g.fillStyle(0xff3030, 1).fillCircle(24, 18, 3.2);
+    [12, 24, 36].forEach((x, i) => g.fillStyle((i + fi) % 2 ? 0xffffff : 0xff3df0, 1).fillCircle(x, 28, 2));
+    g.generateTexture(`flyer-void-${f}`, 48, 40);
+    g.destroy();
+
+    // ---- spores: a glowing moth, wings up (a) and down (b)
+    g = gfx(scene);
+    const wy = fi ? 24 : 10; // wing tip height
+    const wing = (dir: number) => {
+      const pts = [new Phaser.Math.Vector2(24, 20), new Phaser.Math.Vector2(24 + dir * 22, wy), new Phaser.Math.Vector2(24 + dir * 20, wy + 14), new Phaser.Math.Vector2(24 + dir * 4, 28)];
+      g.fillStyle(0xb36cff, 0.28).fillPoints(pts.map((p) => new Phaser.Math.Vector2(24 + (p.x - 24) * 1.15, p.y)), true);
+      g.fillStyle(0xa04dff, 1).fillPoints(pts, true);
+      g.lineStyle(3, OUT, 1).strokePoints(pts, true, true);
+      g.fillStyle(0xf4d4ff, 1).fillCircle(24 + dir * 14, wy + 8, 3).fillCircle(24 + dir * 9, wy + 14, 2);
+    };
+    wing(-1); wing(1);
+    g.fillStyle(OUT, 1).fillEllipse(24, 22, 11, 20);
+    g.fillStyle(0x6b4a3a, 1).fillEllipse(24, 22, 7.5, 16);
+    g.lineStyle(2, OUT, 1).lineBetween(22, 12, 17, 5).lineBetween(26, 12, 31, 5);
+    g.fillStyle(0x6dffb0, 1).fillCircle(22.5, 17, 1.6).fillCircle(25.5, 17, 1.6);
+    g.generateTexture(`flyer-spores-${f}`, 48, 40);
+    g.destroy();
+  });
+}

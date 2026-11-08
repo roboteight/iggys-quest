@@ -241,8 +241,9 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
             <ul>
               <li><strong>Sparking pylons</strong> zap you from the side. Land on top of one to smash it and bounce, or shoot it.</li>
               <li><strong>Brick walls</strong> don’t hurt, but crashing through slows you down for a couple of seconds. Land on top to shatter one with no penalty, or shoot it to keep your speed.</li>
-              <li><strong>Skeletons and crawlers</strong> patrol the rooftops and cost a life if you touch them from the side. Land on top of them to stomp them, or shoot them.</li>
-              <li><strong>Gaps</strong> between buildings cost a life.</li>
+              <li><strong>Skeletons and crawlers</strong> patrol the rooftops. Touching one from the side knocks Iggy’s suit down a level (or costs a life if he is already in the Rusty Original). Land on top of them to stomp them, or shoot them.</li>
+              <li><strong>Flying enemies</strong> (glow-rays, drones and spore moths in the last three levels) hover above the roofs. When one flashes red it is about to dive at you. Land on top of it to stomp it and bounce, or shoot it.</li>
+              <li><strong>Gaps</strong> between buildings cost a life. So does a hit while Iggy wears the Rusty Original. Losing a life sends him back to the last checkpoint in the Rusty Original suit.</li>
             </ul>
           </div>
         </div>

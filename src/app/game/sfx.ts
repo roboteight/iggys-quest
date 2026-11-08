@@ -114,5 +114,23 @@ export class Sfx {
   power() { [440, 554, 659, 880].forEach((f, i) => this.tone(f, f * 1.02, 0.12, 'square', 0.5, i * 0.07)); }
   hurt() { this.tone(240, 70, 0.3, 'sawtooth', 0.9); }
   suit() { [330, 415, 494, 659, 830].forEach((f, i) => this.tone(f, f * 1.01, 0.18, 'triangle', 1, i * 0.09)); }
+  // ---- boss mechs, platforms and checkpoints
+  /** a mech powering up: a rising growl */
+  bossCharge(long = false) { const d = long ? 0.8 : 0.5; this.tone(70, 260, d, 'sawtooth', 0.7); this.tone(140, 520, d, 'square', 0.25); this.tick(900, d * 0.8, 0.4); }
+  bossFire() { this.tone(620, 80, 0.22, 'square', 0.7); this.tone(310, 60, 0.26, 'sawtooth', 0.5); this.tick(2200, 0.05, 0.6); }
+  /** a lobbed bomb: a hollow thump and a falling whistle */
+  bossMortar() { this.tone(120, 50, 0.18, 'triangle', 1); this.tone(1100, 350, 0.5, 'sine', 0.35, 0.06); }
+  bossStomp() { this.tone(70, 25, 0.7, 'sawtooth', 1.3); this.tone(45, 30, 0.9, 'sine', 1.2); this.tick(500, 0.4, 1.2); this.clink(110, 0.4, 0.8, 0.02); }
+  bossHit() { this.clink(320, 0.22, 0.9); this.tick(2600, 0.05, 0.7); this.tone(160, 90, 0.1, 'triangle', 0.8); }
+  /** a big mech arriving: two low brass-like notes */
+  bossAppear() { this.tone(98, 96, 0.9, 'sawtooth', 0.8); this.tone(147, 146, 0.9, 'sawtooth', 0.5, 0.25); this.tick(400, 0.5, 0.6); }
+  bossDown() {
+    for (let i = 0; i < 5; i++) { this.tone(130 - i * 14, 30, 0.45, 'sawtooth', 1, i * 0.26); this.tick(700 + i * 150, 0.3, 1, i * 0.26); }
+    this.tone(260, 40, 1.6, 'sawtooth', 0.5);
+  }
+  /** wood splintering: a low creak and a scatter of clicks */
+  crumble() { this.tone(95, 70, 0.4, 'triangle', 0.7); for (let i = 0; i < 6; i++) this.tick(500 + Math.random() * 900, 0.04, 0.6, Math.random() * 0.35); }
+  checkpoint() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, f * 1.005, 0.2, 'triangle', 0.9, i * 0.08)); this.tick(5000, 0.12, 0.4, 0.05); }
+
   over() { [392, 330, 262, 196].forEach((f, i) => this.tone(f, f * 0.98, 0.25, 'sawtooth', 0.6, i * 0.18)); }
 }

@@ -227,6 +227,199 @@ const THEMES: Record<ThemeName, Theme> = {
   },
 };
 
+/**
+ * Boss-fight tracks: one per level, each faster and harder than its level's music.
+ *  - city:    A-minor square-wave chase, 168 BPM, four-on-the-floor
+ *  - hollow:  manic D-minor waltz, 152 BPM, sawtooth lead
+ *  - wastes:  E-phrygian saw riff, 142 BPM
+ *  - drowned: heavy C-minor stomp, 124 BPM, thumping bass
+ *  - void:    F-minor synth chase with a sixteenth-note arpeggio, 152 BPM
+ *  - spores:  frantic marimba runs in C/D/Em/G, 136 BPM
+ */
+const BOSS_THEMES: Record<ThemeName, Theme> = {
+  city: {
+    bpm: 168,
+    steps: 16,
+    chords: [
+      { root: 45, arp: [69, 72, 76] }, // Am
+      { root: 43, arp: [67, 71, 74] }, // G
+      { root: 41, arp: [65, 69, 72] }, // F
+      { root: 40, arp: [64, 68, 71] }, // E
+    ],
+    progression: [0, 2, 1, 3, 0, 2, 1, 3],
+    lead: parse([
+      'A5 . A5 . C6 . A5 . E6 . C6 . A5 . . .',
+      'F5 . F5 . A5 . F5 . C6 . A5 . F5 . . .',
+      'G5 . G5 . B5 . G5 . D6 . B5 . G5 . . .',
+      'E5 . G#5 . B5 . E6 . D6 . B5 . G#5 . . .',
+      'A5 A5 C6 C6 E6 _ _ _ D6 D6 C6 C6 A5 _ _ _',
+      'F5 F5 A5 A5 C6 _ _ _ A5 A5 F5 F5 C5 _ _ _',
+      'G5 G5 B5 B5 D6 _ _ _ B5 B5 G5 G5 D5 _ _ _',
+      'E6 _ D6 _ B5 _ G#5 _ E5 E5 G#5 G#5 B5 _ _ _',
+    ]),
+    leadWave: 'square',
+    leadGain: 0.17,
+    arp: [0, 2, 1, 2, 0, 2, 1, 2, 0, 2, 1, 2, 0, 2, 1, 2],
+    stabs: null,
+    bass: (s) => (s % 2 === 0 ? 0 : null),
+    kick: (s) => s % 4 === 0,
+    snare: (s) => s === 4 || s === 12,
+    hat: (s) => (s % 2 === 0 ? 0.08 : 0.04),
+    bassLen: 1.2,
+  },
+  hollow: {
+    bpm: 152,
+    steps: 12,
+    chords: [
+      { root: 38, arp: [62, 65, 69] }, // Dm
+      { root: 34, arp: [58, 62, 65] }, // Bb
+      { root: 43, arp: [62, 67, 70] }, // Gm
+      { root: 45, arp: [61, 64, 69] }, // A
+    ],
+    progression: [0, 0, 1, 3, 0, 2, 3, 0],
+    lead: parse([
+      'D5 F5 A5 D6 A5 F5 D5 F5 A5 D6 _ _',
+      'C#5 E5 A5 C#6 A5 E5 C#5 E5 A5 C#6 _ _',
+      'A#5 D6 F6 D6 A#5 F5 A#5 D6 F6 D6 A#5 _',
+      'A5 C#6 E6 C#6 A5 E5 A5 C#6 E6 _ . .',
+      'D6 _ _ A5 _ _ F5 _ _ A5 _ _',
+      'G5 _ A#5 _ D6 _ A#5 _ G5 _ D5 _',
+      'A5 _ _ C#6 _ _ E6 _ _ C#6 _ _',
+      'D6 F6 A6 F6 D6 A5 D6 _ _ . . .',
+    ]),
+    leadWave: 'sawtooth',
+    leadGain: 0.12,
+    arp: [0, 1, 2, 1, 0, 1, 2, 1, 0, 1, 2, 1],
+    stabs: null,
+    bass: (s) => (s % 4 === 0 ? 0 : null),
+    kick: (s) => s % 4 === 0,
+    snare: (s) => s === 8,
+    hat: (s) => (s % 2 === 0 ? 0.06 : 0),
+    bassLen: 2,
+  },
+  wastes: {
+    bpm: 142,
+    steps: 16,
+    chords: [
+      { root: 40, arp: [64, 67, 71] }, // Em
+      { root: 41, arp: [65, 69, 72] }, // F
+      { root: 38, arp: [62, 65, 69] }, // Dm
+      { root: 43, arp: [67, 71, 74] }, // G
+    ],
+    progression: [0, 0, 1, 2, 0, 3],
+    lead: parse([
+      'E5 E5 . E5 F5 . E5 . B4 . E5 . F5 E5 . .',
+      'E5 E5 . G5 F5 . E5 . B5 . A5 . G5 . F5 .',
+      'F5 F5 . F5 G5 . F5 . C5 . F5 . G5 F5 . .',
+      'D5 _ F5 _ A5 _ G5 _ D5 _ F5 _ B5 _ . .',
+      'B5 _ _ B5 C6 _ B5 _ G5 _ E5 _ F5 E5 . .',
+      'E6 _ D6 _ B5 _ G5 _ F5 _ G5 _ B5 _ . .',
+    ]),
+    leadWave: 'sawtooth',
+    leadGain: 0.11,
+    arp: null,
+    stabs: [6, 14],
+    bass: (s) => (s % 2 === 0 ? 0 : null),
+    kick: (s) => s % 4 === 0 || s === 10,
+    snare: (s) => s === 4 || s === 12,
+    hat: (s) => (s % 2 === 0 ? 0.1 : 0.05),
+    bassLen: 1.4,
+  },
+  drowned: {
+    bpm: 124,
+    steps: 16,
+    chords: [
+      { root: 36, arp: [60, 63, 67] }, // Cm
+      { root: 32, arp: [56, 60, 63] }, // Ab
+      { root: 39, arp: [58, 63, 67] }, // Eb
+      { root: 34, arp: [58, 62, 65] }, // Bb
+    ],
+    progression: [0, 1, 2, 3, 0, 1, 2, 3],
+    lead: parse([
+      'C5 _ _ C5 _ _ D#5 _ _ G5 _ _ F5 _ D#5 _',
+      'G#4 _ _ G#4 _ _ C5 _ _ D#5 _ _ D5 _ C5 _',
+      'D#5 _ _ D#5 _ _ G5 _ _ A#5 _ _ G5 _ D#5 _',
+      'A#4 _ _ D5 _ _ F5 _ _ A#5 _ _ G#5 _ G5 _',
+      'G5 G5 . G5 A#5 . G5 . D#5 . G5 . F5 . . .',
+      'G#5 G#5 . G#5 C6 . G#5 . D#5 . G#5 . G5 . . .',
+      'A#5 A#5 . A#5 D6 . A#5 . F5 . A#5 . G#5 . G5 .',
+      'D6 _ C6 _ A#5 _ G5 _ F5 _ D#5 _ D5 _ . .',
+    ]),
+    leadWave: 'square',
+    leadGain: 0.14,
+    arp: null,
+    stabs: [0, 8],
+    bass: (s) => (s % 2 === 0 ? 0 : null),
+    kick: (s) => s % 4 === 0,
+    snare: (s) => s === 4 || s === 12,
+    hat: (s) => (s % 2 === 1 ? 0.05 : 0),
+    kickGain: 0.5,
+    bassLen: 1.5,
+  },
+  void: {
+    bpm: 152,
+    steps: 16,
+    chords: [
+      { root: 41, arp: [65, 68, 72] }, // Fm
+      { root: 37, arp: [61, 65, 68] }, // Db
+      { root: 44, arp: [68, 72, 75] }, // Ab
+      { root: 39, arp: [63, 67, 70] }, // Eb
+    ],
+    progression: [0, 1, 2, 3, 0, 1, 2, 3],
+    lead: parse([
+      'F6 . F6 . C6 . F6 . G#6 . F6 . C6 . . .',
+      'C#6 . C#6 . G#5 . C#6 . F6 . C#6 . G#5 . . .',
+      'G#5 . C6 . D#6 . C6 . G#5 . C6 . D#6 . G6 .',
+      'D#6 . D#6 . A#5 . D#6 . G6 . D#6 . A#5 . . .',
+      'C6 D#6 F6 G#6 _ _ F6 _ C6 D#6 F6 G#6 _ _ C7 _',
+      'C#6 F6 G#6 C#7 _ _ G#6 _ C#6 F6 G#6 C#7 _ _ G#6 _',
+      'G#6 _ G6 _ D#6 _ C6 _ G#5 _ C6 _ D#6 _ G6 _',
+      'D#6 _ C6 _ A#5 _ G5 _ A#5 _ D#6 _ G6 _ . .',
+    ]),
+    leadWave: 'sawtooth',
+    leadGain: 0.09,
+    arp: [0, 1, 2, 1, 0, 1, 2, 1, 0, 1, 2, 1, 0, 1, 2, 1],
+    stabs: null,
+    bass: (s) => (s % 2 === 0 ? (s % 4 === 2 ? 12 : 0) : null),
+    kick: (s) => s % 4 === 0,
+    snare: (s) => s === 4 || s === 12,
+    hat: (s) => (s % 2 === 1 ? 0.08 : 0.04),
+    bassLen: 1.2,
+  },
+  spores: {
+    bpm: 136,
+    steps: 16,
+    chords: [
+      { root: 36, arp: [60, 64, 67] }, // C
+      { root: 38, arp: [62, 66, 69] }, // D
+      { root: 40, arp: [64, 67, 71] }, // Em
+      { root: 43, arp: [62, 67, 71] }, // G
+    ],
+    progression: [0, 1, 2, 3, 0, 1, 2, 3],
+    lead: parse([
+      'C5 E5 G5 C6 E6 C6 G5 E5 C5 E5 G5 C6 E6 _ _ _',
+      'D5 F#5 A5 D6 F#6 D6 A5 F#5 D5 F#5 A5 D6 F#6 _ _ _',
+      'E5 G5 B5 E6 G6 E6 B5 G5 E5 G5 B5 E6 G6 _ _ _',
+      'D6 B5 G5 D5 G5 B5 D6 B5 G6 _ _ _ D6 _ . .',
+      'C6 _ E6 _ G6 _ C7 _ G6 _ E6 _ C6 _ . .',
+      'D6 _ F#6 _ A6 _ D7 _ A6 _ F#6 _ D6 _ . .',
+      'E6 _ G6 _ B6 _ G6 _ E6 _ B5 _ G5 _ E5 _',
+      'B5 D6 G6 B6 _ _ G6 _ D6 B5 G5 D5 _ _ . .',
+    ]),
+    leadWave: 'triangle',
+    leadGain: 0.32,
+    leadLen: 1,
+    arp: null,
+    stabs: [0, 8],
+    bass: (s) => (s % 4 === 0 ? 0 : s % 8 === 6 ? 1 : null),
+    kick: (s) => s % 4 === 0,
+    snare: (s) => s === 4 || s === 12,
+    hat: (s) => (s % 2 === 0 ? 0.07 : 0.03),
+    kickGain: 0.4,
+    bassLen: 1.6,
+  },
+};
+
 export class Music {
   private ctx?: AudioContext;
   private master?: GainNode;
@@ -235,8 +428,12 @@ export class Music {
   private step = 0;
   private nextTime = 0;
   private volume: number;
-  private readonly theme: Theme;
-  private readonly stepDur: number;
+  private theme: Theme;
+  private readonly themeName: ThemeName;
+  private stepDur: number;
+  private baseStepDur: number;
+  /** 0 = normal level music, 1 = boss fight (faster, heavier drums), 2 = boss at half health */
+  private intensity: 0 | 1 | 2 = 0;
   private suspendedByGame = false;
   private readonly unlock = () => {
     if (this.ctx && this.ctx.state === 'suspended' && !this.suspendedByGame && !document.hidden) void this.ctx.resume().catch(() => undefined);
@@ -250,8 +447,10 @@ export class Music {
   /** volume 0..100 */
   constructor(volume: number, theme: ThemeName = 'city') {
     this.volume = volume;
+    this.themeName = theme;
     this.theme = THEMES[theme];
-    this.stepDur = 60 / this.theme.bpm / 4;
+    this.baseStepDur = 60 / this.theme.bpm / 4;
+    this.stepDur = this.baseStepDur;
   }
 
   start() {
@@ -281,6 +480,32 @@ export class Music {
   setVolume(volume: number) {
     this.volume = volume;
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.gain(), this.ctx.currentTime, 0.05);
+  }
+
+  /**
+   * 0 = the level's normal music; 1 = that level's boss track (a different, faster tune); 2 = the boss track again, quicker
+   * and with extra snare and bass when the boss is down to half health.
+   */
+  setIntensity(level: 0 | 1 | 2) {
+    if (level === this.intensity) return;
+    const changeTune = (level === 0) !== (this.intensity === 0);
+    this.intensity = level;
+    if (changeTune) {
+      this.theme = (level === 0 ? THEMES : BOSS_THEMES)[this.themeName];
+      this.baseStepDur = 60 / this.theme.bpm / 4;
+      this.step = 0; // start the new tune on its first bar
+    }
+    this.stepDur = this.baseStepDur / (level === 2 ? 1.15 : 1);
+  }
+
+  /** A short "something big is here" hit: a low drone and a rush of filtered noise. */
+  stinger() {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime + 0.02;
+    this.tone('sawtooth', 55, t, 1, 0.4, 0.02);
+    this.tone('sawtooth', 82.4, t + 0.15, 0.9, 0.25, 0.02);
+    this.burst(t, 0.7, 'lowpass', 900, 0.6);
   }
 
   pause() {
@@ -347,6 +572,11 @@ export class Music {
     if (th.snare(s)) this.snare(t);
     const h = th.hat(s);
     if (h > 0) this.hat(t, h);
+    // half-health frenzy: extra snare and a pulsing octave bass on top of the boss track
+    if (this.intensity === 2) {
+      if (s % 4 === 2) this.snare(t);
+      if (s % 2 === 0) this.tone('square', freq(chord.root - 12), t, sd * 1.3, 0.1, 0.004);
+    }
   }
 
   private tone(type: OscillatorType, f: number, t: number, dur: number, gain: number, attack: number) {

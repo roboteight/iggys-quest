@@ -4,9 +4,10 @@ import {
   H, SUITS, W, drawBuilding, drawHollowBuilding, drawRobot, makeFlakes, makeFog, makeHollowFog, makeHollowLayer, makeHollowSky,
   makeRain, makeSky, makeSkyline, makeSmallTextures, suitFor,
 } from './art';
-import { ensureStyle, drawLevelBuilding, makeEnemyTextures, makeRingTextures, makePlatformTextures, ExtraStyle } from './art-levels';
+import { ensureStyle, drawLevelBuilding, makeEnemyTextures, makeFlyerTextures, makeRingTextures, makePlatformTextures, ExtraStyle } from './art-levels';
 import { BOSSES, BOSS_SCORE, BossAttack, BossDef, LevelDef, levelById } from './levels';
 import { BOSS_H, makeBossTextures } from './boss-art';
+import { makeForeTexture } from './art-fore';
 import { Sfx } from './sfx';
 import { Music } from './music';
 
@@ -51,11 +52,17 @@ const POWER: Record<PowerId, { label: string; secs: number | null; tex: string; 
 
 interface Shot { s: Phaser.GameObjects.Image; vx: number; vy: number; kind: 'bolt' | 'rocket'; trail: number; big?: boolean; bossHit?: boolean; hit?: Set<Item> }
 interface Building { x: number; top: number; w: number; gfx: Phaser.GameObjects.Graphics; zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }
-interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring'; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
+interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer'; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
 
 interface Plat {
   kind: 'moving' | 'crumble'; img: Phaser.Physics.Arcade.Image; collider: Phaser.Physics.Arcade.Collider; baseX: number; baseY: number; amp: number; phase: number;
   stood: boolean; timer: number; state: 'idle' | 'shaking' | 'falling';
+}
+type FlyerStyle = 'drowned' | 'void' | 'spores';
+const FLYER_NAME: Record<FlyerStyle, string> = { drowned: 'glow-ray', void: 'drone', spores: 'spore moth' };
+interface Flyer {
+  style: FlyerStyle; homeX: number; homeY: number; state: 'idle' | 'windup' | 'dive' | 'rise';
+  timer: number; cd: number; vx: number; vy: number; frame: number; fromX: number; fromY: number;
 }
 interface BossState {
   def: BossDef; sprite: Phaser.GameObjects.Image; hp: number; max: number;
@@ -112,6 +119,8 @@ export class PlayScene extends Phaser.Scene {
 
   private layers: { sprite: Phaser.GameObjects.TileSprite; f: number }[] = [];
   private fog!: Phaser.GameObjects.TileSprite;
+  private fore?: Phaser.GameObjects.TileSprite;
+  private trailT = 0;
   private rain?: Phaser.GameObjects.TileSprite;
   private flash?: Phaser.GameObjects.Rectangle;
   private nextLightning = 0;
@@ -156,7 +165,8 @@ export class PlayScene extends Phaser.Scene {
   private duckAmt = 0;
   private ducked = false;
   private power: Record<PowerId, number> = { spring: 0, magnet: 0, shield: 0, turbo: 0, star: 0, gun: 0 };
-  private lastSafe = { x: 100, top: 400 };
+  /** where Iggy restarts after losing a life: the start of the level until he touches a checkpoint flag */
+  private checkpoint = { x: 110, top: 400, flag: false };
   private hudTimer = 0;
   private lastHud = '';
 
@@ -208,6 +218,7 @@ export class PlayScene extends Phaser.Scene {
     this.plats = [];
     this.flags = [];
     this.nextFlagX = 1800;
+    this.checkpoint = { x: 110, top: 400, flag: false };
     this.arenaX = null;
     this.camLock = null;
     this.boss = undefined;
@@ -279,6 +290,7 @@ export class PlayScene extends Phaser.Scene {
   private buildBackdrop() {
     if (!this.textures.exists('dust')) makeSmallTextures(this);
     makeEnemyTextures(this);
+    makeFlyerTextures(this);
     makeRingTextures(this);
     makePlatformTextures(this);
     makeBossTextures(this, this.level.style);
@@ -324,6 +336,9 @@ export class PlayScene extends Phaser.Scene {
       this.layers.push({ sprite: s, f });
     });
     this.fog = this.add.tileSprite(0, H - 190, W, 120, fogKey).setOrigin(0).setScrollFactor(0).setDepth(-80).setAlpha(this.reduced ? 0.5 : 0.9);
+    this.fore = undefined;
+    // foreground parallax frames the top and bottom edges; it is motion that follows the camera, so it is off for reduced motion / high contrast
+    if (!this.reduced && !this.hc) this.fore = this.add.tileSprite(0, 0, W, H, makeForeTexture(this, style)).setOrigin(0).setScrollFactor(0).setDepth(15).setAlpha(0.9);
     if (!this.reduced) {
       this.rain = this.add.tileSprite(0, 0, W, H, precipKey).setOrigin(0).setScrollFactor(0).setDepth(20);
       this.flash = this.add.rectangle(0, 0, W, H, 0xdde8ff, 0).setOrigin(0).setScrollFactor(0).setDepth(21);
@@ -410,6 +425,8 @@ export class PlayScene extends Phaser.Scene {
     }
     // a patrolling enemy walking back and forth across a clear roof
     if (hazards.length === 0 && b.w > 220 && this.maxX > 200 && this.rand() < 0.22 + d * 0.3) this.addPatrol(b);
+    // a flying enemy hovering above the roof (the last three levels)
+    if (['drowned', 'void', 'spores'].includes(this.level.style) && b.w > 200 && this.maxX > 300 && this.rand() < 0.12 + d * 0.14) this.addFlyer(b);
     // rooftop breadboards: a trail along the roof, sometimes higher
     if (this.rand() < 0.65) {
       const n = Phaser.Math.Between(2, 5);
@@ -470,7 +487,9 @@ export class PlayScene extends Phaser.Scene {
     this.boss = { def, sprite, hp: def.hp, max: def.hp, state: 'intro', timer: 2.2, cd: 1.5, attack: 'volley', stomped: false, touchCD: 0, said: 0 };
     this.banner(`Boss: ${def.name}`);
     this.announce(`Boss fight: ${def.name}. ${def.blurb} Shoot it, or stomp on its head when it kneels.`);
-    this.sfx.suit();
+    this.sfx.bossAppear();
+    this.music?.setIntensity(1);
+    this.music?.stinger();
     for (let i = 0; i < 3; i++) this.time.delayedCall(400 + i * 900, () => this.boss && this.dropBossPowerUp(this.camLock!, true));
     this.bossAmmoT = 4;
     this.emitHud(true);
@@ -493,12 +512,13 @@ export class PlayScene extends Phaser.Scene {
     b.hp -= n;
     b.sprite.setTint(0xff9090);
     this.time.delayedCall(90, () => b.sprite.active && b.sprite.clearTint());
-    this.sfx.bricks();
+    this.sfx.bossHit();
     this.debris(b.sprite.x + Phaser.Math.Between(-30, 30), b.sprite.y - Phaser.Math.Between(30, b.sprite.displayHeight - 20), 'spark', 3, 1);
     const frac = Math.max(0, b.hp) / b.max;
     const step = frac <= 0.25 ? 3 : frac <= 0.5 ? 2 : frac <= 0.75 ? 1 : 0;
     if (b.hp > 0 && step > b.said) {
       b.said = step;
+      if (step === 2) this.music?.setIntensity(2);
       this.announce(step === 2 ? `${b.def.name} is half destroyed and fighting harder.` : `${b.def.name} at ${Math.round(frac * 100)} percent.`);
     }
     if (b.hp <= 0) this.defeatBoss(b);
@@ -513,13 +533,17 @@ export class PlayScene extends Phaser.Scene {
     this.bossWaves.forEach((w) => w.img.destroy());
     this.bossShots = [];
     this.bossWaves = [];
+    this.sfx.bossDown();
+    this.music?.setIntensity(0);
     this.banner(`${b.def.name} destroyed!`);
     this.announce(`${b.def.name} destroyed! Plus 1000 points.`);
     b.sprite.setTexture(`boss-${this.level.style}-a`).setScale(1);
     for (let i = 0; i < 6; i++) {
       this.time.delayedCall(i * 260, () => {
         if (!b.sprite.active) return;
-        this.explode(b.sprite.x + Phaser.Math.Between(-45, 45), b.sprite.y - Phaser.Math.Between(20, 140), 40);
+        const ex = b.sprite.x + Phaser.Math.Between(-45, 45), ey = b.sprite.y - Phaser.Math.Between(20, 140);
+        this.explode(ex, ey, 40);
+        this.burst(ex, ey, [0xffd23a, 0xff7a1a, 0xffffff, 0xff3030], 22, 300);
       });
     }
     this.tweens.add({ targets: b.sprite, alpha: 0, duration: 400, delay: 1500 });
@@ -565,6 +589,7 @@ export class PlayScene extends Phaser.Scene {
           b.state = 'telegraph';
           b.timer = b.attack === 'stomp' ? 0.9 : 0.6;
           s.setTexture(`boss-${this.level.style}-b`);
+          this.sfx.bossCharge(b.attack === 'stomp');
           if (b.attack === 'stomp') s.y = this.arenaTop - 14;
         }
       } else if (b.state === 'telegraph') {
@@ -660,18 +685,18 @@ export class PlayScene extends Phaser.Scene {
     if (b.attack === 'volley') {
       const n = enraged ? 3 : 2;
       for (let i = 0; i < n; i++) this.time.delayedCall(i * 260, () => b.state !== 'dead' && s.active && this.fireBossShot(mx, my, this.body.center.x, this.body.center.y, 270));
-      this.sfx.boom();
+      this.sfx.bossFire();
     } else if (b.attack === 'spread') {
       const a0 = Math.atan2(py - my, px - mx);
       for (const d of enraged ? [-0.35, -0.17, 0, 0.17, 0.35] : [-0.28, 0, 0.28]) this.fireBossShot(mx, my, mx + Math.cos(a0 + d) * 200, my + Math.sin(a0 + d) * 200, 250);
-      this.sfx.boom();
+      this.sfx.bossFire();
     } else if (b.attack === 'mortar') {
       const n = enraged ? 3 : 2;
       for (let i = 0; i < n; i++) this.lobBossShot(mx, my, px + (i - (n - 1) / 2) * 110 + this.facing * 30 * i);
-      this.sfx.boom();
+      this.sfx.bossMortar();
     } else {
       s.y = this.arenaTop;
-      this.sfx.boom();
+      this.sfx.bossStomp();
       if (!this.reduced) this.cameras.main.shake(260, 0.01);
       this.dust(s.x, this.arenaTop, 10, 90, 20, 1.8);
       for (const dir of [-1, 1]) {
@@ -695,10 +720,11 @@ export class PlayScene extends Phaser.Scene {
   private reachFlag(f: Flag) {
     f.on = true;
     f.sprite.setTexture('flag-on');
-    this.lastSafe = { x: f.x, top: f.top };
+    this.checkpoint = { x: f.x, top: f.top, flag: true };
     const topUp = this.lives < 3;
     if (topUp) this.lives = 3;
-    this.sfx.suit();
+    this.sfx.checkpoint();
+    this.burst(f.x + 14, f.top - 60, [0x3ddc84, 0xffffff, 0xffd23a], 26, 230);
     this.banner('Checkpoint!');
     this.announce(`Checkpoint reached.${topUp ? ' Lives topped up to 3.' : ''}`);
     this.debris(f.x, f.top - 60, 'spark', this.reduced ? 3 : 10, 1);
@@ -714,6 +740,7 @@ export class PlayScene extends Phaser.Scene {
       } else if (p.state === 'idle' && p.stood) {
         p.state = 'shaking';
         p.timer = 0.7;
+        this.sfx.crumble();
       } else if (p.state === 'shaking') {
         p.timer -= dt;
         if (!this.reduced) p.img.x = p.baseX + Math.sin(this.t * 60) * 2;
@@ -722,7 +749,7 @@ export class PlayScene extends Phaser.Scene {
           body.setAllowGravity(true).setImmovable(false);
           body.setVelocityY(40);
           this.debris(p.img.x, p.img.y, 'brick', this.reduced ? 2 : 6, 0.8);
-          this.sfx.step(1, true);
+          this.sfx.bricks();
         }
       } else if (p.state === 'falling') {
         p.img.alpha = Math.max(0, p.img.alpha - dt * 1.2);
@@ -764,12 +791,81 @@ export class PlayScene extends Phaser.Scene {
       this.dust(this.body.center.x, this.body.bottom, 8, 50, 40, 1.4);
       this.debris(this.body.center.x, this.body.center.y, 'cog', 6, 1.2);
       this.debris(this.body.center.x, this.body.center.y, 'bolt', 6, 1.2);
+      this.burst(this.body.center.x, this.body.center.y, [s.body, s.trim, 0xffffff], 28, 240);
       if (this.flash && !this.reduced) {
         this.flash.setAlpha(0.18);
         this.tweens.add({ targets: this.flash, alpha: 0, duration: 400 });
       }
     }
     this.announce(this.ringChain > 1 ? `Ring chain times ${this.ringChain}. Plus ${pts} points.` : `Ring. Plus ${pts} points.`);
+  }
+
+  private addFlyer(b: Building) {
+    const style = this.level.style as FlyerStyle;
+    const x = b.x + b.w / 2 + Phaser.Math.Between(-40, 40);
+    const y = b.top - Phaser.Math.Between(105, 150);
+    const sprite = this.add.image(x, y, `flyer-${style}-a`).setDepth(8);
+    this.items.push({
+      kind: 'flyer', sprite, baseY: y, phase: this.rand() * 6, hp: 2,
+      flyer: { style, homeX: x, homeY: y, state: 'idle', timer: 0, cd: 2.5 + this.rand() * 2, vx: 0, vy: 0, frame: 0, fromX: x, fromY: y },
+    });
+  }
+
+  private updateFlyer(it: Item, dt: number) {
+    const f = it.flyer!, s = it.sprite, body = this.body;
+    const px = body.center.x, py = body.center.y;
+    f.frame += dt * 7;
+    s.setTexture(`flyer-${f.style}-${Math.floor(f.frame) % 2 ? 'b' : 'a'}`);
+    f.timer -= dt;
+    f.cd -= dt;
+    if (f.state === 'idle') {
+      s.x = f.homeX + Math.sin(this.t * 0.9 + it.phase) * 70;
+      s.y = f.homeY + Math.sin(this.t * 1.7 + it.phase) * 26;
+      if (f.cd <= 0 && Math.abs(px - s.x) < 200 && py > s.y) {
+        f.state = 'windup';
+        f.timer = 0.85;
+        s.setTint(0xff7070); // warning: it is about to dive
+        this.sfx.zap();
+      }
+    } else if (f.state === 'windup') {
+      if (!this.reduced) s.x += Math.sin(this.t * 70) * 1.2;
+      if (f.timer <= 0) {
+        const dx = px - s.x, dy = py - s.y, len = Math.hypot(dx, dy) || 1;
+        f.vx = (dx / len) * 250;
+        f.vy = (dy / len) * 250;
+        f.state = 'dive';
+        f.timer = 0.6;
+        s.clearTint();
+      }
+    } else if (f.state === 'dive') {
+      s.x += f.vx * dt;
+      s.y += f.vy * dt;
+      const roof = this.buildings.find((b) => s.x >= b.x && s.x <= b.x + b.w);
+      if (roof && s.y > roof.top - 16) s.y = roof.top - 16;
+      if (f.timer <= 0) {
+        f.state = 'rise';
+        f.timer = 1.1;
+        f.fromX = s.x;
+        f.fromY = s.y;
+      }
+    } else {
+      const u = 1 - Math.max(0, f.timer) / 1.1;
+      s.x = Phaser.Math.Linear(f.fromX, f.homeX, u);
+      s.y = Phaser.Math.Linear(f.fromY, f.homeY, u);
+      if (f.timer <= 0) {
+        f.state = 'idle';
+        f.cd = 4.5 + this.rand() * 2.5;
+      }
+    }
+    // contact: land on it from above to stomp it, otherwise it hurts
+    if (body.right > s.x - 17 && body.left < s.x + 17 && body.bottom > s.y - 14 && body.top < s.y + 14) {
+      if (this.power.star > 0) this.defeatPatrol(it, 'stomp');
+      else if (body.velocity.y > 40 && body.bottom < s.y + 2) {
+        this.defeatPatrol(it, 'stomp');
+        body.setVelocityY(-450);
+        this.airJumps = 1;
+      } else this.hit('enemy');
+    }
   }
 
   private addPatrol(b: Building) {
@@ -801,7 +897,8 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private cull() {
-    const left = this.cameras.main.scrollX - 300;
+    // never delete the roofs from the checkpoint onward: Iggy may have to restart there
+    const left = Math.min(this.cameras.main.scrollX, this.checkpoint.x) - 300;
     this.buildings = this.buildings.filter((b) => {
       if (b.x + b.w < left) {
         b.collider.destroy();
@@ -874,6 +971,27 @@ export class PlayScene extends Phaser.Scene {
           img.setAlpha(1 - p * p);
         },
         onComplete: () => img.destroy(),
+      });
+    }
+  }
+
+  /** A fan of coloured specks that fly out, fall and fade. Fewer (and no spin) when motion is reduced. */
+  private burst(x: number, y: number, colors: number[], n: number, speed: number) {
+    const count = this.reduced ? Math.ceil(n / 4) : n;
+    for (let i = 0; i < count; i++) {
+      const dot = this.add.circle(x, y, 2 + Math.random() * 2.5, colors[i % colors.length]).setDepth(13);
+      const a = Math.random() * Math.PI * 2, v = speed * (0.35 + Math.random() * 0.65);
+      const vx = Math.cos(a) * v, vy = Math.sin(a) * v - speed * 0.25;
+      const dur = 650 + Math.random() * 500;
+      this.tweens.addCounter({
+        from: 0, to: 1, duration: dur,
+        onUpdate: (tw) => {
+          const p = tw.getValue() ?? 0, tt = (p * dur) / 1000;
+          dot.x = x + vx * tt;
+          dot.y = y + vy * tt + 380 * tt * tt;
+          dot.setAlpha(1 - p * p);
+        },
+        onComplete: () => dot.destroy(),
       });
     }
   }
@@ -977,13 +1095,13 @@ export class PlayScene extends Phaser.Scene {
           return false;
         }
       }
-      const hitIt = this.items.find((it) => !it.taken && !sh.hit?.has(it) && (it.kind === 'pylon' || it.kind === 'wall' || it.kind === 'patrol') && Math.abs(s.x - it.sprite.x) < (it.kind === 'patrol' ? 16 : 18) && Math.abs(s.y - it.sprite.y) < (it.kind === 'wall' ? 34 : it.kind === 'patrol' ? it.sprite.height / 2 + 4 : 24));
+      const hitIt = this.items.find((it) => !it.taken && !sh.hit?.has(it) && (it.kind === 'pylon' || it.kind === 'wall' || it.kind === 'patrol' || it.kind === 'flyer') && Math.abs(s.x - it.sprite.x) < (it.kind === 'patrol' ? 16 : it.kind === 'flyer' ? 22 : 18) && Math.abs(s.y - it.sprite.y) < (it.kind === 'wall' ? 34 : it.kind === 'patrol' ? it.sprite.height / 2 + 4 : it.kind === 'flyer' ? 20 : 24));
       const hitBuilding = this.buildings.some((b) => s.x >= b.x && s.x <= b.x + b.w && s.y > b.top + 2);
       const off = s.x < cam.scrollX - 60 || s.x > cam.scrollX + W + 120 || s.y < -60 || s.y > H + 60;
       if (hitIt || hitBuilding) {
         const dmg = sh.big ? 3 : 1;
         if (sh.kind === 'rocket') this.explode(s.x, s.y, sh.big ? 150 : 85);
-        else if (hitIt) hitIt.kind === 'pylon' ? this.destroyPylon(hitIt) : hitIt.kind === 'patrol' ? this.damagePatrol(hitIt, dmg) : this.damageWall(hitIt, dmg);
+        else if (hitIt) hitIt.kind === 'pylon' ? this.destroyPylon(hitIt) : hitIt.kind === 'patrol' || hitIt.kind === 'flyer' ? this.damagePatrol(hitIt, dmg) : this.damageWall(hitIt, dmg);
         else this.debris(s.x, s.y, 'spark', 2, 0.4);
       }
       if (sh.big && sh.kind === 'bolt' && hitIt && !hitBuilding) sh.hit!.add(hitIt); // charged bolts pierce targets
@@ -1007,7 +1125,7 @@ export class PlayScene extends Phaser.Scene {
     it.taken = true;
     this.bonus += how === 'stomp' ? 50 : 40;
     this.sfx.bricks();
-    const name = it.walker?.kind === 'crawler' ? 'crawler' : 'skeleton';
+    const name = it.flyer ? FLYER_NAME[it.flyer.style] : it.walker?.kind === 'crawler' ? 'crawler' : 'skeleton';
     this.debris(it.sprite.x, it.sprite.y, 'cog', 3, 1.2);
     this.debris(it.sprite.x, it.sprite.y, 'brick', this.reduced ? 4 : 10, 1.2);
     this.dust(it.sprite.x, it.sprite.y + 10, 5, 24, 14);
@@ -1048,10 +1166,10 @@ export class PlayScene extends Phaser.Scene {
     const bs = this.boss;
     if (bs && bs.state !== 'dead' && Math.hypot(bs.sprite.x - x, bs.sprite.y - bs.sprite.displayHeight / 2 - y) < radius + 55) this.damageBoss(radius > 100 ? 6 : 3);
     for (const it of this.items) {
-      if (it.taken || (it.kind !== 'pylon' && it.kind !== 'wall' && it.kind !== 'patrol')) continue;
+      if (it.taken || (it.kind !== 'pylon' && it.kind !== 'wall' && it.kind !== 'patrol' && it.kind !== 'flyer')) continue;
       if (Math.hypot(it.sprite.x - x, it.sprite.y - y) < radius) {
         if (it.kind === 'pylon') this.destroyPylon(it);
-        else if (it.kind === 'patrol') this.defeatPatrol(it, 'shot');
+        else if (it.kind === 'patrol' || it.kind === 'flyer') this.defeatPatrol(it, 'shot');
         else this.breakWall(it, true);
       }
     }
@@ -1150,6 +1268,21 @@ export class PlayScene extends Phaser.Scene {
         this.emitHud(true);
         return;
       }
+      // a hit knocks the suit down one level instead of costing a life; only the plain starting suit has nothing left to lose
+      if (this.suitIdx > 0) {
+        this.suitIdx--;
+        this.rings = SUITS[this.suitIdx].need; // the suit comes from the ring count, so drop to exactly that suit's threshold
+        this.sfx.hurt();
+        this.stumble = 1;
+        this.invuln = 1.8;
+        this.debris(this.body.center.x, this.body.center.y, 'bolt', 5, 1.4);
+        this.debris(this.body.center.x, this.body.center.y, 'cog', 4, 1.3);
+        this.debris(this.body.center.x, this.body.center.y, 'spark', this.reduced ? 3 : 8, 1.4);
+        this.body.setVelocity(-this.facing * 280, -380);
+        this.announce(`${reason === 'enemy' ? 'Bonked' : 'Zapped'}! Suit downgraded to ${SUITS[this.suitIdx].name}.`);
+        this.emitHud(true);
+        return;
+      }
     }
     this.lives--;
     this.sfx.hurt();
@@ -1166,22 +1299,38 @@ export class PlayScene extends Phaser.Scene {
     const lostSuit = this.suitIdx > 0;
     this.suitIdx = 0;
     this.rings = 0;
+    const where = this.respawn();
     this.announce(
       (reason === 'fall' ? `Iggy fell. ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.` : `${reason === 'enemy' ? 'Bonked' : 'Zapped'}! ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.`) +
-        (lostSuit ? ` Back to the ${SUITS[0].name} suit.` : ''),
+        (lostSuit ? ` Back to the ${SUITS[0].name} suit.` : '') + ` ${where}`,
     );
     this.invuln = 1.8;
-    if (reason === 'fall') {
-      const safe = this.camLock !== null && this.arenaX !== null ? { x: this.arenaX + 200, top: this.arenaTop } : this.lastSafe;
-      this.body.reset(safe.x, safe.top - 30);
-      this.items.forEach((it) => {
-        if ((it.kind === 'pylon' || it.kind === 'patrol') && Math.abs(it.sprite.x - safe.x) < 90) it.taken = true;
-      });
-      this.body.setVelocity(0, 0);
-    } else {
-      this.body.setVelocity(-this.facing * 280, -380);
-    }
     this.emitHud(true);
+  }
+
+  /** After losing a life Iggy restarts at the last checkpoint (the arena entrance during a boss fight), not where he died. */
+  private respawn(): string {
+    const inArena = this.camLock !== null && this.arenaX !== null;
+    const spot = inArena ? { x: this.arenaX! + 200, top: this.arenaTop } : this.checkpoint;
+    this.setDucked(false);
+    this.body.reset(spot.x, spot.top - 30);
+    this.body.setVelocity(0, 0);
+    this.stumble = 0;
+    this.coyote = 0;
+    this.airJumps = 1;
+    this.slowT = 0;
+    this.charge = 0;
+    if (!inArena) this.cameras.main.scrollX = Math.max(-20, spot.x - 330);
+    // clear anything nasty standing right where he lands
+    this.items.forEach((it) => {
+      if ((it.kind === 'pylon' || it.kind === 'patrol' || it.kind === 'wall' || it.kind === 'flyer') && Math.abs(it.sprite.x - spot.x) < 110) it.taken = true;
+    });
+    this.bossShots.forEach((sh) => sh.img.destroy());
+    this.bossWaves.forEach((w) => w.img.destroy());
+    this.bossShots = [];
+    this.bossWaves = [];
+    this.burst(spot.x, spot.top - 30, [0xffffff, 0x4af0ff], 16, 170);
+    return inArena ? 'Back to the arena entrance.' : this.checkpoint.flag ? 'Back to the last checkpoint.' : 'Back to the start of the level.';
   }
 
   private gameOver() {
@@ -1373,18 +1522,6 @@ export class PlayScene extends Phaser.Scene {
         this.dustTimer = 0.11;
       }
 
-      // standing on a safe stretch of roof?
-      if (ground) {
-        for (const b of this.buildings) {
-          if (body.center.x > b.x + 40 && body.center.x < b.x + b.w - 40 && Math.abs(body.bottom - b.top) < 3) {
-            if (!this.items.some((i) => (i.kind === 'pylon' || i.kind === 'patrol') && !i.taken && Math.abs(i.sprite.x - body.center.x) < 80)) {
-              this.lastSafe = { x: body.center.x, top: b.top };
-            }
-            break;
-          }
-        }
-      }
-
       // clumsy robot: parts keep falling off, and he trips now and then
       const suit = SUITS[this.suitIdx];
       this.partTimer -= dt;
@@ -1425,6 +1562,8 @@ export class PlayScene extends Phaser.Scene {
               body.setVelocityY(-430);
             } else this.hit('enemy');
           }
+        } else if (it.kind === 'flyer' && it.flyer) {
+          this.updateFlyer(it, dt);
         } else if (it.kind === 'wall') {
           if (Math.abs(px - s.x) < 24 && body.bottom > s.y - 32 && body.top < s.y + 32) {
             if (this.power.star > 0) this.breakWall(it, true);
@@ -1458,6 +1597,15 @@ export class PlayScene extends Phaser.Scene {
 
       this.updatePlatforms(dt);
       this.updateBoss(dt);
+
+      // speed trail behind Iggy while overclocked or invincible
+      this.trailT -= dt;
+      if (!this.reduced && this.trailT <= 0 && (this.power.turbo > 0 || this.power.star > 0)) {
+        this.trailT = 0.045;
+        const col = this.power.star > 0 ? Phaser.Display.Color.HSVToRGB((this.t * 1.5) % 1, 0.6, 1).color : 0x4af0ff;
+        const streak = this.add.rectangle(body.center.x - this.facing * 12, body.center.y + Phaser.Math.Between(-18, 18), 14, 4, col).setDepth(9);
+        this.tweens.add({ targets: streak, x: streak.x - this.facing * 40, alpha: 0, scaleX: 0.3, duration: 320, onComplete: () => streak.destroy() });
+      }
 
       // fell off the world
       if (body.top > H + 40) this.hit('fall');
@@ -1524,6 +1672,7 @@ export class PlayScene extends Phaser.Scene {
 
     // -- backdrop
     this.layers.forEach((l) => (l.sprite.tilePositionX = cam.scrollX * l.f));
+    if (this.fore) this.fore.tilePositionX = cam.scrollX * 1.45;
     this.fog.tilePositionX = cam.scrollX * 0.5 + (this.reduced ? 0 : this.t * 10);
     if (this.rain) {
       this.rain.tilePositionY += dt * this.level.precip.vy;
