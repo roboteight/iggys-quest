@@ -130,6 +130,8 @@ export class Sfx {
   }
   /** wood splintering: a low creak and a scatter of clicks */
   crumble() { this.tone(95, 70, 0.4, 'triangle', 0.7); for (let i = 0; i < 6; i++) this.tick(500 + Math.random() * 900, 0.04, 0.6, Math.random() * 0.35); }
+  firework() { this.tone(900, 3200, 0.1, 'sine', 0.15); this.tick(900, 0.25, 0.8, 0.02); this.tone(110, 50, 0.3, 'triangle', 0.7, 0.02); for (let i = 0; i < 5; i++) this.tick(4000 + Math.random() * 2500, 0.03, 0.4, 0.1 + Math.random() * 0.4); }
+  perfect() { [523, 659, 784, 1047, 784, 1047, 1319, 1568, 2093].forEach((f, i) => this.tone(f, f * 1.01, 0.2, 'square', 0.5, i * 0.09)); }
   checkpoint() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, f * 1.005, 0.2, 'triangle', 0.9, i * 0.08)); this.tick(5000, 0.12, 0.4, 0.05); }
 
   over() { [392, 330, 262, 196].forEach((f, i) => this.tone(f, f * 0.98, 0.25, 'sawtooth', 0.6, i * 0.18)); }

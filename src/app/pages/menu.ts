@@ -44,7 +44,7 @@ const ACCENT: Record<string, string> = {
                   <span class="num">Level {{ l.number }}</span>
                   <span class="name">{{ l.name }}</span>
                   <span class="blurb">{{ l.blurb }}</span>
-                  @if (progress.cleared(l.id)) { <span class="status">Cleared ✓ · best {{ progress.best(l.id) }}</span> }
+                  @if (progress.cleared(l.id)) { <span class="status">Cleared ✓ @if (progress.perfected(l.id)) { · Perfect ★ } · best {{ progress.best(l.id) }}</span> }
                   @else if (progress.best(l.id)) { <span class="status">Best {{ progress.best(l.id) }}</span> }
                   @else if (l.number === 1) { <span class="start">Start here →</span> }
                 </a>

@@ -12,6 +12,8 @@ export interface ScoreEntry {
 export interface Progress {
   /** ids of levels whose boss has been beaten */
   completed: string[];
+  /** ids of levels cleared with every breadboard collected */
+  perfect: string[];
   /** top scores per level id, best first */
   scores: Record<string, ScoreEntry[]>;
 }
@@ -22,9 +24,9 @@ export const MAX_SCORES = 5;
 function load(): Progress {
   try {
     const p = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    return { completed: Array.isArray(p.completed) ? p.completed : [], scores: p.scores && typeof p.scores === 'object' ? p.scores : {} };
+    return { completed: Array.isArray(p.completed) ? p.completed : [], perfect: Array.isArray(p.perfect) ? p.perfect : [], scores: p.scores && typeof p.scores === 'object' ? p.scores : {} };
   } catch {
-    return { completed: [], scores: {} };
+    return { completed: [], perfect: [], scores: {} };
   }
 }
 
@@ -53,15 +55,20 @@ export class ProgressService {
     return this.progress().completed.includes(levelId);
   }
 
+  perfected(levelId: string): boolean {
+    return this.progress().perfect.includes(levelId);
+  }
+
   best(levelId: string): number {
     return this.progress().scores[levelId]?.[0]?.score ?? 0;
   }
 
   /** Records a finished run. Returns the 1-based place on that level's board, or null if it did not make the top five. */
-  record(levelId: string, name: string, score: number, cleared: boolean): number | null {
+  record(levelId: string, name: string, score: number, cleared: boolean, perfect = false): number | null {
     let rank: number | null = null;
     this.progress.update((p) => {
       const completed = cleared && !p.completed.includes(levelId) ? [...p.completed, levelId] : p.completed;
+      const perfects = perfect && !p.perfect.includes(levelId) ? [...p.perfect, levelId] : p.perfect;
       const list = [...(p.scores[levelId] ?? [])];
       const entry: ScoreEntry = { name: name.trim() || 'Iggy', score, cleared, date: new Date().toISOString().slice(0, 10) };
       if (score > 0) {
@@ -73,12 +80,12 @@ export class ProgressService {
           rank = idx + 1;
         }
       }
-      return { completed, scores: { ...p.scores, [levelId]: list } };
+      return { completed, perfect: perfects, scores: { ...p.scores, [levelId]: list } };
     });
     return rank;
   }
 
   reset() {
-    this.progress.set({ completed: [], scores: {} });
+    this.progress.set({ completed: [], perfect: [], scores: {} });
   }
 }

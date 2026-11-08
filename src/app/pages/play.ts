@@ -129,7 +129,7 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
       <ul class="hud" aria-label="Game status">
         <li class="lvl"><span class="label">Level</span><b>{{ hud().level }}</b></li>
         <li><span class="label">Score</span><b>{{ hud().score }}</b><span class="sub">of {{ hud().goal }} to reach the boss</span></li>
-        <li><span class="label">Breadboards</span><b>{{ hud().breadboards }}</b><span class="sub">{{ hud().nextLifeIn }} to a free life</span></li>
+        <li><span class="label">Breadboards</span><b>{{ hud().breadboards }}</b><span class="sub">{{ hud().nextLifeIn }} to a free life · {{ hud().perfect ? 'Perfect run alive' : 'Perfect run lost' }}</span></li>
         <li><span class="label">Lives</span><b>{{ hud().lives }}</b></li>
         <li><span class="label">Suit</span><b>{{ hud().suit }}</b>
           @if (hud().nextSuit) { <span class="sub">{{ hud().nextSuitNeed }} {{ hud().nextSuitNeed === 1 ? 'ring' : 'rings' }} to {{ hud().nextSuit }}</span> }
@@ -161,7 +161,7 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
               @if ((overlay() === 'gameover' || overlay() === 'complete') && over(); as o) {
                 <dl class="stats">
                   <dt>Score</dt><dd>{{ o.score }}</dd>
-                  <dt>Breadboards</dt><dd>{{ o.breadboards }}</dd>
+                  <dt>Breadboards</dt><dd>{{ o.breadboards }}@if (o.perfect) { – Perfect run! ★ }</dd>
                   <dt>Distance</dt><dd>{{ o.distance }} m</dd>
                   <dt>Final suit</dt><dd>{{ o.suit }}</dd>
                   <dt>Best</dt><dd>{{ progress.best(o.level) }}@if (rank() === 1) { – new best! }</dd>
@@ -274,7 +274,7 @@ export class PlayPage implements OnDestroy {
     const i = LEVELS.findIndex((l) => l.id === o?.level);
     return i >= 0 ? LEVELS[i + 1] : undefined;
   });
-  protected readonly hud = signal<HudState>({ level: '', goal: 5000, score: 0, breadboards: 0, lives: 3, nextLifeIn: 100, suit: 'Rusty Original', nextSuit: 'Patchwork', nextSuitNeed: 3, powerUps: [], boss: null });
+  protected readonly hud = signal<HudState>({ level: '', goal: 5000, score: 0, breadboards: 0, lives: 3, nextLifeIn: 100, perfect: true, suit: 'Rusty Original', nextSuit: 'Patchwork', nextSuitNeed: 3, powerUps: [], boss: null });
   private readonly touch: TouchInput = { left: false, right: false, jump: false, fire: false, duck: false };
   /** show the on-screen controls on touch devices, or anywhere with ?controls=1 in the address */
   protected readonly touchUi = signal(false);
@@ -311,7 +311,7 @@ export class PlayPage implements OnDestroy {
       this.game.events.on('complete', (s: GameOverState) =>
         this.zone.run(() => {
           this.over.set(s);
-          this.rank.set(this.progress.record(s.level, this.settings.settings().playerName, s.score, true));
+          this.rank.set(this.progress.record(s.level, this.settings.settings().playerName, s.score, true, s.perfect));
           this.show('complete');
         }),
       );

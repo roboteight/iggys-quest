@@ -20,6 +20,7 @@ export interface HudState {
   breadboards: number;
   lives: number;
   nextLifeIn: number; // breadboards until the next free life
+  perfect: boolean; // every breadboard so far has been collected
   suit: string;
   nextSuit: string | null;
   nextSuitNeed: number;
@@ -33,6 +34,7 @@ export interface GameOverState {
   suit: string;
   best: number;
   newBest: boolean;
+  perfect: boolean;
 }
 export interface TouchInput { left: boolean; right: boolean; jump: boolean; fire: boolean; duck: boolean }
 
@@ -128,6 +130,8 @@ export class PlayScene extends Phaser.Scene {
   private t = 0;
   private over = false;
   private breadboards = 0;
+  private bbSpawned = 0;
+  private bbMissed = false;
   private lives = 3;
   private suitIdx = 0;
   private rings = 0;
@@ -231,6 +235,8 @@ export class PlayScene extends Phaser.Scene {
     this.duckAmt = 0;
     this.ducked = false;
     this.breadboards = 0;
+    this.bbSpawned = 0;
+    this.bbMissed = false;
     this.lives = 3;
     this.suitIdx = 0;
     this.rings = 0;
@@ -547,9 +553,47 @@ export class PlayScene extends Phaser.Scene {
       });
     }
     this.tweens.add({ targets: b.sprite, alpha: 0, duration: 400, delay: 1500 });
-    this.time.delayedCall(2000, () => {
+    const perfect = this.isPerfect();
+    if (perfect) {
+      this.bonus += 2500;
+      this.time.delayedCall(1400, () => {
+        this.banner('PERFECT RUN!');
+        this.announce(`Perfect run! You collected all ${this.bbSpawned} breadboards. Plus 2500 points.`);
+        this.sfx.perfect();
+      });
+    }
+    if (perfect) this.fireworks(22, 1300, 230);
+    this.time.delayedCall(perfect ? 6200 : 2000, () => {
       if (!this.over) this.endRun(true);
     });
+  }
+
+  /** Every breadboard that appeared in the level was collected. */
+  private isPerfect() {
+    return !this.bbMissed && this.bbSpawned > 0 && this.breadboards >= this.bbSpawned;
+  }
+
+  /** Rockets rise from below the view and burst into coloured sprays. With reduced motion they just pop in place, fewer and softer. */
+  private fireworks(count: number, start: number, every: number) {
+    const cam = this.cameras.main;
+    const palettes = [[0xff3d6e, 0xffd23a], [0x4fd3ff, 0xffffff], [0x7dff6a, 0xffe04a], [0xc07bff, 0xff7ad9], [0xffa03a, 0xfff0a0]];
+    const n = this.reduced ? Math.ceil(count / 3) : count;
+    for (let i = 0; i < n; i++) {
+      this.time.delayedCall(start + i * every * (this.reduced ? 2 : 1), () => {
+        if (this.over) return;
+        const x = cam.scrollX + 120 + Math.random() * (W - 240), y = 70 + Math.random() * 200;
+        const pal = palettes[i % palettes.length];
+        const pop = () => {
+          this.sfx.firework();
+          this.burst(x, y, pal, 46, 250);
+          this.burst(x, y, [0xffffff], 12, 140);
+        };
+        if (this.reduced) { pop(); return; }
+        const rocket = this.add.circle(x, H + 10, 3, 0xffffff).setDepth(14).setScrollFactor(0);
+        rocket.x = x - cam.scrollX;
+        this.tweens.add({ targets: rocket, y, duration: 520, ease: 'Quad.easeOut', onComplete: () => { rocket.destroy(); pop(); } });
+      });
+    }
   }
 
   private fireBossShot(x: number, y: number, tx: number, ty: number, speed: number) {
@@ -883,6 +927,7 @@ export class PlayScene extends Phaser.Scene {
 
   private addItem(kind: Item['kind'], x: number, y: number, power?: PowerId) {
     const tex = kind === 'bb' ? 'breadboard' : kind === 'pylon' ? 'pylon' : kind === 'wall' ? 'wall' : POWER[power!].tex;
+    if (kind === 'bb') this.bbSpawned++;
     const sprite = this.add.image(x, y, tex).setDepth(kind === 'pylon' || kind === 'wall' ? 6 : 7);
     this.items.push({ kind, power, sprite, baseY: y, phase: Math.random() * 6, hp: kind === 'wall' ? 5 : undefined });
   }
@@ -925,6 +970,11 @@ export class PlayScene extends Phaser.Scene {
     });
     this.items = this.items.filter((it) => {
       if (it.taken || it.sprite.x < left) {
+        if (it.kind === 'bb' && !it.taken && !this.bbMissed) {
+          this.bbMissed = true;
+          this.announce('A breadboard got away. No perfect run this time.');
+          this.emitHud(true);
+        }
         it.sprite.destroy();
         it.back?.destroy();
         return false;
@@ -1360,7 +1410,7 @@ export class PlayScene extends Phaser.Scene {
       best = score;
       try { localStorage.setItem(bestKey, String(best)); } catch { /* ignore */ }
     }
-    const state: GameOverState = { level: this.level.id, score, breadboards: this.breadboards, distance: Math.floor(this.maxX / 10), suit: SUITS[this.suitIdx].name, best, newBest };
+    const state: GameOverState = { level: this.level.id, score, breadboards: this.breadboards, distance: Math.floor(this.maxX / 10), suit: SUITS[this.suitIdx].name, best, newBest, perfect: won && this.isPerfect() };
     this.game.events.emit(won ? 'complete' : 'gameover', state);
   }
 
@@ -1378,6 +1428,7 @@ export class PlayScene extends Phaser.Scene {
       breadboards: this.breadboards,
       lives: this.lives,
       nextLifeIn: LIFE_EVERY - (this.breadboards % LIFE_EVERY),
+      perfect: !this.bbMissed,
       suit: SUITS[this.suitIdx].name,
       nextSuit: next?.name ?? null,
       nextSuitNeed: next ? next.need - this.rings : 0,
