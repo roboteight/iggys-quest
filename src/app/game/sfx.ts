@@ -135,6 +135,16 @@ export class Sfx {
   /** wood splintering: a low creak and a scatter of clicks */
   crumble() { this.tone(95, 70, 0.4, 'triangle', 0.7); for (let i = 0; i < 6; i++) this.tick(500 + Math.random() * 900, 0.04, 0.6, Math.random() * 0.35); }
   firework() { this.tone(900, 3200, 0.1, 'sine', 0.15); this.tick(900, 0.25, 0.8, 0.02); this.tone(110, 50, 0.3, 'triangle', 0.7, 0.02); for (let i = 0; i < 5; i++) this.tick(4000 + Math.random() * 2500, 0.03, 0.4, 0.1 + Math.random() * 0.4); }
+  warn() { this.tone(1800, 1800, 0.07, 'square', 0.35); }
+  crash() { this.tone(110, 40, 0.35, 'sawtooth', 0.9); this.tick(700, 0.25, 0.9); }
+  jet() { this.tick(2500, 0.5, 0.5); this.tone(400, 700, 0.5, 'sawtooth', 0.25); }
+  laser() { this.tone(1400, 900, 0.3, 'sawtooth', 0.4); this.tick(4000, 0.1, 0.6); }
+  dash() { this.tone(300, 900, 0.18, 'sawtooth', 0.5); this.tick(2500, 0.18, 0.8); }
+  poundStart() { this.tone(600, 150, 0.25, 'square', 0.5); }
+  pound() { this.tone(90, 35, 0.5, 'sawtooth', 1); this.tick(500, 0.3, 1); for (let i = 0; i < 4; i++) this.tick(900 + i * 300, 0.06, 0.6, i * 0.05); }
+  /** a soft shimmer when a secret is close */
+  secretNear() { [1568, 2093, 2637].forEach((f, i) => this.tone(f, f, 0.35, 'sine', 0.35, i * 0.12)); }
+  secret() { [659, 784, 988, 1319, 1568, 1976].forEach((f, i) => this.tone(f, f * 1.01, 0.25, 'triangle', 0.8, i * 0.07)); }
   perfect() { [523, 659, 784, 1047, 784, 1047, 1319, 1568, 2093].forEach((f, i) => this.tone(f, f * 1.01, 0.2, 'square', 0.5, i * 0.09)); }
   checkpoint() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, f * 1.005, 0.2, 'triangle', 0.9, i * 0.08)); this.tick(5000, 0.12, 0.4, 0.05); }
 

@@ -8,7 +8,7 @@ import { Settings } from '../settings.service';
  *  'announce' (string) – for the screen-reader live region
  *  'gameover' (GameOverState)
  */
-export function createGame(parent: HTMLElement, settings: Settings, touch: TouchInput, levelId: string): Phaser.Game {
+export function createGame(parent: HTMLElement, settings: Settings, touch: TouchInput, levelId: string, seed: number | null = null, mode = 'story', ghost: number[] | null = null): Phaser.Game {
   return new Phaser.Game({
     type: Phaser.AUTO,
     parent,
@@ -23,6 +23,9 @@ export function createGame(parent: HTMLElement, settings: Settings, touch: Touch
         g.registry.set('settings', settings);
         g.registry.set('touch', touch);
         g.registry.set('level', levelId);
+        g.registry.set('seed', seed);
+        g.registry.set('mode', mode);
+        g.registry.set('ghost', ghost);
         g.registry.set('music', { on: settings.musicOn, volume: settings.musicVolume });
       },
     },

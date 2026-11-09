@@ -2,22 +2,25 @@ import { Component, computed, effect, input, isDevMode, ElementRef, HostListener
 import { RouterLink } from '@angular/router';
 import type Phaser from 'phaser';
 import { Action, SettingsService, keyLabel } from '../settings.service';
+import { dailyBoard, dailySeed, hash } from '../daily';
+import { fmtTime } from '../format';
+import { Achievement } from '../achievements';
 import { OptionsPanel } from './options';
 import { ProgressService } from '../progress.service';
 import type { GameOverState, HudState, TouchInput } from '../game/play.scene';
 import { LEVELS, levelById } from '../game/levels';
 
-type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
+type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
 
 @Component({
   selector: 'app-play',
   imports: [RouterLink, OptionsPanel],
   styles: `
     :host { display: block; padding: 1rem; }
-    main { display: grid; justify-items: center; gap: 1rem; width: min(100%, 1500px); margin: 0 auto;
+    main { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 1rem; width: min(100%, 1500px); margin: 0 auto;
            --stage-w: min(100%, max(480px, calc((100dvh - 13rem) * 16 / 9))); }
-    .screen { display: grid; gap: .75rem; justify-items: center; width: 100%; }
-    .screen > * { width: var(--stage-w); }
+    .screen { display: grid; grid-template-columns: minmax(0, 1fr); gap: .75rem; justify-items: center; width: 100%; }
+    .screen > * { width: var(--stage-w); box-sizing: border-box; }
     .screen:fullscreen { background: var(--bg); padding: .75rem; align-content: center; justify-items: center; overflow: auto;
                          --stage-w: min(100%, calc((100dvh - 8.5rem) * 16 / 9)); }
     .hud { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: .5rem 1.25rem; align-items: start; margin: 0;
@@ -27,6 +30,7 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
     .hud b { font-size: 1.15rem; line-height: 1.25; font-variant-numeric: tabular-nums; }
     .hud .sub { font-size: .8rem; opacity: .8; }
     .hud .lvl { grid-column: span 2; }
+    @media (max-width: 30rem) { .hud { grid-template-columns: repeat(2, minmax(0, 1fr)); } .hud .lvl, .hud .boss { grid-column: 1 / -1; } }
     .hud .boss { grid-column: span 2; } .hud .boss meter { width: 100%; height: 1rem; }
     .pills { display: flex; flex-wrap: wrap; gap: .35rem; }
     .pill { display: inline-block; padding: 0 .6rem; border: 2px solid var(--accent); border-radius: 999px; font-size: .9rem; }
@@ -45,6 +49,9 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
     /* On-screen touch controls: a d-pad bottom-left, Fire and Jump bottom-right. Overlaid on the stage in landscape,
        below it in portrait. */
     .overlay { z-index: 5; }
+    .toast { position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%); margin: 0; max-width: min(36rem, 92vw); padding: .6rem 1rem; z-index: 20; font-weight: 700; text-align: center;
+             color: var(--fg); background: var(--panel); border: 2px solid var(--accent); border-radius: 12px; box-shadow: 0 6px 24px rgb(0 0 0 / .5); }
+    @media (forced-colors: active) { .toast { border-color: CanvasText; } }
     .controls { position: absolute; z-index: 1; left: 0; right: 0; display: flex; justify-content: space-between; align-items: flex-end;
                 gap: 1rem; padding: 0 .75rem; pointer-events: none; -webkit-touch-callout: none; user-select: none; touch-action: none; }
     .controls button { pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
@@ -62,8 +69,9 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
     @media (orientation: portrait) {
       .stage.touch-ui { margin-bottom: 14rem; overflow: visible; }
       .controls { top: 100%; margin-top: .75rem; }
-      .pad { --cell: 68px; }
-      .actions button { width: 84px; height: 84px; }
+      .pad { --cell: min(68px, 16vw); }
+      .actions { gap: min(.9rem, 2vw); }
+      .actions button { width: min(84px, 20vw); height: min(84px, 20vw); }
     }
     @media (pointer: coarse) and (orientation: landscape) {
       main { --stage-w: min(100%, calc((100dvh - 7.5rem) * 16 / 9)); }
@@ -92,8 +100,10 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
       .screen.touch { grid-template: "hud" auto "stage" auto "controls" minmax(0, 1fr) "bar" auto / minmax(0, 1fr); }
       .screen.touch .stage { margin: 0; overflow: clip; }
       .screen.touch .controls { align-self: end; }
-      .screen.touch .pad { --cell: 60px; }
-      .screen.touch .actions button { width: 72px; height: 72px; }
+      .screen.touch .pad { --cell: min(60px, 15vw); }
+      .screen.touch .actions { gap: min(.9rem, 2vw); }
+      .screen.touch .actions button { width: min(72px, 18vw); height: min(72px, 18vw); }
+      .screen.touch .controls { gap: .5rem; }
     }
     @media (orientation: landscape) {
       .screen.touch { grid-template: "hud bar" auto "stage stage" minmax(0, 1fr) / minmax(0, 1fr) auto; column-gap: .5rem; }
@@ -130,7 +140,8 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
       <div #screen class="screen" [class.touch]="touchUi()">
       <ul class="hud" aria-label="Game status">
         <li class="lvl"><span class="label">Level</span><b>{{ hud().level }}</b></li>
-        <li><span class="label">Score</span><b>{{ hud().score }}</b><span class="sub">of {{ hud().goal }} to reach the boss</span></li>
+        <li><span class="label">Score</span><b>{{ hud().score }}</b><span class="sub">@switch (hud().mode) { @case ('endless') { Endless: no boss, the pace creeps up } @case ('time') { Time attack: race to the boss } @default { of {{ hud().goal }} to reach the boss } }</span></li>
+        @if (hud().mode === 'time') { <li><span class="label">Time</span><b>{{ fmt(hud().time * 1000) }}</b><span class="sub">{{ hasGhost() ? 'Ghost of your best run' : 'No ghost yet' }}</span></li> }
         <li><span class="label">Breadboards</span><b>{{ hud().breadboards }}</b><span class="sub">{{ hud().nextLifeIn }} to a free life · {{ hud().perfect ? 'Perfect run alive' : 'Perfect run lost' }}</span></li>
         <li><span class="label">Lives</span><b>{{ hud().lives }}</b></li>
         <li><span class="label">Suit</span><b>{{ hud().suit }}</b>
@@ -158,20 +169,27 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
         @if (overlay() !== 'none') {
           <div class="overlay">
             <div class="panel" [class.wide]="pauseView() === 'options'" role="dialog" aria-modal="true" aria-labelledby="ov-title" (keydown.tab)="trap($event, false)" (keydown.shift.tab)="trap($event, true)">
-              <h2 id="ov-title" tabindex="-1">{{ overlay() === 'paused' ? (pauseView() === 'options' ? 'Options' : 'Paused') : overlay() === 'complete' ? 'Level complete!' : 'Iggy has fallen apart' }}</h2>
-              @if (overlay() === 'complete' && !nextLevel()) { <p>That was the last level for now.</p> }
+              <h2 id="ov-title" tabindex="-1">{{ title() }}</h2>
+              @if (overlay() === 'intro') { <p>{{ story().intro }}</p> }
+              @if (overlay() === 'complete' && gameMode() === 'story' && !isDaily()) {
+                <p>{{ story().outro }}</p>
+                @if (!nextLevel()) { <p><strong>The end.</strong> Every boss mech is scrap, Iggy is in his best suit and the road home is open. Thank you for playing. You can still chase perfect runs, secrets, the daily challenge and the time attack boards.</p> }
+              }
               @if ((overlay() === 'gameover' || overlay() === 'complete') && over(); as o) {
                 <dl class="stats">
+                  @if (o.mode === 'time' && overlay() === 'complete') { <dt>Time</dt><dd>{{ fmt(o.time) }}</dd> }
                   <dt>Score</dt><dd>{{ o.score }}</dd>
                   <dt>Breadboards</dt><dd>{{ o.breadboards }}@if (o.perfect) { – Perfect run! ★ }</dd>
                   <dt>Distance</dt><dd>{{ o.distance }} m</dd>
                   <dt>Final suit</dt><dd>{{ o.suit }}</dd>
-                  <dt>Best</dt><dd>{{ progress.best(o.level) }}@if (rank() === 1) { – new best! }</dd>
+                  <dt>{{ gameMode() === 'time' ? 'Best time' : isDaily() ? 'Best today' : 'Best' }}</dt><dd>{{ gameMode() === 'time' ? fmt(progress.best(board(o.level))) : progress.best(board(o.level)) }}@if (rank() === 1) { – new best! }</dd>
                   @if (rank(); as r) { <dt>High scores</dt><dd>Place {{ r }} of 5</dd> }
                 </dl>
               }
               <div class="stack">
-                @if (overlay() === 'paused' && pauseView() === 'options') {
+                @if (overlay() === 'intro') {
+                  <button class="btn primary" type="button" (click)="beginLevel()">Start level</button>
+                } @else if (overlay() === 'paused' && pauseView() === 'options') {
                   <app-options [showDisplay]="false" />
                   <button class="btn primary" type="button" (click)="pauseView.set('main'); refocus()">Back to the pause menu</button>
                 } @else if (overlay() === 'paused') {
@@ -179,7 +197,7 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
                   <button class="btn" type="button" (click)="pauseView.set('options'); refocus()">Options and controls</button>
                 } @else {
                   @if (overlay() === 'complete' && nextLevel(); as next) {
-                    <a class="btn primary" [routerLink]="['/play', next.id]">Next level: {{ next.name }}</a>
+                    <a class="btn primary" [routerLink]="['/play', next.id]" [queryParams]="gameMode() === 'time' ? { mode: 'time' } : null">Next level: {{ next.name }}</a>
                   }
                   <button class="btn" [class.primary]="overlay() === 'gameover' || !nextLevel()" type="button" (click)="restart()">{{ overlay() === 'complete' ? 'Replay this level' : 'Play again' }}</button>
                 }
@@ -229,13 +247,15 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
               <li><strong>Duck:</strong> hold @for (c of keys('duck'); track c) { <kbd>{{ label(c) }}</kbd> }. Iggy crouches and can’t run, and his shots fly low, so he can hit small targets on the ground, like crawlers, that standing shots pass over.</li>
               <li><strong>Shoot:</strong> @for (c of keys('fire'); track c) { <kbd>{{ label(c) }}</kbd> } (hold to keep firing), once you have a gun.</li>
               <li><strong>Pause:</strong> <kbd>Esc</kbd> or the Pause button. You can change the keys, and make the game easier, under Options in the pause menu or on the Settings page. The Fullscreen button fills your screen; press <kbd>Esc</kbd> to leave it.</li>
+              <li><strong>Gamepad:</strong> left stick or d-pad moves and ducks, <kbd>A</kbd> jumps, <kbd>X</kbd> or <kbd>B</kbd> or a trigger shoots, <kbd>Start</kbd> pauses.</li>
               <li><strong>Touch screen:</strong> use the on-screen d-pad (up jumps, down ducks) and the Fire and Jump buttons.</li>
             </ul>
           </div>
           <div>
             <h3>Collect</h3>
             <ul>
-              <li><strong>Breadboards</strong>: every 100 earns a free life. <strong>Rings</strong> upgrade Iggy's suit.</li>
+              <li><strong>Breadboards</strong>: every 100 earns a free life. <strong>Rings</strong> upgrade Iggy's suit, and the higher suits learn tricks: <strong>Steel Sentinel</strong> dashes (Shoot when you have no gun), <strong>Night Guardian</strong> ground-pounds (Duck in mid-air) and <strong>Gold Circuit</strong> glides (hold Jump while falling after your double jump).</li>
+              <li><strong>Golden breadboard:</strong> each level hides one high above a gap. It is worth 500 points and needs a double jump.</li>
               <li><strong>Golden rings:</strong> jump through them for bonus points. Rings passed in quick succession build a chain worth more each time, up to 100 points a ring.</li>
               <li><strong>Glowing power-ups:</strong> spring legs, magnet, shield, overclock, the golden star and guns.</li>
               <li><strong>Golden star:</strong> Iggy is invincible for 8 seconds. Pylons, walls and enemies are smashed when you touch them, but falling into a gap still costs a life.</li>
@@ -247,6 +267,7 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
             <ul>
               <li><strong>Sparking pylons</strong> zap you from the side. Land on top of one to smash it and bounce, or shoot it.</li>
               <li><strong>Brick walls</strong> don’t hurt, but crashing through slows you down for a couple of seconds. Land on top to shatter one with no penalty, or shoot it to keep your speed.</li>
+              <li><strong>Roof hazards</strong> run on timers and beep before they strike: falling debris (city, hollow and wasteland levels), scalding steam vents (drowned city) and laser beams you must jump over (neon void and spore garden). Move out of the way or time your jump.</li>
               <li><strong>Skeletons and crawlers</strong> patrol the rooftops. Touching one from the side knocks Iggy’s suit down a level (or costs a life if he is already in the Rusty Original). Land on top of them to stomp them, or shoot them.</li>
               <li><strong>Flying enemies</strong> (glow-rays, drones and spore moths in the last three levels) hover above the roofs. When one flashes red it is about to dive at you. Land on top of it to stomp it and bounce, or shoot it.</li>
               <li><strong>Gaps</strong> between buildings cost a life. So does a hit while Iggy wears the Rusty Original. Losing a life sends him back to the last checkpoint in the Rusty Original suit.</li>
@@ -255,6 +276,7 @@ type Overlay = 'none' | 'paused' | 'gameover' | 'complete';
         </div>
       </section>
       <p aria-live="polite" class="visually-hidden">{{ announcement() }}</p>
+      @if (toast()) { <p class="toast" aria-hidden="true">★ Achievement: {{ toast() }}</p> }
     </main>
   `,
 })
@@ -269,6 +291,73 @@ export class PlayPage implements OnDestroy {
 
   /** From the route: /play/:level */
   readonly level = input<string>();
+  /** present (?daily=1) for the daily challenge: a level layout shared by everyone for the day, with its own scoreboard */
+  readonly daily = input<string>();
+  /** ?mode=endless (no boss, the pace creeps up) or ?mode=time (fixed level, race to the boss, ghost of your best run) */
+  readonly mode = input<string>();
+  protected readonly gameMode = computed<'story' | 'endless' | 'time'>(() => (this.mode() === 'endless' ? 'endless' : this.mode() === 'time' ? 'time' : 'story'));
+  protected readonly fmt = fmtTime;
+  /** a short pop-up for a new achievement (it is also read out through the live region) */
+  protected readonly toast = signal('');
+  private toastTimer = 0;
+  private award(list: Achievement[]) {
+    if (list.length === 0) return;
+    const text = 'Achievement unlocked: ' + list.map((a) => `${a.name}, ${a.how}`).join(' ');
+    this.announcement.set(text);
+    this.toast.set(list.map((a) => a.name).join(', '));
+    clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => this.toast.set(''), 5000);
+  }
+  protected story() {
+    return levelById(this.level());
+  }
+  protected title(): string {
+    const o = this.overlay();
+    if (o === 'intro') return `Level ${this.story().number}: ${this.story().name}`;
+    if (o === 'paused') return this.pauseView() === 'options' ? 'Options' : 'Paused';
+    if (o === 'complete') return !this.nextLevel() && this.gameMode() === 'story' && !this.isDaily() ? 'You beat the game!' : 'Level complete!';
+    return 'Iggy has fallen apart';
+  }
+  /** story card before a normal level (not before endless, time attack or the daily challenge) */
+  private maybeIntro() {
+    if (this.settings.settings().storyCards && this.gameMode() === 'story' && !this.isDaily()) this.show('intro');
+  }
+  protected beginLevel() {
+    this.overlay.set('none');
+    this.game?.scene.resume('play');
+    this.announcement.set('');
+    this.host().nativeElement.focus();
+  }
+  protected hasGhost() {
+    return !!this.loadGhost();
+  }
+  protected readonly isDaily = computed(() => this.daily() !== undefined);
+  private seed(): number | null {
+    const id = levelById(this.level()).id;
+    return this.gameMode() === 'time' ? hash('time:' + id) : this.isDaily() ? dailySeed(id) : null;
+  }
+  protected board(level: string) {
+    return this.gameMode() === 'time' ? `time:${level}` : this.gameMode() === 'endless' ? `endless:${level}` : this.isDaily() ? dailyBoard() : level;
+  }
+  private ghostKey(level: string) {
+    return `iggys-quest.ghost.${level}`;
+  }
+  private loadGhost(): number[] | null {
+    if (this.gameMode() !== 'time') return null;
+    try {
+      const g = JSON.parse(localStorage.getItem(this.ghostKey(levelById(this.level()).id)) ?? 'null');
+      return Array.isArray(g) ? g : null;
+    } catch {
+      return null;
+    }
+  }
+  /** hand the game the mode, level layout seed and ghost for the next run */
+  private applyRun(game: Phaser.Game) {
+    game.registry.set('level', levelById(this.level()).id);
+    game.registry.set('seed', this.seed());
+    game.registry.set('mode', this.gameMode());
+    game.registry.set('ghost', this.loadGhost());
+  }
   protected readonly overlay = signal<Overlay>('none');
   /** the pause menu shows either its buttons or the options */
   protected readonly pauseView = signal<'main' | 'options'>('main');
@@ -286,7 +375,7 @@ export class PlayPage implements OnDestroy {
     const i = LEVELS.findIndex((l) => l.id === o?.level);
     return i >= 0 ? LEVELS[i + 1] : undefined;
   });
-  protected readonly hud = signal<HudState>({ level: '', goal: 5000, score: 0, breadboards: 0, lives: 3, nextLifeIn: 100, perfect: true, suit: 'Rusty Original', nextSuit: 'Patchwork', nextSuitNeed: 3, powerUps: [], boss: null });
+  protected readonly hud = signal<HudState>({ level: '', goal: 5000, score: 0, breadboards: 0, lives: 3, nextLifeIn: 100, perfect: true, mode: 'story', time: 0, suit: 'Rusty Original', nextSuit: 'Patchwork', nextSuitNeed: 3, powerUps: [], boss: null });
   private readonly touch: TouchInput = { left: false, right: false, jump: false, fire: false, duck: false };
   /** show the on-screen controls on touch devices, or anywhere with ?controls=1 in the address */
   protected readonly touchUi = signal(false);
@@ -312,8 +401,10 @@ export class PlayPage implements OnDestroy {
     effect(() => {
       const id = levelById(this.level()).id;
       const game = this.game;
-      if (!game || game.registry.get('level') === id) return;
-      game.registry.set('level', id);
+      const seed = this.seed(), mode = this.gameMode();
+      if (!game || (game.registry.get('level') === id && (game.registry.get('seed') ?? null) === seed && game.registry.get('mode') === mode)) return;
+      this.applyRun(game);
+      this.game?.events.once('hud', () => this.zone.run(() => this.maybeIntro()));
       game.scene.getScene('play').scene.restart();
       this.overlay.set('none');
       this.over.set(null);
@@ -324,31 +415,73 @@ export class PlayPage implements OnDestroy {
     afterNextRender(async () => {
       // Load Phaser lazily so the menu pages stay small.
       const { createGame } = await import('../game/game-host');
-      this.game = createGame(this.host().nativeElement, this.settings.settings(), this.touch, levelById(this.level()).id);
+      this.game = createGame(this.host().nativeElement, this.settings.settings(), this.touch, levelById(this.level()).id, this.seed(), this.gameMode(), this.loadGhost());
       if (isDevMode()) (window as unknown as { __game?: Phaser.Game }).__game = this.game; // dev-only handle for debugging
       this.game.events.on('hud', (s: HudState) => this.zone.run(() => this.hud.set(s)));
+      this.game.events.once('hud', () => this.zone.run(() => this.maybeIntro()));
       this.game.events.on('announce', (t: string) => this.zone.run(() => this.announcement.set(t)));
+      this.game.events.on('secret', (id: string) => this.zone.run(() => { this.progress.findSecret(id); this.award(this.progress.milestones()); }));
+      this.game.events.on('achieve', (id: string) => this.zone.run(() => this.award(this.progress.award(id))));
       this.game.events.on('complete', (s: GameOverState) =>
         this.zone.run(() => {
           this.over.set(s);
-          this.rank.set(this.progress.record(s.level, this.settings.settings().playerName, s.score, true, s.perfect));
+          if (s.mode === 'time') {
+            const r = this.progress.record(s.level, this.settings.settings().playerName, s.time, true, false, this.board(s.level));
+            this.rank.set(r);
+            if (r === 1 && s.trace) {
+              try { localStorage.setItem(this.ghostKey(s.level), JSON.stringify(s.trace)); } catch { /* the ghost is a nicety */ }
+            }
+          } else this.rank.set(this.progress.record(s.level, this.settings.settings().playerName, s.score, true, s.perfect, this.board(s.level)));
+          const earned = [...this.progress.milestones()];
+          if (s.untouched) earned.push(...this.progress.award('untouched'));
+          if (s.mode === 'time') earned.push(...this.progress.award('time'));
+          if (s.mode === 'story' && this.isDaily()) earned.push(...this.progress.award('daily'));
+          this.award(earned);
           this.show('complete');
         }),
       );
       this.game.events.on('gameover', (s: GameOverState) =>
         this.zone.run(() => {
           this.over.set(s);
-          this.rank.set(this.progress.record(s.level, this.settings.settings().playerName, s.score, false));
+          if (s.mode === 'endless' && s.distance >= 2000) this.award(this.progress.award('marathon'));
+          this.rank.set(s.mode === 'time' ? null : this.progress.record(s.level, this.settings.settings().playerName, s.score, false, false, this.board(s.level)));
           this.show('gameover');
         }),
       );
       this.host().nativeElement.focus();
+      if (Array.from(navigator.getGamepads?.() ?? []).some((g) => g?.connected)) this.startPadWatch();
     });
+  }
+
+  /** Plug in a controller: say so, since the game gives no other sign. */
+  @HostListener('window:gamepadconnected')
+  protected onPadConnected() {
+    this.announcement.set('Gamepad connected. Left stick or d-pad moves, A jumps, X or B shoots, Start pauses.');
+    this.startPadWatch();
+  }
+
+  private padWatch = 0;
+  private startStart = false;
+  /** The Start button pauses and resumes (the game itself is frozen while paused, so the page watches for it). */
+  private startPadWatch() {
+    if (this.padWatch) return;
+    const tick = () => {
+      let down = false;
+      try { down = Array.from(navigator.getGamepads?.() ?? []).some((g) => g?.connected && g.buttons[9]?.pressed); } catch { /* no gamepad API */ }
+      if (down && !this.startStart) this.onEscape();
+      this.startStart = down;
+      this.padWatch = requestAnimationFrame(tick);
+    };
+    this.padWatch = requestAnimationFrame(tick);
   }
 
   @HostListener('document:keydown.escape')
   protected onEscape() {
     if (this.settings.capturing()) return; // Esc is cancelling a key capture in the options
+    if (this.overlay() === 'intro') {
+      this.beginLevel();
+      return;
+    }
     if (this.overlay() === 'paused' && this.pauseView() === 'options') {
       this.pauseView.set('main');
       this.refocus();
@@ -469,12 +602,15 @@ export class PlayPage implements OnDestroy {
     this.over.set(null);
       this.rank.set(null);
     this.announcement.set('New game');
+    if (this.game) this.applyRun(this.game); // a new best ghost may have been saved
     this.game?.scene.getScene('play').scene.restart();
     this.host().nativeElement.focus();
   }
 
   private show(kind: Exclude<Overlay, 'none'>) {
     if (kind === 'paused') this.game?.scene.pause('play');
+    // the story card appears while the scene is still being created, which Phaser won't pause: do it a moment later
+    if (kind === 'intro') setTimeout(() => { if (this.overlay() === 'intro') this.game?.scene.pause('play'); }, 60);
     this.overlay.set(kind);
     // Move focus into the dialog once it has rendered.
     setTimeout(() => document.getElementById('ov-title')?.focus());
@@ -502,6 +638,7 @@ export class PlayPage implements OnDestroy {
   }
 
   ngOnDestroy() {
+    if (this.padWatch) cancelAnimationFrame(this.padWatch);
     this.game?.destroy(true);
   }
 }

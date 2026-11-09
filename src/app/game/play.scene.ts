@@ -10,11 +10,15 @@ import { BOSS_H, makeBossTextures } from './boss-art';
 import { makeForeTexture } from './art-fore';
 import { Sfx } from './sfx';
 import { Music } from './music';
+import { seededRandom } from '../daily';
 
 /** What the Angular HUD shows. Emitted as game.events 'hud'. */
 export interface HudState {
   level: string;
   goal: number;
+  mode: 'story' | 'endless' | 'time';
+  /** whole seconds on the clock (time attack) */
+  time: number;
   boss: { name: string; hp: number; max: number } | null;
   score: number;
   breadboards: number;
@@ -35,6 +39,13 @@ export interface GameOverState {
   best: number;
   newBest: boolean;
   perfect: boolean;
+  /** the boss fight ended without Iggy being hit */
+  untouched: boolean;
+  mode: 'story' | 'endless' | 'time';
+  /** run time in milliseconds */
+  time: number;
+  /** the route Iggy took, as x,y pairs every 0.1s (time attack wins only), kept as the ghost */
+  trace?: number[];
 }
 export interface TouchInput { left: boolean; right: boolean; jump: boolean; fire: boolean; duck: boolean }
 
@@ -54,8 +65,13 @@ const POWER: Record<PowerId, { label: string; secs: number | null; tex: string; 
 
 interface Shot { s: Phaser.GameObjects.Image; vx: number; vy: number; kind: 'bolt' | 'rocket'; trail: number; big?: boolean; bossHit?: boolean; hit?: Set<Item> }
 interface Building { x: number; top: number; w: number; gfx: Phaser.GameObjects.Graphics; zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }
-interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer'; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
+interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer' | 'secret' | 'hazard'; hint?: boolean; hz?: Haz; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
 
+/** Roof hazards that run on a timer: falling debris (city, hollow, wastes), steam vents (drowned), laser grids (void, spores). */
+interface Haz {
+  type: 'debris' | 'vent' | 'laser'; gfx: Phaser.GameObjects.Graphics; x: number; top: number;
+  state: 'idle' | 'warn' | 'active' | 'done'; t: number; fall: number; ticks: number;
+}
 interface Plat {
   kind: 'moving' | 'crumble'; img: Phaser.Physics.Arcade.Image; collider: Phaser.Physics.Arcade.Collider; baseX: number; baseY: number; amp: number; phase: number;
   stood: boolean; timer: number; state: 'idle' | 'shaking' | 'falling';
@@ -81,6 +97,20 @@ const JUMP = 620;
 const SPRING_JUMP = 800;
 const LIFE_EVERY = 100;
 const MAX_LIVES = 9;
+/** time attack: how far the road runs before the boss arena, in pixels */
+const TIME_DISTANCE = 8000;
+type Mode = 'story' | 'endless' | 'time';
+const DASH_V = 600, DASH_TIME = 0.22, DASH_COOLDOWN = 1.1;
+const POUND_V = 950, POUND_RADIUS = 120;
+const GLIDE_FALL = 110;
+/** what each suit can do beyond soaking a hit, by suit index */
+const ABILITY: Record<number, string> = {
+  2: 'Dash: press Shoot when you have no gun.',
+  3: 'Ground pound: press Duck in mid-air.',
+  4: 'Glide: hold Jump while falling after your double jump.',
+};
+/** how far above the lower roof the secret floats: a plain jump falls short, a double jump (or spring legs) gets there */
+const SECRET_RISE = 230;
 const BLASTER_BOLT_SPEED = 640;
 const ROCKET_SPEED = 380;
 const CHARGE_MIN = 0.35; // hold at least this long (secs) and the release is a charged shot
@@ -117,7 +147,29 @@ export class PlayScene extends Phaser.Scene {
   private bossAmmoT = 8;
   private nextX = 0;
   private lastTop = 400;
-  private rand = Math.random;
+  /** Level layout randomness: seeded for the daily challenge so everyone gets the same level, plain random otherwise. */
+  private rand: () => number = Math.random;
+  private seed: number | null = null;
+  // suit abilities: Steel Sentinel dashes, Night Guardian ground-pounds, Gold Circuit glides
+  private dashT = 0;
+  private dashCD = 0;
+  private pounding = false;
+  private firePrev = false;
+  private duckPrev = false;
+  private mode: Mode = 'story';
+  private bossHurtIggy = false;
+  private stompChain = 0;
+  private runTime = 0;
+  private traceT = 0;
+  private lastSec = -1;
+  private trace: number[] = [];
+  private ghost: number[] | null = null;
+  private ghostBox?: Phaser.GameObjects.Rectangle;
+  private secretAt = 3000;
+  private secretPlaced = false;
+  private between(a: number, b: number) {
+    return Math.floor(this.rand() * (b - a + 1) + a);
+  }
 
   private layers: { sprite: Phaser.GameObjects.TileSprite; f: number }[] = [];
   private fog!: Phaser.GameObjects.TileSprite;
@@ -182,6 +234,18 @@ export class PlayScene extends Phaser.Scene {
     this.settings = this.registry.get('settings') as Settings;
     this.touch = (this.registry.get('touch') as TouchInput | undefined) ?? { left: false, right: false, jump: false, fire: false, duck: false };
     this.reduced = this.settings.reducedMotion;
+    this.seed = (this.registry.get('seed') as number | null | undefined) ?? null;
+    this.rand = this.seed ? seededRandom(this.seed) : Math.random;
+    this.mode = ((this.registry.get('mode') as Mode | undefined) ?? 'story');
+    this.ghost = this.mode === 'time' ? ((this.registry.get('ghost') as number[] | null | undefined) ?? null) : null;
+    this.bossHurtIggy = false;
+    this.stompChain = 0;
+    this.runTime = 0;
+    this.traceT = 0;
+    this.lastSec = -1;
+    this.trace = [];
+    this.secretAt = 2200 + this.rand() * 2800; // somewhere along the level a golden breadboard hides above a gap
+    this.secretPlaced = false;
     this.hc = this.settings.highContrast;
     this.level = levelById(this.registry.get('level') as string | undefined);
     this.sfx = new Sfx(this.settings.volume);
@@ -298,6 +362,8 @@ export class PlayScene extends Phaser.Scene {
     this.body = this.player.body as Phaser.Physics.Arcade.Body;
     this.body.setSize(22, 46);
     this.robot = this.add.graphics().setDepth(10);
+    // time attack: a ghost of the best run so far, drawn as a see-through outline so it can't be mistaken for an enemy
+    this.ghostBox = this.ghost?.length ? this.add.rectangle(-999, 0, 24, 40, 0x7ad9ff, 0.28).setStrokeStyle(2, 0xffffff, 0.85).setDepth(9) : undefined;
 
     // first rooftop is long and flat so Iggy can get his bearings
     this.nextX = -300;
@@ -397,13 +463,13 @@ export class PlayScene extends Phaser.Scene {
     const lim = this.cameras.main.scrollX + W + 900;
     while (this.nextX < lim) {
       const d = this.difficulty();
-      const rise = Phaser.Math.Between(-140, 70); // positive = lower
+      const rise = this.between(-140, 70); // positive = lower
       let top = Phaser.Math.Clamp(this.lastTop + rise, 290, 450);
       const stepUp = Math.max(0, this.lastTop - top);
       if (stepUp > 75) top = this.lastTop - 75;
       const maxGap = 120 + d * 60 - stepUp * 0.9;
-      const gap = Phaser.Math.Between(60, Math.max(70, Math.floor(maxGap)));
-      const w = Phaser.Math.Between(170, 440 - Math.floor(d * 120));
+      const gap = this.between(60, Math.max(70, Math.floor(maxGap)));
+      const w = this.between(170, 440 - Math.floor(d * 120));
       const x = this.nextX + gap;
       const prev = this.buildings[this.buildings.length - 1];
       const b = this.addBuilding(x, top, w);
@@ -431,16 +497,21 @@ export class PlayScene extends Phaser.Scene {
         this.addItem('bb', x0 + (x1 - x0) * u, y);
       }
     }
+    // the level's secret: a golden breadboard high above a gap, out of reach of a plain jump
+    if (prev && !this.secretPlaced && b.x > this.secretAt && gap > 70) {
+      this.secretPlaced = true;
+      this.addItem('secret', (prev.x + prev.w + b.x) / 2, Math.min(prev.top, b.top) - SECRET_RISE);
+    }
     // rooftop pylons
     const hazards: number[] = [];
     if (b.w > 240 && this.rand() < 0.25 + d * 0.5) {
-      const px = b.x + Phaser.Math.Between(90, b.w - 90);
+      const px = b.x + this.between(90, b.w - 90);
       hazards.push(px);
       this.addItem('pylon', px, b.top - 21);
     }
     // brick wall: Iggy can crash through it (slowed, not hurt), or shoot it down
     if (b.w > 260 && this.rand() < 0.22 + d * 0.25) {
-      const wx = b.x + Phaser.Math.Between(110, b.w - 110);
+      const wx = b.x + this.between(110, b.w - 110);
       if (!hazards.some((h) => Math.abs(h - wx) < 90)) {
         hazards.push(wx);
         this.addItem('wall', wx, b.top - 32);
@@ -448,18 +519,24 @@ export class PlayScene extends Phaser.Scene {
     }
     // rings to jump through: a short arc of one to three hoops floating above the roof
     if (b.w > 200 && this.maxX > 100 && this.rand() < 0.3) {
-      const n = Phaser.Math.Between(1, Math.min(3, Math.floor((b.w - 80) / 90)));
+      const n = this.between(1, Math.min(3, Math.floor((b.w - 80) / 90)));
       const x0 = b.x + (b.w - (n - 1) * 90) / 2;
       for (let i = 0; i < n; i++) this.addRing(x0 + i * 90, b.top - (n > 1 && i % 2 === 0 ? 92 : 105));
     }
     // a patrolling enemy walking back and forth across a clear roof
     if (hazards.length === 0 && b.w > 220 && this.maxX > 200 && this.rand() < 0.22 + d * 0.3) this.addPatrol(b);
+    // a timed roof hazard on a clear roof, a different kind for each look of level
+    if (hazards.length === 0 && b.w > 280 && this.maxX > 600 && this.rand() < 0.14 + d * 0.18) {
+      const hx = b.x + this.between(110, b.w - 110);
+      this.addHazard(hx, b.top);
+      hazards.push(hx);
+    }
     // a flying enemy hovering above the roof (the last three levels)
     if (['drowned', 'void', 'spores'].includes(this.level.style) && b.w > 200 && this.maxX > 300 && this.rand() < 0.12 + d * 0.14) this.addFlyer(b);
     // rooftop breadboards: a trail along the roof, sometimes higher
     if (this.rand() < 0.65) {
-      const n = Phaser.Math.Between(2, 5);
-      const start = b.x + Phaser.Math.Between(30, Math.max(31, b.w - n * 38 - 20));
+      const n = this.between(2, 5);
+      const start = b.x + this.between(30, Math.max(31, b.w - n * 38 - 20));
       const high = this.rand() < 0.4;
       for (let i = 0; i < n; i++) {
         const x = start + i * 38;
@@ -652,7 +729,7 @@ export class PlayScene extends Phaser.Scene {
         s.y = this.arenaTop + (!this.reduced && want !== 0 ? Math.abs(Math.sin(this.t * 6)) * -4 : 0);
         b.cd -= edt;
         if (b.cd <= 0) {
-          b.attack = b.def.attacks[Math.floor(this.rand() * b.def.attacks.length)];
+          b.attack = b.def.attacks[Math.floor(Math.random() * b.def.attacks.length)];
           b.state = 'telegraph';
           b.timer = b.attack === 'stomp' ? 0.9 : 0.6;
           s.setTexture(`boss-${this.level.style}-b`);
@@ -735,8 +812,8 @@ export class PlayScene extends Phaser.Scene {
     const pool: PowerId[] = ['gun', 'gun', 'shield', 'star', 'spring', 'turbo', 'magnet'];
     if (this.power.gun < 15) pool.push('gun', 'gun', 'gun'); // short on ammo: guns are far more likely
     if (this.lives <= 2) pool.push('shield', 'shield', 'star');
-    const id = pool[Math.floor(this.rand() * pool.length)];
-    const x = camX + 160 + this.rand() * (W - 320);
+    const id = pool[Math.floor(Math.random() * pool.length)];
+    const x = camX + 160 + Math.random() * (W - 320);
     this.dropItem(x, this.arenaTop - 75, id);
     if (!quiet) this.announce(`${id === 'gun' ? 'A blaster crate' : 'A ' + POWER[id].label.toLowerCase() + ' power-up'} is falling into the arena.`);
   }
@@ -852,10 +929,11 @@ export class PlayScene extends Phaser.Scene {
     const idx = suitFor(this.rings);
     if (idx !== this.suitIdx) {
       this.suitIdx = idx;
+      if (idx === 4) this.game.events.emit('achieve', 'gold-suit');
       const s = SUITS[idx];
       this.sfx.suit();
       this.banner(`New suit: ${s.name}`);
-      this.announce(`New suit unlocked: ${s.name}. ${s.blurb}`);
+      this.announce(`New suit unlocked: ${s.name}. ${s.blurb}${ABILITY[idx] ? ' New ability. ' + ABILITY[idx] : ''}`);
       this.dust(this.body.center.x, this.body.bottom, 8, 50, 40, 1.4);
       this.debris(this.body.center.x, this.body.center.y, 'cog', 6, 1.2);
       this.debris(this.body.center.x, this.body.center.y, 'bolt', 6, 1.2);
@@ -870,8 +948,8 @@ export class PlayScene extends Phaser.Scene {
 
   private addFlyer(b: Building) {
     const style = this.level.style as FlyerStyle;
-    const x = b.x + b.w / 2 + Phaser.Math.Between(-40, 40);
-    const y = b.top - Phaser.Math.Between(105, 150);
+    const x = b.x + b.w / 2 + this.between(-40, 40);
+    const y = b.top - this.between(105, 150);
     const sprite = this.add.image(x, y, `flyer-${style}-a`).setDepth(8);
     this.items.push({
       kind: 'flyer', sprite, baseY: y, phase: this.rand() * 6, hp: 2,
@@ -922,12 +1000,12 @@ export class PlayScene extends Phaser.Scene {
       s.y = Phaser.Math.Linear(f.fromY, f.homeY, u);
       if (f.timer <= 0) {
         f.state = 'idle';
-        f.cd = 4.5 + this.rand() * 2.5;
+        f.cd = 4.5 + Math.random() * 2.5;
       }
     }
     // contact: land on it from above to stomp it, otherwise it hurts
     if (body.right > s.x - 17 && body.left < s.x + 17 && body.bottom > s.y - 14 && body.top < s.y + 14) {
-      if (this.power.star > 0) this.defeatPatrol(it, 'stomp');
+      if (this.smashing()) this.defeatPatrol(it, 'stomp');
       else if (body.velocity.y > 40 && body.bottom < s.y + 2) {
         this.defeatPatrol(it, 'stomp');
         body.setVelocityY(-450);
@@ -940,7 +1018,7 @@ export class PlayScene extends Phaser.Scene {
     const crawler = ['drowned', 'void', 'spores'].includes(this.level.style);
     const kind = crawler ? 'crawler' : 'skeleton';
     const half = Math.min(130, (b.w - 60) / 2);
-    const cx = b.x + b.w / 2 + Phaser.Math.Between(-20, 20);
+    const cx = b.x + b.w / 2 + this.between(-20, 20);
     const h = crawler ? 22 : 44;
     const sprite = this.add.image(cx, b.top - h / 2, `${kind}-a`).setDepth(6);
     this.items.push({
@@ -949,8 +1027,87 @@ export class PlayScene extends Phaser.Scene {
     });
   }
 
+  private addHazard(x: number, top: number) {
+    const style = this.level.style;
+    const type: Haz['type'] = style === 'drowned' ? 'vent' : style === 'void' || style === 'spores' ? 'laser' : 'debris';
+    const gfx = this.add.graphics().setDepth(8);
+    const sprite = this.add.image(x, top, 'dust').setAlpha(0);
+    this.items.push({ kind: 'hazard', sprite, baseY: top, phase: 0, hz: { type, gfx, x, top, state: type === 'debris' ? 'idle' : 'idle', t: type === 'debris' ? 0 : this.rand() * 2, fall: 0, ticks: 0 } });
+  }
+
+  private updateHazard(it: Item, dt: number) {
+    const h = it.hz!, body = this.body, g = h.gfx;
+    const near = Math.abs(body.center.x - h.x);
+    if (near > 900) return; // far away: nothing to draw or time
+    g.clear();
+    const col = this.level.style === 'void' ? 0xff4fd8 : this.level.style === 'spores' ? 0x7dffc0 : this.level.style === 'drowned' ? 0xbfefff : 0xff7a1a;
+    const warnBlink = (period: number) => Math.floor(h.t / period) % 2 === 0;
+    const tick = (every: number) => {
+      const n = Math.floor(h.t / every);
+      if (n !== h.ticks) { h.ticks = n; this.sfx.warn(); }
+    };
+    h.t += dt;
+    const reach = (x0: number, x1: number, y0: number, y1: number) => body.right > x0 && body.left < x1 && body.bottom > y0 && body.top < y1;
+    if (h.type === 'debris') {
+      if (h.state === 'idle') {
+        if (near < 300) { h.state = 'warn'; h.t = 0; h.ticks = -1; this.announce('Look out: debris is about to fall.'); }
+        return;
+      }
+      const hover = h.top - 360;
+      if (h.state === 'warn') {
+        tick(0.25);
+        // a warning mark on the roof (a bar and a dot) and the block shaking up in the sky
+        if (warnBlink(0.18) || this.reduced) { g.fillStyle(col, 1).fillRect(h.x - 4, h.top - 46, 8, 26).fillRect(h.x - 4, h.top - 14, 8, 8); }
+        g.fillStyle(0x1a1410, 1).fillRect(h.x - 15 + (this.reduced ? 0 : Math.sin(h.t * 50) * 2), hover - 15, 30, 30).lineStyle(3, col, 1).strokeRect(h.x - 15, hover - 15, 30, 30);
+        if (h.t >= 1) { h.state = 'active'; h.fall = hover; this.sfx.warn(); }
+        return;
+      }
+      if (h.state === 'active') {
+        h.fall += 720 * dt;
+        const y = Math.min(h.fall, h.top - 15);
+        g.fillStyle(0x1a1410, 1).fillRect(h.x - 15, y - 15, 30, 30).lineStyle(3, col, 1).strokeRect(h.x - 15, y - 15, 30, 30);
+        if (reach(h.x - 15, h.x + 15, y - 15, y + 15) && this.invuln <= 0) this.hit('enemy');
+        if (h.fall >= h.top - 15) {
+          h.state = 'done';
+          this.sfx.crash();
+          this.debris(h.x, h.top - 8, 'brick', this.reduced ? 3 : 9, 1.3);
+          this.dust(h.x, h.top, 7, 44, 14, 1.1);
+          it.taken = true;
+        }
+      }
+      return;
+    }
+    if (h.type === 'vent') {
+      // off 2.2s, warning bubbles 0.8s, scalding jet 0.9s
+      const cyc = h.t % 3.9;
+      g.fillStyle(0x2a3a44, 1).fillRect(h.x - 18, h.top - 6, 36, 6);
+      if (cyc >= 2.2 && cyc < 3) {
+        h.state = 'warn'; tick(0.25);
+        for (let i = 0; i < 4; i++) g.fillStyle(col, 0.9).fillCircle(h.x - 9 + i * 6, h.top - 14 - ((h.t * 40 + i * 9) % 26), 2.5);
+      } else if (cyc >= 3) {
+        if (h.state !== 'active') { h.state = 'active'; this.sfx.jet(); }
+        g.fillStyle(col, 0.85).fillRect(h.x - 14, h.top - 120, 28, 114).fillStyle(0xffffff, 0.9).fillRect(h.x - 5, h.top - 120, 10, 114);
+        if (reach(h.x - 14, h.x + 14, h.top - 120, h.top) && this.invuln <= 0) this.hit('enemy');
+      } else h.state = 'idle';
+      return;
+    }
+    // laser grid: two posts and a beam low enough that it has to be jumped
+    const cyc = h.t % 3.3;
+    const half = 70, y = h.top - 20;
+    g.fillStyle(0x2a2f3d, 1).fillRect(h.x - half - 6, h.top - 40, 8, 40).fillRect(h.x + half - 2, h.top - 40, 8, 40);
+    g.fillStyle(col, 1).fillCircle(h.x - half - 2, y, 4).fillCircle(h.x + half + 2, y, 4);
+    if (cyc >= 1.6 && cyc < 2.2) {
+      h.state = 'warn'; tick(0.2);
+      if (warnBlink(0.1) || this.reduced) g.lineStyle(1, col, 1).lineBetween(h.x - half, y, h.x + half, y);
+    } else if (cyc >= 2.2) {
+      if (h.state !== 'active') { h.state = 'active'; this.sfx.laser(); }
+      g.lineStyle(6, col, 0.45).lineBetween(h.x - half, y, h.x + half, y).lineStyle(2, 0xffffff, 1).lineBetween(h.x - half, y, h.x + half, y);
+      if (reach(h.x - half, h.x + half, y - 4, y + 4) && this.invuln <= 0) this.hit('pylon');
+    } else h.state = 'idle';
+  }
+
   private addItem(kind: Item['kind'], x: number, y: number, power?: PowerId) {
-    const tex = kind === 'bb' ? 'breadboard' : kind === 'pylon' ? 'pylon' : kind === 'wall' ? 'wall' : POWER[power!].tex;
+    const tex = kind === 'secret' ? 'secret' : kind === 'bb' ? 'breadboard' : kind === 'pylon' ? 'pylon' : kind === 'wall' ? 'wall' : POWER[power!].tex;
     if (kind === 'bb') this.bbSpawned++;
     const sprite = this.add.image(x, y, tex).setDepth(kind === 'pylon' || kind === 'wall' ? 6 : 7);
     this.items.push({ kind, power, sprite, baseY: y, phase: Math.random() * 6, hp: kind === 'wall' ? 5 : undefined });
@@ -1001,6 +1158,7 @@ export class PlayScene extends Phaser.Scene {
         }
         it.sprite.destroy();
         it.back?.destroy();
+        it.hz?.gfx.destroy();
         return false;
       }
       return true;
@@ -1196,6 +1354,9 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private defeatPatrol(it: Item, how: 'shot' | 'stomp') {
+    if (how === 'stomp' && !(this.body.touching.down || this.body.blocked.down)) {
+      if (++this.stompChain === 5) this.game.events.emit('achieve', 'stomp-5');
+    }
     it.taken = true;
     this.bonus += how === 'stomp' ? 50 : 40;
     this.sfx.bricks();
@@ -1297,6 +1458,17 @@ export class PlayScene extends Phaser.Scene {
     this.emitHud(true);
   }
 
+  private collectSecret(it: Item) {
+    it.taken = true;
+    this.bonus += 500;
+    this.sfx.secret();
+    this.banner('Secret found!');
+    this.announce('Secret found: the golden breadboard! Plus 500 points.');
+    this.burst(it.sprite.x, it.sprite.y, [0xffd23a, 0xfff3b0, 0xffffff], 34, 260);
+    this.game.events.emit('secret', this.level.id);
+    this.emitHud(true);
+  }
+
   private collectPower(it: Item) {
     it.taken = true;
     const id = it.power!;
@@ -1332,7 +1504,8 @@ export class PlayScene extends Phaser.Scene {
     if (this.over) return;
     if (reason === 'fall') this.setDucked(false);
     if (reason !== 'fall') {
-      if (this.invuln > 0 || this.power.star > 0) return;
+      if (this.invuln > 0 || this.power.star > 0 || this.dashT > 0) return;
+      if (this.boss && this.boss.state !== 'dead') this.bossHurtIggy = true;
       if (this.power.shield > 0) {
         this.power.shield = 0;
         this.invuln = 1;
@@ -1384,6 +1557,9 @@ export class PlayScene extends Phaser.Scene {
 
   /** After losing a life Iggy restarts at the last checkpoint (the arena entrance during a boss fight), not where he died. */
   private respawn(): string {
+    this.dashT = 0;
+    this.pounding = false;
+    this.body.setAllowGravity(true);
     const inArena = this.camLock !== null && this.arenaX !== null;
     const spot = inArena ? { x: this.arenaX! + 200, top: this.arenaTop } : this.checkpoint;
     this.setDucked(false);
@@ -1434,7 +1610,7 @@ export class PlayScene extends Phaser.Scene {
       best = score;
       try { localStorage.setItem(bestKey, String(best)); } catch { /* ignore */ }
     }
-    const state: GameOverState = { level: this.level.id, score, breadboards: this.breadboards, distance: Math.floor(this.maxX / 10), suit: SUITS[this.suitIdx].name, best, newBest, perfect: won && this.isPerfect() };
+    const state: GameOverState = { level: this.level.id, score, breadboards: this.breadboards, distance: Math.floor(this.maxX / 10), suit: SUITS[this.suitIdx].name, best, newBest, perfect: won && this.isPerfect(), untouched: won && !this.bossHurtIggy, mode: this.mode, time: Math.round(this.runTime * 1000), trace: won && this.mode === 'time' ? this.trace : undefined };
     this.game.events.emit(won ? 'complete' : 'gameover', state);
   }
 
@@ -1447,6 +1623,67 @@ export class PlayScene extends Phaser.Scene {
     return (this.registry.get('settings') as Settings | undefined) ?? this.settings;
   }
 
+  /** Touching things smashes them while invincible, dashing or ground-pounding. */
+  private smashing() {
+    return this.power.star > 0 || this.dashT > 0 || this.pounding;
+  }
+
+  private poundLand() {
+    this.pounding = false;
+    const body = this.body;
+    const cx = body.center.x, by = body.bottom;
+    this.sfx.pound();
+    if (!this.reduced) this.cameras.main.shake(180, 0.008);
+    this.dust(cx, by, 12, 70, 22, 1.5);
+    this.burst(cx, by - 6, [0xffd23a, 0xffffff, 0xff7a1a], 24, 260);
+    for (const it of [...this.items]) {
+      if (it.taken || Math.abs(it.sprite.x - cx) > POUND_RADIUS || Math.abs(it.sprite.y - by) > 70) continue;
+      if (it.kind === 'patrol') this.defeatPatrol(it, 'stomp');
+      else if (it.kind === 'wall') this.breakWall(it, true);
+      else if (it.kind === 'pylon') this.destroyPylon(it);
+    }
+  }
+
+  /** Dash, ground pound and glide. They use the controls Iggy already has: Shoot with no gun, Duck in the air, and holding Jump. */
+  private abilities(dt: number, ground: boolean, jumpDown: boolean, fireDown: boolean, duckDown: boolean) {
+    const body = this.body, suit = this.suitIdx;
+    const firePressed = fireDown && !this.firePrev, duckPressed = duckDown && !this.duckPrev;
+    this.firePrev = fireDown;
+    this.duckPrev = duckDown;
+    this.dashCD = Math.max(0, this.dashCD - dt);
+    if (suit >= 2 && firePressed && !this.gun() && this.dashCD <= 0 && this.dashT <= 0 && !this.pounding && !this.ducked) {
+      this.dashT = DASH_TIME;
+      this.dashCD = DASH_COOLDOWN;
+      this.sfx.dash();
+      this.dust(body.center.x - this.facing * 10, body.bottom, 5, 36, 8, 1);
+    }
+    if (this.dashT > 0) {
+      this.dashT -= dt;
+      body.setAllowGravity(false);
+      body.setVelocity(this.facing * DASH_V, 0);
+      if (this.dashT <= 0) {
+        this.dashT = 0;
+        body.setAllowGravity(true);
+        body.setVelocityX(this.facing * RUN);
+      }
+      return;
+    }
+    if (suit >= 3 && !ground && duckPressed && !this.pounding) {
+      this.pounding = true;
+      this.spinT = 0;
+      this.sfx.poundStart();
+    }
+    if (this.pounding) {
+      if (ground) this.poundLand();
+      else {
+        body.setVelocityX(0);
+        body.setVelocityY(Math.max(body.velocity.y, POUND_V));
+      }
+      return;
+    }
+    if (suit >= 4 && !ground && jumpDown && this.airJumps === 0 && body.velocity.y > GLIDE_FALL) body.setVelocityY(GLIDE_FALL);
+  }
+
   private grace() {
     return this.live().longGrace ? 3.6 : 1.8;
   }
@@ -1456,6 +1693,24 @@ export class PlayScene extends Phaser.Scene {
     return k.left.includes(code) || k.right.includes(code) || k.jump.includes(code) || k.duck.includes(code) || k.fire.includes(code);
   }
 
+  /** Standard-mapping gamepad: left stick or d-pad to move/duck, A or up to jump, X, B or a trigger to shoot. */
+  private padState() {
+    const none = { left: false, right: false, jump: false, duck: false, fire: false };
+    let pads: (Gamepad | null)[] = [];
+    try { pads = Array.from(navigator.getGamepads?.() ?? []); } catch { return none; }
+    const pad = pads.find((g) => g && g.connected);
+    if (!pad) return none;
+    const b = (i: number) => !!pad.buttons[i]?.pressed;
+    const x = pad.axes[0] ?? 0, y = pad.axes[1] ?? 0;
+    return {
+      left: x < -0.45 || b(14),
+      right: x > 0.45 || b(15),
+      jump: b(0) || b(12) || y < -0.7,
+      duck: y > 0.6 || b(13),
+      fire: b(2) || b(1) || b(7) || b(5),
+    };
+  }
+
   private held(action: 'left' | 'right' | 'jump' | 'duck' | 'fire') {
     return this.live().keys[action].some((c) => this.down.has(c));
   }
@@ -1463,8 +1718,10 @@ export class PlayScene extends Phaser.Scene {
   private emitHud(force = false) {
     const next = SUITS[this.suitIdx + 1];
     const state: HudState = {
-      level: `Level ${this.level.number}: ${this.level.name}`,
+      level: `Level ${this.level.number}: ${this.level.name}${this.mode === 'time' ? ' (Time attack)' : this.mode === 'endless' ? ' (Endless)' : this.seed ? ' (Daily challenge)' : ''}`,
       goal: BOSS_SCORE,
+      mode: this.mode,
+      time: Math.floor(this.runTime),
       boss: this.boss && this.boss.state !== 'dead' ? { name: this.boss.def.name, hp: Math.max(0, this.boss.hp), max: this.boss.max } : null,
       score: this.score(),
       breadboards: this.breadboards,
@@ -1512,13 +1769,33 @@ export class PlayScene extends Phaser.Scene {
     const dt = Math.min(delta, 50) / 1000;
     const edt = dt * (this.live().enemySpeed / 100); // assist: enemies and bosses can run slower than the world
     this.t += dt;
+    if (!this.over) {
+      this.runTime += dt;
+      this.traceT += dt;
+      while (this.traceT >= 0.1) {
+        this.traceT -= 0.1;
+        if (this.mode === 'time') this.trace.push(Math.round(this.body.center.x), Math.round(this.body.center.y));
+      }
+      if (this.ghostBox && this.ghost) {
+        const f = this.runTime / 0.1, i = Math.floor(f);
+        if ((i + 1) * 2 + 1 < this.ghost.length) {
+          const u = f - i;
+          this.ghostBox.setPosition(Phaser.Math.Linear(this.ghost[i * 2], this.ghost[i * 2 + 2], u), Phaser.Math.Linear(this.ghost[i * 2 + 1], this.ghost[i * 2 + 3], u));
+        } else this.ghostBox.setPosition(-999, 0); // the ghost has finished
+      }
+      if (this.mode === 'time' && Math.floor(this.runTime) !== this.lastSec) {
+        this.lastSec = Math.floor(this.runTime);
+        this.emitHud(true);
+      }
+    }
     const cam = this.cameras.main;
     const body = this.body;
 
     // -- input
-    const left = this.held('left') || this.touch.left;
-    const right = this.held('right') || this.touch.right;
-    const jumpDown = this.held('jump') || this.touch.jump;
+    const pad = this.padState();
+    const left = this.held('left') || this.touch.left || pad.left;
+    const right = this.held('right') || this.touch.right || pad.right;
+    const jumpDown = this.held('jump') || this.touch.jump || pad.jump;
     if (jumpDown && !this.jumpHeld) this.jumpBuffer = 0.12;
     if (!jumpDown && this.jumpHeld && body.velocity.y < -200) body.setVelocityY(body.velocity.y * 0.55); // short hop on early release
     this.jumpHeld = jumpDown;
@@ -1529,9 +1806,10 @@ export class PlayScene extends Phaser.Scene {
       this.coyote = ground ? 0.1 : Math.max(0, this.coyote - dt);
       if (ground) this.airJumps = 1;
 
-      const speed = RUN * (this.power.turbo > 0 ? 1.35 : 1) * (this.slowT > 0 ? 0.45 : 1);
+      const ramp = this.mode === 'endless' ? 1 + Math.min(0.5, Math.max(0, this.maxX) / 80000) : 1; // endless: the pace creeps up
+      const speed = RUN * ramp * (this.power.turbo > 0 ? 1.35 : 1) * (this.slowT > 0 ? 0.45 : 1);
       // duck: crouch on the ground (can still turn round and shoot, but can't run); the hitbox gets shorter
-      this.setDucked(ground && (this.held('duck') || this.touch.duck));
+      this.setDucked(ground && (this.held('duck') || this.touch.duck || pad.duck));
       let target = left === right ? 0 : left ? -speed : speed;
       if (this.ducked) {
         if (target !== 0) this.facing = Math.sign(target);
@@ -1598,6 +1876,8 @@ export class PlayScene extends Phaser.Scene {
         this.landSquash = Math.min(1, this.prevVy / 700);
         this.sfx.land();
       }
+      this.abilities(dt, ground, jumpDown, this.held('fire') || this.touch.fire || pad.fire, this.held('duck') || this.touch.duck || pad.duck);
+      if (ground) this.stompChain = 0;
       this.wasGround = ground;
       this.prevVy = body.velocity.y;
 
@@ -1650,17 +1930,19 @@ export class PlayScene extends Phaser.Scene {
           s.setTexture(`${w.kind}-${Math.floor(w.frame) % 2 ? 'b' : 'a'}`).setFlipX(w.dir < 0);
           const half = s.height / 2;
           if (Math.abs(px - s.x) < 17 && body.bottom > s.y - half + 4 && body.top < s.y + half) {
-            if (this.power.star > 0) this.defeatPatrol(it, 'stomp');
+            if (this.smashing()) this.defeatPatrol(it, 'stomp');
             else if (body.velocity.y > 60 && body.bottom < s.y - half + 18) {
               this.defeatPatrol(it, 'stomp');
               body.setVelocityY(-430);
             } else this.hit('enemy');
           }
+        } else if (it.kind === 'hazard' && it.hz) {
+          this.updateHazard(it, edt);
         } else if (it.kind === 'flyer' && it.flyer) {
           this.updateFlyer(it, edt);
         } else if (it.kind === 'wall') {
           if (Math.abs(px - s.x) < 24 && body.bottom > s.y - 32 && body.top < s.y + 32) {
-            if (this.power.star > 0) this.breakWall(it, true);
+            if (this.smashing()) this.breakWall(it, true);
             else if (this.landedOn(s.y - 32)) this.stompObstacle(it);
             else this.crashWall(it);
           }
@@ -1678,12 +1960,18 @@ export class PlayScene extends Phaser.Scene {
               it.baseY = s.y;
             }
           }
-          if (Math.hypot(px - s.x, py - s.y) < (it.kind === 'bb' ? 30 : 34)) {
-            if (it.kind === 'bb') this.collectBreadboard(it);
+          if (it.kind === 'secret' && !it.hint && Math.abs(px - s.x) < 380) {
+            it.hint = true;
+            this.sfx.secretNear();
+            this.announce('Something golden glimmers high above the gap ahead.');
+          }
+          if (Math.hypot(px - s.x, py - s.y) < (it.kind === 'bb' ? 30 : it.kind === 'secret' ? 40 : 34)) {
+            if (it.kind === 'secret') this.collectSecret(it);
+            else if (it.kind === 'bb') this.collectBreadboard(it);
             else this.collectPower(it);
           }
         } else if (Math.abs(px - s.x) < 17 && body.bottom > s.y - 18 && body.top < s.y + 21) {
-          if (this.power.star > 0) this.destroyPylon(it);
+          if (this.smashing()) this.destroyPylon(it);
           else if (this.landedOn(s.y - 18)) this.stompObstacle(it);
           else this.hit('pylon');
         }
@@ -1694,9 +1982,9 @@ export class PlayScene extends Phaser.Scene {
 
       // speed trail behind Iggy while overclocked or invincible
       this.trailT -= dt;
-      if (!this.reduced && this.trailT <= 0 && (this.power.turbo > 0 || this.power.star > 0)) {
+      if (!this.reduced && this.trailT <= 0 && (this.power.turbo > 0 || this.power.star > 0 || this.dashT > 0)) {
         this.trailT = 0.045;
-        const col = this.power.star > 0 ? Phaser.Display.Color.HSVToRGB((this.t * 1.5) % 1, 0.6, 1).color : 0x4af0ff;
+        const col = this.power.star > 0 ? Phaser.Display.Color.HSVToRGB((this.t * 1.5) % 1, 0.6, 1).color : this.dashT > 0 ? 0xffffff : 0x4af0ff;
         const streak = this.add.rectangle(body.center.x - this.facing * 12, body.center.y + Phaser.Math.Between(-18, 18), 14, 4, col).setDepth(9);
         this.tweens.add({ targets: streak, x: streak.x - this.facing * 40, alpha: 0, scaleX: 0.3, duration: 320, onComplete: () => streak.destroy() });
       }
@@ -1724,7 +2012,7 @@ export class PlayScene extends Phaser.Scene {
     // -- shooting
     this.fireCD = Math.max(0, this.fireCD - dt);
     this.fireAnim = Math.max(0, this.fireAnim - dt * 6);
-    const held = !this.over && !!this.gun() && (this.held('fire') || this.touch.fire);
+    const held = !this.over && !!this.gun() && (this.held('fire') || this.touch.fire || this.padState().fire);
     if (held) {
       const before = this.charge;
       this.charge = Math.min(CHARGE_FULL, this.charge + dt);
@@ -1741,7 +2029,8 @@ export class PlayScene extends Phaser.Scene {
     this.updateShots(dt);
 
     // -- camera only moves forward; Iggy can't run off the left edge
-    if (this.arenaX === null && !this.over && this.score() >= BOSS_SCORE) this.openArena();
+    const arenaDue = this.mode === 'story' ? this.score() >= BOSS_SCORE : this.mode === 'time' ? this.maxX >= TIME_DISTANCE : false;
+    if (this.arenaX === null && !this.over && arenaDue) this.openArena();
     if (this.arenaX !== null && this.camLock === null && !this.over && body.center.x > this.arenaX + 140) {
       this.camLock = this.arenaX - 20;
       this.spawnBoss();

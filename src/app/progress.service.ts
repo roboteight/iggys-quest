@@ -1,5 +1,6 @@
 import { effect, Injectable, signal } from '@angular/core';
 import { LEVELS } from './game/levels';
+import { ACHIEVEMENTS, Achievement } from './achievements';
 
 export interface ScoreEntry {
   name: string;
@@ -14,6 +15,10 @@ export interface Progress {
   completed: string[];
   /** ids of levels cleared with every breadboard collected */
   perfect: string[];
+  /** ids of levels whose golden breadboard has been found */
+  secrets: string[];
+  /** ids of achievements earned */
+  achievements: string[];
   /** top scores per level id, best first */
   scores: Record<string, ScoreEntry[]>;
 }
@@ -24,9 +29,9 @@ export const MAX_SCORES = 5;
 function load(): Progress {
   try {
     const p = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    return { completed: Array.isArray(p.completed) ? p.completed : [], perfect: Array.isArray(p.perfect) ? p.perfect : [], scores: p.scores && typeof p.scores === 'object' ? p.scores : {} };
+    return { completed: Array.isArray(p.completed) ? p.completed : [], perfect: Array.isArray(p.perfect) ? p.perfect : [], secrets: Array.isArray(p.secrets) ? p.secrets : [], achievements: Array.isArray(p.achievements) ? p.achievements : [], scores: p.scores && typeof p.scores === 'object' ? p.scores : {} };
   } catch {
-    return { completed: [], perfect: [], scores: {} };
+    return { completed: [], perfect: [], secrets: [], achievements: [], scores: {} };
   }
 }
 
@@ -55,24 +60,60 @@ export class ProgressService {
     return this.progress().completed.includes(levelId);
   }
 
+  secretFound(levelId: string): boolean {
+    return this.progress().secrets.includes(levelId);
+  }
+
+  findSecret(levelId: string) {
+    if (!this.secretFound(levelId)) this.progress.update((p) => ({ ...p, secrets: [...p.secrets, levelId] }));
+  }
+
+  hasAchievement(id: string): boolean {
+    return this.progress().achievements.includes(id);
+  }
+
+  /** Earns achievements (ignoring ones already held). Returns the ones that are new, as names ready to show. */
+  award(...ids: string[]): Achievement[] {
+    const fresh = ids.filter((id, i) => ids.indexOf(id) === i && !this.hasAchievement(id));
+    if (fresh.length === 0) return [];
+    this.progress.update((p) => ({ ...p, achievements: [...p.achievements, ...fresh] }));
+    return ACHIEVEMENTS.filter((a) => fresh.includes(a.id));
+  }
+
+  /** Achievements that follow from the saved progress itself (cleared levels, perfects, secrets). */
+  milestones(): Achievement[] {
+    const p = this.progress(), n = LEVELS.length;
+    const ids: string[] = [];
+    if (p.completed.length >= 1) ids.push('first-boss');
+    if (p.completed.length >= n) ids.push('all-bosses');
+    if (p.perfect.length >= 1) ids.push('perfect-1');
+    if (p.perfect.length >= n) ids.push('perfect-all');
+    if (p.secrets.length >= 1) ids.push('secret-1');
+    if (p.secrets.length >= n) ids.push('secret-all');
+    return this.award(...ids);
+  }
+
   perfected(levelId: string): boolean {
     return this.progress().perfect.includes(levelId);
   }
 
+  /** best score on a board (for time boards: the fastest time in ms, 0 if none) */
   best(levelId: string): number {
     return this.progress().scores[levelId]?.[0]?.score ?? 0;
   }
 
   /** Records a finished run. Returns the 1-based place on that level's board, or null if it did not make the top five. */
-  record(levelId: string, name: string, score: number, cleared: boolean, perfect = false): number | null {
+  record(levelId: string, name: string, score: number, cleared: boolean, perfect = false, board = levelId): number | null {
     let rank: number | null = null;
     this.progress.update((p) => {
-      const completed = cleared && !p.completed.includes(levelId) ? [...p.completed, levelId] : p.completed;
-      const perfects = perfect && !p.perfect.includes(levelId) ? [...p.perfect, levelId] : p.perfect;
-      const list = [...(p.scores[levelId] ?? [])];
+      const own = board === levelId; // the daily challenge has its own board and doesn't unlock or star levels
+      const completed = own && cleared && !p.completed.includes(levelId) ? [...p.completed, levelId] : p.completed;
+      const perfects = own && perfect && !p.perfect.includes(levelId) ? [...p.perfect, levelId] : p.perfect;
+      const list = [...(p.scores[board] ?? [])];
       const entry: ScoreEntry = { name: name.trim() || 'Iggy', score, cleared, date: new Date().toISOString().slice(0, 10) };
       if (score > 0) {
-        const at = list.findIndex((e) => score > e.score);
+        const asc = board.startsWith('time:'); // times: lower is better
+        const at = list.findIndex((e) => (asc ? score < e.score : score > e.score));
         const idx = at === -1 ? list.length : at;
         if (idx < MAX_SCORES) {
           list.splice(idx, 0, entry);
@@ -80,12 +121,16 @@ export class ProgressService {
           rank = idx + 1;
         }
       }
-      return { completed, perfect: perfects, scores: { ...p.scores, [levelId]: list } };
+      const scores = { ...p.scores, [board]: list };
+      // keep only the last week of daily boards
+      const days = Object.keys(scores).filter((k) => k.startsWith('daily:')).sort().reverse();
+      for (const k of days.slice(7)) delete scores[k];
+      return { ...p, completed, perfect: perfects, scores };
     });
     return rank;
   }
 
   reset() {
-    this.progress.set({ completed: [], perfect: [], scores: {} });
+    this.progress.set({ completed: [], perfect: [], secrets: [], achievements: [], scores: {} });
   }
 }

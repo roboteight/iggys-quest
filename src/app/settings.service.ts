@@ -47,6 +47,8 @@ export interface Settings {
   playerName: string;
   /** which keys do what (KeyboardEvent.code values) */
   keys: Record<Action, string[]>;
+  /** show story cards before each level and after each boss */
+  storyCards: boolean;
   /** assist: lives at the start and after a checkpoint top-up */
   startLives: number;
   /** assist: how fast enemies and bosses move and attack, in percent */
@@ -67,6 +69,7 @@ function load(): Settings {
     highContrast: window.matchMedia('(prefers-contrast: more)').matches,
     playerName: 'Iggy',
     keys: cloneKeys(DEFAULT_KEYS),
+    storyCards: true,
     startLives: 3,
     enemySpeed: 100,
     longGrace: false,

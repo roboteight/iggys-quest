@@ -234,6 +234,19 @@ export function makeSmallTextures(scene: Phaser.Scene) {
   g.generateTexture('breadboard', bw, bh);
   g.destroy();
 
+  // GOLDEN BREADBOARD: the secret collectible, bigger and gold with a halo so it reads on any background
+  g = gfx(scene);
+  const gw = 52, gh = 38;
+  for (let r = 19; r > 8; r--) g.fillStyle(0xffe27a, 0.06).fillCircle(gw / 2, gh / 2, r + 7);
+  g.fillStyle(0x000000, 1).fillRoundedRect(6, 6, 40, 26, 3);
+  g.fillStyle(0xffd23a, 1).fillRoundedRect(7.5, 7.5, 37, 23, 2);
+  g.fillStyle(0xfff3b0, 1).fillRect(10, 10, 32, 2);
+  g.fillStyle(0xb8860b, 1).fillRect(10, 13, 32, 2).fillRect(10, 20, 32, 2);
+  for (let x = 12; x < 42; x += 4) g.fillStyle(0x6b4a00, 1).fillRect(x, 16, 1.6, 1.6).fillRect(x, 24, 1.6, 1.6);
+  g.fillStyle(0xffffff, 1).fillCircle(42, 11, 2.4);
+  g.generateTexture('secret', gw, gh);
+  g.destroy();
+
   // spark pylon hazard (frayed power cable on a post)
   g = gfx(scene);
   g.fillStyle(0x16181f, 1).fillRect(0, 34, 30, 8);

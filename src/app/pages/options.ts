@@ -41,6 +41,7 @@ import { ACTIONS, Action, RESERVED_KEYS, SettingsService, keyLabel, keySpoken } 
         <legend>Display</legend>
         <label><input type="checkbox" [checked]="s().reducedMotion" (change)="svc.update({ reducedMotion: $any($event.target).checked })" /> Reduce motion</label>
         <label><input type="checkbox" [checked]="s().highContrast" (change)="svc.update({ highContrast: $any($event.target).checked })" /> High contrast</label>
+        <label><input type="checkbox" [checked]="s().storyCards" (change)="svc.update({ storyCards: $any($event.target).checked })" /> Show story cards before levels</label>
         <p class="hint">Reduce motion and high contrast reach the game the next time a level starts.</p>
       </fieldset>
     }
