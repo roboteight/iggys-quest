@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enforcer Nine rig test</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #14161c; color: #f1f1f5; font: 16px/1.5 system-ui, sans-serif; }
+  main { max-width: 56rem; margin: 0 auto; padding: 1rem; }
+  h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
+  p { margin: .25rem 0 1rem; color: #c9cbd6; }
+  .stage { background: #2a303a; border: 2px solid #ffd23a; border-radius: .75rem; padding: .5rem; }
+  canvas { display: block; width: 100%; height: auto; }
+  .row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+  button { font: inherit; padding: .6rem 1rem; min-height: 2.75rem; border-radius: .5rem; border: 2px solid #8a8fa8; background: #20232e; color: inherit; cursor: pointer; }
+  button[aria-pressed='true'] { background: #ffd23a; color: #14161c; border-color: #ffd23a; }
+  button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+  @media (forced-colors: active) { button[aria-pressed='true'] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Enforcer Nine: skeleton rig test</h1>
+  <p>Every part is cut straight from the concept sheet: the body, each shoulder, each arm (hanging from its shoulder), and each leg (a thigh and a shin that bend at the knee).</p>
+  <div class="stage"><canvas id="c" width="900" height="620" role="img" aria-label="Enforcer Nine, a rusty teal bipedal robot with orange glowing eyes and twin cannons, animated by moving cut-out parts. The current animation is shown in the buttons below."></canvas></div>
+  <div class="row" role="group" aria-label="Animation">
+    <button type="button" data-a="walk" aria-pressed="true">Walk</button>
+    <button type="button" data-a="idle" aria-pressed="false">Idle</button>
+    <button type="button" data-a="charge" aria-pressed="false">Charge</button>
+    <button type="button" id="pause" aria-pressed="false">Pause</button>
+  </div>
+</main>
+<noscript><p>This test needs JavaScript to animate. The parts are in the enforcer folder as PNG files.</p></noscript>
+<script>
+const names = ['lowerR', 'upperR', 'lowerL', 'upperL', 'body', 'shoulderL', 'shoulderR', 'armL', 'armR'];
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let meta, img = {}, mode = 'walk', paused = matchMedia('(prefers-reduced-motion: reduce)').matches, t = 0, last = 0;
+const pauseBtn = document.getElementById('pause');
+pauseBtn.setAttribute('aria-pressed', String(paused));
+
+function part(k, chain) {
+  const p = meta[k];
+  ctx.save();
+  for (const [piv, rot, dx = 0, dy = 0] of chain) { ctx.translate(dx, dy); ctx.translate(piv[0], piv[1]); ctx.rotate(rot); ctx.translate(-piv[0], -piv[1]); }
+  ctx.drawImage(img[k], p.x, p.y);
+  ctx.restore();
+}
+function frame() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.save();
+  const S = 0.76; ctx.translate(60, -40); ctx.scale(S, S);
+  ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(370, 905, 250, 26, 0, 0, Math.PI * 2); ctx.fill();
+  let ph = t * (mode === 'walk' ? 7 : 0), bob = 0, lean = 0, dx = 0, kick = 0;
+  if (mode === 'walk') bob = -Math.abs(Math.sin(ph)) * 12;
+  if (mode === 'idle') { bob = Math.sin(t * 2.4) * -4; lean = Math.sin(t * 1.2) * 0.008; }
+  if (mode === 'charge') { const u = (Math.sin(t * 3) + 1) / 2; lean = -0.05 * u; dx = 10 * u; bob = Math.sin(t * 40) * 1.6; kick = u; }
+  const legs = [['upperR', 'lowerR', 1], ['upperL', 'lowerL', 0]];
+  for (const [up, lo, flip] of legs) {
+    const a = ph + flip * Math.PI;
+    const hip = mode === 'walk' ? Math.sin(a) * 0.32 : 0, knee = mode === 'walk' ? Math.max(0, -Math.cos(a)) * 0.6 : 0;
+    ctx.save(); ctx.translate(0, bob * 0.5);
+    const uc = [[meta[up].pivot, hip]];
+    part(lo, [...uc, [meta[lo].pivot, knee]]); part(up, uc);
+    ctx.restore();
+  }
+  ctx.save(); ctx.translate(dx, bob);
+  part('body', [[meta.body.pivot, lean + (mode === 'walk' ? Math.sin(ph * 2) * 0.012 : 0)]]);
+  // shoulders move first and carry the arms with them: they roll with each step, rise and fall with the breath, and hunch up when charging
+  let sL = 0, sR = 0, dyL = 0, dyR = 0, aL = 0, aR = 0, rx = 0;
+  if (mode === 'walk') { sL = Math.sin(ph + Math.PI) * 0.035; sR = -Math.sin(ph + Math.PI) * 0.035; dyL = Math.sin(ph * 2) * 2.5; dyR = Math.sin(ph * 2 + 1) * 2.5; aL = Math.sin(ph + Math.PI) * 0.07; aR = -Math.sin(ph + Math.PI * 0.5) * 0.07; }
+  if (mode === 'idle') { dyL = Math.sin(t * 2.4) * 2.5; dyR = Math.sin(t * 2.4 + 0.5) * 2.5; sL = Math.sin(t * 1.2) * 0.012; sR = -sL; aL = Math.sin(t * 1.6) * 0.03; aR = -Math.sin(t * 1.6 + 1.2) * 0.03; }
+  if (mode === 'charge') { dyL = dyR = -5 * kick + Math.sin(t * 45) * 0.8; sL = 0.05 * kick; sR = -0.05 * kick; aL = 0.09 * kick + Math.sin(t * 45) * 0.012; aR = -0.09 * kick - Math.sin(t * 45 + 1) * 0.012; rx = 7 * kick; }
+  const shL = [[meta.shoulderL.pivot, sL, rx * 0.6, dyL]], shR = [[meta.shoulderR.pivot, sR, -rx * 0.6, dyR]];
+  part('shoulderL', shL); part('shoulderR', shR);
+  part('armL', [...shL, [meta.armL.pivot, aL, rx * 0.4, 0]]); part('armR', [...shR, [meta.armR.pivot, aR, -rx * 0.4, 0]]);
+  ctx.restore();
+  ctx.restore();
+}
+function loop(ts) {
+  const dt = Math.min(0.05, (ts - last) / 1000 || 0); last = ts;
+  if (!paused) t += dt;
+  frame(); requestAnimationFrame(loop);
+}
+document.querySelectorAll('[data-a]').forEach((b) => b.addEventListener('click', () => {
+  mode = b.dataset.a;
+  document.querySelectorAll('[data-a]').forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+}));
+pauseBtn.addEventListener('click', () => { paused = !paused; pauseBtn.setAttribute('aria-pressed', String(paused)); });
+fetch('enforcer/parts.json').then((r) => r.json()).then(async (m) => {
+  meta = m;
+  await Promise.all(names.map((k) => new Promise((res) => { const i = new Image(); i.onload = res; i.src = `enforcer/${k}.png`; img[k] = i; })));
+  requestAnimationFrame(loop);
+});
+</script>
+</body>
+</html>
