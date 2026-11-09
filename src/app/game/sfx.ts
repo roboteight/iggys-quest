@@ -138,6 +138,7 @@ export class Sfx {
   /** an incoming shell: a long falling whistle */
   whistle() { this.tone(2600, 700, 1.1, 'sine', 0.35); this.tone(2610, 710, 1.1, 'triangle', 0.15); }
   explosion() { this.tone(90, 28, 0.7, 'sawtooth', 1); this.tick(300, 0.5, 1); this.tick(900, 0.3, 0.8, 0.05); this.tone(180, 50, 0.4, 'square', 0.5); }
+  rifle() { this.tick(1800, 0.09, 0.9); this.tone(220, 80, 0.12, 'square', 0.45); }
   mineBeep() { this.tone(1500, 1500, 0.06, 'square', 0.3); }
   warn() { this.tone(1800, 1800, 0.07, 'square', 0.35); }
   crash() { this.tone(110, 40, 0.35, 'sawtooth', 0.9); this.tick(700, 0.25, 0.9); }

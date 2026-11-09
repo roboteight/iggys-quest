@@ -271,7 +271,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
               <li><strong>Brick walls</strong> don’t hurt, but crashing through slows you down for a couple of seconds. Land on top to shatter one with no penalty, or shoot it to keep your speed.</li>
               <li><strong>Roof hazards</strong> run on timers and beep before they strike: falling debris (city, hollow and wasteland levels), scalding steam vents (drowned city) and laser beams you must jump over (neon void and spore garden). Move out of the way or time your jump.</li>
               <li><strong>Skeletons and crawlers</strong> patrol the rooftops. Touching one from the side knocks Iggy’s suit down a level (or costs a life if he is already in the Rusty Original). Land on top of them to stomp them, or shoot them.</li>
-              <li><strong>Flying enemies</strong> (glow-rays, drones and spore moths in the last three levels) hover above the roofs. When one flashes red it is about to dive at you. Land on top of it to stomp it and bounce, or shoot it.</li>
+              <li><strong>Flying enemies</strong> (death-rays in the drowned city and gearbats in the neon void and spore garden) hover above the roofs. When one flashes red it is about to dive at you. Land on top of it to stomp it and bounce, or shoot it.</li>
               <li><strong>Gaps</strong> between buildings cost a life. So does a hit while Iggy wears the Rusty Original. Losing a life sends him back to the last checkpoint in the Rusty Original suit.</li>
             </ul>
           </div>

@@ -6,7 +6,9 @@ import {
 } from './art';
 import { ensureStyle, drawLevelBuilding, makeEnemyTextures, makeFlyerTextures, makeRingTextures, makeWarTextures, makePlatformTextures, ExtraStyle } from './art-levels';
 import { BOSSES, BOSS_SCORE, BossAttack, BossDef, LevelDef, levelById } from './levels';
-import { BOSS_H, makeBossTextures } from './boss-art';
+import { makeBossShots } from './boss-shots';
+import { makeEnemyRigTextures } from './enemy-rigs';
+import { makeBossRigTextures } from './boss-rigs';
 import { makeForeTexture } from './art-fore';
 import { Sfx } from './sfx';
 import { Music } from './music';
@@ -66,20 +68,21 @@ const POWER: Record<PowerId, { label: string; secs: number | null; tex: string; 
 
 interface Shot { s: Phaser.GameObjects.Image; vx: number; vy: number; kind: 'bolt' | 'rocket'; trail: number; big?: boolean; bossHit?: boolean; hit?: Set<Item> }
 interface Building { x: number; top: number; w: number; gfx: Phaser.GameObjects.Graphics; zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }
-interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer' | 'secret' | 'hazard' | 'switch' | 'mine'; mT?: number; hint?: boolean; bonus?: boolean; pressed?: boolean; hz?: Haz; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
+interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer' | 'secret' | 'hazard' | 'switch' | 'mine'; mT?: number; hint?: boolean; bonus?: boolean; pressed?: boolean; hz?: Haz; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number; cd?: number; aim?: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
 
 /** Roof hazards that run on a timer: falling debris (city, hollow, wastes), steam vents (drowned), laser grids (void, spores). */
 interface Haz {
   type: 'debris' | 'vent' | 'laser'; gfx: Phaser.GameObjects.Graphics; x: number; top: number;
   state: 'idle' | 'warn' | 'active' | 'done'; t: number; fall: number; ticks: number;
 }
+interface Bullet { img: Phaser.GameObjects.Rectangle; trail: Phaser.GameObjects.Rectangle; vx: number; y: number }
 interface Shell { x: number; top: number; state: 'warn' | 'boom'; t: number; gfx: Phaser.GameObjects.Graphics; boomed: boolean }
 interface Plat {
   kind: 'moving' | 'crumble' | 'secret'; img: Phaser.Physics.Arcade.Image; collider: Phaser.Physics.Arcade.Collider; baseX: number; baseY: number; amp: number; phase: number;
   stood: boolean; timer: number; state: 'idle' | 'shaking' | 'falling';
 }
 type FlyerStyle = 'drowned' | 'void' | 'spores';
-const FLYER_NAME: Record<FlyerStyle, string> = { drowned: 'glow-ray', void: 'drone', spores: 'spore moth' };
+const FLYER_NAME: Record<FlyerStyle, string> = { drowned: 'death-ray', void: 'gearbat', spores: 'gearbat' };
 interface Flyer {
   style: FlyerStyle; homeX: number; homeY: number; state: 'idle' | 'windup' | 'dive' | 'rise';
   timer: number; cd: number; vx: number; vy: number; frame: number; fromX: number; fromY: number;
@@ -170,6 +173,9 @@ export class PlayScene extends Phaser.Scene {
   private ghostBox?: Phaser.GameObjects.Rectangle;
   private secretAt = 3000;
   private secretPlaced = false;
+  // soldiers on the later levels shoot straight along the roof
+  private bullets: Bullet[] = [];
+  private soldierWarned = false;
   // warzone: random artillery shells and landmines
   private shells: Shell[] = [];
   private shellCD = 3.5;
@@ -243,6 +249,7 @@ export class PlayScene extends Phaser.Scene {
     super('play');
   }
 
+  /** The pictures for this level's boss and enemies. */
   create() {
     this.settings = this.registry.get('settings') as Settings;
     this.touch = (this.registry.get('touch') as TouchInput | undefined) ?? { left: false, right: false, jump: false, fire: false, duck: false };
@@ -259,6 +266,9 @@ export class PlayScene extends Phaser.Scene {
     this.trace = [];
     this.secretAt = 2200 + this.rand() * 2800; // somewhere along the level a golden breadboard hides above a gap
     this.secretPlaced = false;
+    this.bullets.forEach((b) => { b.img.destroy(); b.trail.destroy(); });
+    this.bullets = [];
+    this.soldierWarned = false;
     this.shells.forEach((sh) => sh.gfx.destroy());
     this.shells = [];
     this.shellCD = 3.5;
@@ -410,7 +420,9 @@ export class PlayScene extends Phaser.Scene {
     makeRingTextures(this);
     makePlatformTextures(this);
     if (this.level.style === 'war') makeWarTextures(this);
-    makeBossTextures(this, this.level.style);
+    makeBossShots(this);
+    makeEnemyRigTextures(this, this.level.style); // enemies are drawn and animated in code, then grimed up
+    makeBossRigTextures(this, this.level.style); // the bosses are drawn and animated in code
     const style = this.level.style;
     let sky: string, layers: [string, number][], fogKey: string, precipKey: string;
     if (style !== 'city' && style !== 'hollow') {
@@ -690,7 +702,8 @@ export class PlayScene extends Phaser.Scene {
 
   private bossBox(b: BossState) {
     const s = b.sprite;
-    return { x0: s.x - 52, x1: s.x + 52, y0: s.y - s.displayHeight + 8, y1: s.y };
+    const hw = Phaser.Math.Clamp(s.displayWidth * 0.32, 52, 92); // the body, not the outstretched arms
+    return { x0: s.x - hw, x1: s.x + hw, y0: s.y - s.displayHeight + 8, y1: s.y };
   }
 
   private inBossRect(x: number, y: number) {
@@ -703,8 +716,8 @@ export class PlayScene extends Phaser.Scene {
     const b = this.boss;
     if (!b || b.state === 'dead' || b.state === 'intro') return;
     b.hp -= n;
-    b.sprite.setTint(0xff9090);
-    this.time.delayedCall(90, () => b.sprite.active && b.sprite.clearTint());
+    b.sprite.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL); // a quick white flash on every hit
+    this.time.delayedCall(70, () => b.sprite.active && b.sprite.clearTint().setTintMode(Phaser.TintModes.MULTIPLY));
     this.sfx.bossHit();
     this.debris(b.sprite.x + Phaser.Math.Between(-30, 30), b.sprite.y - Phaser.Math.Between(30, b.sprite.displayHeight - 20), 'spark', 3, 1);
     const frac = Math.max(0, b.hp) / b.max;
@@ -803,6 +816,7 @@ export class PlayScene extends Phaser.Scene {
     const enraged = b.hp <= b.max / 2;
     if (b.state !== 'dead') {
       s.setFlipX(px > s.x);
+      s.angle = b.state === 'telegraph' && !this.reduced ? Math.sin(this.t * 70) * 1.4 : 0; // it shudders while it charges
       b.timer -= edt;
       b.touchCD = Math.max(0, b.touchCD - edt);
       const lo = this.camLock + 140, hi = this.camLock + W - 90;
@@ -813,7 +827,11 @@ export class PlayScene extends Phaser.Scene {
         const dx = px - s.x;
         const want = Math.abs(dx) > 360 ? face : Math.abs(dx) < 250 ? -face : 0;
         s.x = Phaser.Math.Clamp(s.x + want * b.def.speed * (enraged ? 1.4 : 1) * edt, lo, hi);
-        s.y = this.arenaTop + (!this.reduced && want !== 0 ? Math.abs(Math.sin(this.t * 6)) * -4 : 0);
+        s.y = this.arenaTop + (!this.reduced && want !== 0 ? Math.abs(Math.sin(this.t * 6)) * -3 : 0);
+        // the sprite steps (or hovers, or rumbles) while it moves, and breathes between steps
+        const style = this.level.style, moving = want !== 0;
+        const wk = moving ? `boss-${style}-w${Math.floor(this.t * 9) % 8}` : `boss-${style}-i${Math.floor(this.t * 3) % 4}`;
+        s.setTexture(this.textures.exists(wk) ? wk : `boss-${style}-a`);
         b.cd -= edt;
         if (b.cd <= 0) {
           b.attack = b.def.attacks[Math.floor(Math.random() * b.def.attacks.length)];
@@ -1052,7 +1070,7 @@ export class PlayScene extends Phaser.Scene {
     const f = it.flyer!, s = it.sprite, body = this.body;
     const px = body.center.x, py = body.center.y;
     f.frame += dt * 7;
-    s.setTexture(`flyer-${f.style}-${Math.floor(f.frame) % 2 ? 'b' : 'a'}`);
+    s.setTexture(f.state === 'dive' ? `flyer-${f.style}-dive` : `flyer-${f.style}-f${Math.floor(f.frame) % 6}`);
     f.timer -= dt;
     f.cd -= dt;
     if (f.state === 'idle') {
@@ -1110,7 +1128,7 @@ export class PlayScene extends Phaser.Scene {
     const kind = crawler ? 'crawler' : 'skeleton';
     const half = Math.min(130, (b.w - 60) / 2);
     const cx = b.x + b.w / 2 + this.between(-20, 20);
-    const h = crawler ? 22 : 44;
+    const h = this.textures.getFrame(`${kind}-a`).height;
     const sprite = this.add.image(cx, b.top - h / 2, `${kind}-a`).setDepth(6);
     this.items.push({
       kind: 'patrol', sprite, baseY: sprite.y, phase: 0, hp: 2,
@@ -1141,6 +1159,39 @@ export class PlayScene extends Phaser.Scene {
     it.taken = true;
     if (points) this.bonus += points;
     this.blast(it.sprite.x, it.sprite.y + 5, hurt ? 56 : 0.1);
+  }
+
+  /** A soldier fires: a bright bullet flies flat along the roof at chest height, so ducking or jumping clears it. */
+  private soldierFire(s: Phaser.GameObjects.Image, dir: number) {
+    const x = s.x + dir * 20, y = s.y - 8;
+    this.sfx.rifle();
+    this.burst(x, y, [0xffe27a, 0xffffff], 5, 120);
+    const img = this.add.rectangle(x, y, 14, 4, 0xffe27a).setStrokeStyle(1, 0xffffff).setDepth(9);
+    const trail = this.add.rectangle(x - dir * 12, y, 22, 2, 0xffa63a, 0.6).setDepth(8);
+    this.bullets.push({ img, trail, vx: dir * 330, y });
+  }
+
+  private updateBullets(dt: number) {
+    const cam = this.cameras.main, body = this.body;
+    this.bullets = this.bullets.filter((b) => {
+      b.img.x += b.vx * dt;
+      b.trail.x = b.img.x - Math.sign(b.vx) * 14;
+      const x = b.img.x;
+      const wall = this.buildings.some((bb) => x >= bb.x && x <= bb.x + bb.w && b.y > bb.top + 2);
+      const off = x < cam.scrollX - 80 || x > cam.scrollX + W + 80;
+      const hitsIggy = body.right > x - 7 && body.left < x + 7 && body.bottom > b.y - 3 && body.top < b.y + 3;
+      if (hitsIggy) {
+        if (this.smashing() || this.power.star > 0) this.burst(x, b.y, [0xffffff, 0xffe27a], 6, 140);
+        else this.hit('enemy');
+      }
+      if (hitsIggy || wall || off) {
+        if (wall) this.debris(x, b.y, 'spark', 2, 0.5);
+        b.img.destroy();
+        b.trail.destroy();
+        return false;
+      }
+      return true;
+    });
   }
 
   /** The Iron Marshal's artillery: a shell whistles in, a marker shows where it will land, then it explodes. */
@@ -1747,6 +1798,8 @@ export class PlayScene extends Phaser.Scene {
     this.items.forEach((it) => {
       if ((it.kind === 'pylon' || it.kind === 'patrol' || it.kind === 'wall' || it.kind === 'flyer' || it.kind === 'mine') && Math.abs(it.sprite.x - spot.x) < 110) it.taken = true;
     });
+    this.bullets.forEach((b) => { b.img.destroy(); b.trail.destroy(); });
+    this.bullets = [];
     this.shells.forEach((sh) => sh.gfx.destroy());
     this.shells = [];
     this.shellCD = Math.max(this.shellCD, 2.5);
@@ -2109,13 +2162,35 @@ export class PlayScene extends Phaser.Scene {
           if (Math.abs(px - s.x) < 14 && Math.abs(py - s.y) < 44) this.passRing(it);
         } else if (it.kind === 'patrol' && it.walker) {
           const w = it.walker;
-          s.x += w.dir * w.speed * edt;
+          // soldiers on the later levels stop, aim and fire along the roof (duck or jump to dodge)
+          const aiming = (w.aim ?? 0) > 0;
+          if (w.kind === 'skeleton' && this.level.number >= 3 && !this.over) {
+            const dx = px - s.x;
+            w.cd = (w.cd ?? 1.6 + Math.random() * 2) - edt;
+            if (aiming) {
+              w.aim = (w.aim ?? 0) - edt;
+              w.dir = Math.sign(dx) || w.dir;
+              if (w.aim <= 0) this.soldierFire(s, w.dir);
+            } else if (w.cd <= 0 && Math.abs(dx) > 50 && Math.abs(dx) < 340 && Math.abs(py - s.y) < 80) {
+              w.aim = 0.6;
+              w.dir = Math.sign(dx) || w.dir;
+              w.cd = Math.max(1.5, 3.2 - this.difficulty() * 1.1) + Math.random() * 1.5;
+              this.sfx.warn();
+              if (!this.soldierWarned) {
+                this.soldierWarned = true;
+                this.announce('A soldier is aiming at you. Duck or jump to dodge its bullets, or stomp it.');
+              }
+            }
+          }
+          if (!((w.aim ?? 0) > 0)) s.x += w.dir * w.speed * edt;
           if (s.x < w.min) { s.x = w.min; w.dir = 1; }
           if (s.x > w.max) { s.x = w.max; w.dir = -1; }
-          w.frame += edt * 6;
-          s.setTexture(`${w.kind}-${Math.floor(w.frame) % 2 ? 'b' : 'a'}`).setFlipX(w.dir < 0);
+          w.frame += edt * 8;
+          const wf = w.kind === 'skeleton' && (w.aim ?? 0) > 0 ? (w.aim! < 0.12 ? 'skeleton-fire' : 'skeleton-aim') : `${w.kind}-w${Math.floor(w.frame) % 6}`;
+          s.setTexture(this.textures.exists(wf) ? wf : `${w.kind}-${Math.floor(w.frame) % 2 ? 'b' : 'a'}`).setFlipX(w.dir < 0);
+          if (w.kind === 'skeleton') s.setTint((w.aim ?? 0) > 0 && (this.reduced || Math.floor(this.t * 14) % 2 === 0) ? 0xff9a8a : 0xffffff);
           const half = s.height / 2;
-          if (Math.abs(px - s.x) < 17 && body.bottom > s.y - half + 4 && body.top < s.y + half) {
+          if (Math.abs(px - s.x) < Math.max(17, s.displayWidth * 0.36) && body.bottom > s.y - half + 4 && body.top < s.y + half) {
             if (this.smashing()) this.defeatPatrol(it, 'stomp');
             else if (body.velocity.y > 60 && body.bottom < s.y - half + 18) {
               this.defeatPatrol(it, 'stomp');
@@ -2195,6 +2270,7 @@ export class PlayScene extends Phaser.Scene {
       this.updatePlatforms(dt);
       this.updateBoss(dt, edt);
       this.updateShells(edt);
+      this.updateBullets(edt);
 
       // speed trail behind Iggy while overclocked or invincible
       this.trailT -= dt;

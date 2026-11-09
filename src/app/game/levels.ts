@@ -35,13 +35,13 @@ export interface BossDef {
 }
 
 export const BOSSES: Record<LevelStyle, BossDef> = {
-  city: { name: 'Enforcer Nine', blurb: 'A hunched, bird-legged peacekeeper with cannons for arms.', hp: 24, speed: 50, attacks: ['volley', 'volley', 'stomp'], muzzle: [-80, -92] },
-  hollow: { name: 'Jack-in-the-Boxer', blurb: 'A crooked jester on a spring that lobs exploding gifts.', hp: 26, speed: 40, attacks: ['mortar', 'mortar', 'stomp'], muzzle: [-10, -150] },
-  wastes: { name: 'Dune Scorpion', blurb: 'A four-legged walker with a cannon on its tail.', hp: 28, speed: 60, attacks: ['spread', 'volley', 'stomp'], muzzle: [40, -150] },
-  drowned: { name: 'Deep Diver', blurb: 'A diving-suit mech with a glass dome and heavy claws.', hp: 30, speed: 35, attacks: ['volley', 'mortar', 'stomp'], muzzle: [-60, -60] },
-  void: { name: 'Neon Warden', blurb: 'A hovering sentinel on a ring of light.', hp: 30, speed: 70, attacks: ['spread', 'volley', 'spread', 'stomp'], muzzle: [-70, -88] },
-  war: { name: 'Iron Marshal', blurb: 'A rolling siege tank with a long gun, the one that has been shelling the trenches.', hp: 36, speed: 38, attacks: ['mortar', 'volley', 'spread', 'stomp'], muzzle: [-84, -96] },
-  spores: { name: 'Spore Mother', blurb: 'A tripod walker under a giant mushroom cap.', hp: 34, speed: 30, attacks: ['mortar', 'spread', 'stomp'], muzzle: [-70, -45] },
+  city: { name: 'Enforcer Nine', blurb: 'A hunched, bird-legged peacekeeper with cannons for arms.', hp: 24, speed: 50, attacks: ['volley', 'volley', 'stomp'], muzzle: [-58, -96] },
+  hollow: { name: 'Grandfather Gloom', blurb: 'A crooked clockwork giant on striped stilts that lobs exploding music-box gifts.', hp: 26, speed: 40, attacks: ['mortar', 'mortar', 'stomp'], muzzle: [-38, -164] },
+  wastes: { name: 'Dust Scorpion', blurb: 'A four-legged walker with a cannon on its tail.', hp: 28, speed: 60, attacks: ['spread', 'volley', 'stomp'], muzzle: [34, -128] },
+  drowned: { name: 'Deep Diver', blurb: 'A diving-suit mech with a glass dome and heavy claws.', hp: 30, speed: 35, attacks: ['volley', 'mortar', 'stomp'], muzzle: [-70, -92] },
+  void: { name: 'Neon Warden', blurb: 'A hovering sentinel on a ring of light.', hp: 30, speed: 70, attacks: ['spread', 'volley', 'spread', 'stomp'], muzzle: [-72, -86] },
+  war: { name: 'Iron Marshal', blurb: 'A rolling siege tank with a long gun, the one that has been shelling the trenches.', hp: 36, speed: 38, attacks: ['mortar', 'volley', 'spread', 'stomp'], muzzle: [-78, -88] },
+  spores: { name: 'Spore Mother', blurb: 'A tripod walker under a giant mushroom cap.', hp: 34, speed: 30, attacks: ['mortar', 'spread', 'stomp'], muzzle: [-58, -108] },
 };
 
 export const LEVELS: LevelDef[] = [
@@ -56,15 +56,15 @@ export const LEVELS: LevelDef[] = [
     id: 'hollow', number: 2, name: 'Spindle Hollow',
     blurb: 'Crooked striped houses, twisted trees and a swirly moon.',
     style: 'hollow', music: 'hollow', precip: { vx: 14, vy: -70 }, lightning: false, bg: '#0a0a1a',
-    intro: 'Spindle Hollow is all crooked chimneys and striped roofs, and every shadow seems to be smiling. Somewhere in the music-box fog a jester on a spring is waiting to give Iggy a present.',
-    outro: 'The Jack-in-the-Boxer pops, rattles and is finally still. The fog thins, and the hills beyond are the colour of old rust.',
+    intro: 'Spindle Hollow is all crooked chimneys and striped roofs, and every shadow seems to be smiling. Somewhere in the music-box fog a giant clock on striped stilts is ticking, and it has a present for Iggy.',
+    outro: 'Grandfather Gloom chimes thirteen, sways and is finally still. The fog thins, and the hills beyond are the colour of old rust.',
   },
   {
     id: 'wastes', number: 3, name: 'Rust Wastes',
     blurb: 'A dust-choked desert of skeleton towers and a broken highway.',
     style: 'wastes', music: 'wastes', precip: { vx: 320, vy: -20 }, lightning: false, bg: '#2b1210',
     intro: 'The wastes are quiet except for the wind and the creak of skeleton towers. Iggy\'s shadow is the longest thing for miles, and something with a cannon on its tail has noticed it.',
-    outro: 'The Dune Scorpion sinks into the sand. Far off, lit windows blink beneath the waves of a drowned city.',
+    outro: 'The Dust Scorpion sinks into the sand. Far off, lit windows blink beneath the waves of a drowned city.',
   },
   {
     id: 'drowned', number: 4, name: 'Drowned Metropolis',

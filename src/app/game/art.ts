@@ -47,11 +47,11 @@ export interface Suit {
 
 export const SUITS: Suit[] = [
   { name: 'Rusty Original', blurb: 'Dented, leaking and held together by hope.', need: 0,
-    body: 0xd8643a, trim: 0xa8472a, dark: 0x4a2a1c, eye: 0x2f7f95, loose: 1, cape: false, ears: false, glow: false, plates: false },
+    body: 0xe4d8b8, trim: 0x7fb3a3, dark: 0x4a3a2c, eye: 0x6fe6c8, loose: 1, cape: false, ears: false, glow: false, plates: false },
   { name: 'Patchwork', blurb: 'Fresh copper patches and a new left arm.', need: 3,
-    body: 0xcf7a45, trim: 0x3f8f8a, dark: 0x3c2a22, eye: 0x2f7f95, loose: 0.65, cape: false, ears: false, glow: false, plates: false },
+    body: 0xdccaa0, trim: 0xb5793e, dark: 0x3c2a20, eye: 0x6fe6c8, loose: 0.65, cape: false, ears: false, glow: false, plates: false },
   { name: 'Steel Sentinel', blurb: 'Riveted steel plating. Hardly rattles.', need: 8,
-    body: 0x8fa0b4, trim: 0x5a6a82, dark: 0x1f2735, eye: 0x1aa7c8, loose: 0.35, cape: false, ears: false, glow: false, plates: true },
+    body: 0xaab5be, trim: 0x6a8c9c, dark: 0x1f2735, eye: 0x1aa7c8, loose: 0.35, cape: false, ears: false, glow: false, plates: true },
   { name: 'Night Guardian', blurb: 'Matte black, a cape and pointed ears.', need: 15,
     body: 0x2f3547, trim: 0x59627a, dark: 0x0d1017, eye: 0xffc44a, loose: 0.15, cape: true, ears: true, glow: false, plates: true },
   { name: 'Gold Circuit', blurb: 'Gleaming. Everything finally works.', need: 25,
@@ -540,9 +540,10 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   const duck = p.duck ?? 0;
   const tx = Math.sin(lean) * 3 + 3 * duck;
   const cream = 0xeadfc8, steel = 0x9aa3ad, steelDark = 0x5d6670;
-  const brass = suit.glow ? 0xfff0a8 : 0xd2a43c, red = 0xc8332e; // banded joints and the little red accents, like a 50s tin robot
+  const brass = suit.glow ? 0xfff0a8 : 0xc98b4a, red = 0xc8332e; // copper bands on the joints, like the old retro-futuristic robots
+  const leather = 0xb99b62, amber = 0xf2a63a;
   const hipY = -21 - bob + 8 * duck;
-  const torsoBottom = hipY - 2, torsoTop = torsoBottom - 12;
+  const torsoBottom = hipY - 2, torsoTop = torsoBottom - 16;
   const shellBase = torsoTop + 1, shellTop = shellBase - 9;
   const domeY = shellTop - 4;
 
@@ -593,12 +594,15 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
     const ox = Math.cos(ang) * 1.7, oy = -Math.sin(ang) * 1.7;
     for (const k of [-1, 1]) P.stroke([sx + ox * k, sy + oy * k, ax + ox * k, ay + oy * k], 3.6, OUTLINE);
     for (const k of [-1, 1]) P.stroke([sx + ox * k, sy + oy * k, ax + ox * k, ay + oy * k], 1.5, steel);
-    // a sleeve at the hip that the rods slide out of, and a brass knee collar
-    P.stroke([sx, sy, sx + (ax - sx) * 0.42, sy + (ay - sy) * 0.42], 5.2, OUTLINE);
-    P.stroke([sx, sy, sx + (ax - sx) * 0.42, sy + (ay - sy) * 0.42], 3.4, steelDark);
+    // a teal armoured shin below a big copper knee joint
     const mx = (sx + ax) / 2, my = (sy + ay) / 2 + 0.5;
-    P.stroke([mx - ox * 1.6, my - oy * 1.6, mx + ox * 1.6, my + oy * 1.6], 2.4, OUTLINE);
-    P.stroke([mx - ox * 1.6, my - oy * 1.6, mx + ox * 1.6, my + oy * 1.6], 1.3, brass);
+    P.stroke([mx, my, ax, ay], 6, OUTLINE);
+    P.stroke([mx, my, ax, ay], 4.2, suit.trim);
+    P.stroke([mx - 1.2, my + 1, ax - 1.2, ay - 1], 1.1, hi(suit.trim, 0.5), 0.7);
+    P.stroke([ax - ox * 1.7, ay - oy * 1.7 - 2, ax + ox * 1.7, ay + oy * 1.7 - 2], 1.5, brass);
+    P.dot(mx, my, 3.2, brass, 1, true);
+    P.dot(mx, my, 1.3, steelDark);
+    P.dot(mx - 0.9, my - 1, 0.7, 0xffffff, 0.8);
     // flared boot: pitches toe-up as it swings and heel-up as it pushes off
     const rot = f.pitch + ang * 0.25;
     const ca = Math.cos(rot), sa = Math.sin(rot);
@@ -616,8 +620,8 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
     P.stroke([hx - 3.6, hipY + 5.4, hx + 3.6, hipY + 5.4], 1.5, brass, 0.95);
     P.dot(hx, hipY + 1, 0.9, cream, 0.8);
   };
-  leg(-5, 0, suit.dark);
-  leg(5, Math.PI, suit.trim);
+  leg(-5, 0, steelDark);
+  leg(5, Math.PI, steel);
 
   // ---- arms: thin twin rods from the shoulder, then an orange pipe forearm capped with a disc
   // arms swing opposite the leg on their side; in the air they fly up
@@ -635,94 +639,97 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
     P.stroke([(sx + ex) / 2 - 2.4, (sy + ey) / 2, (sx + ex) / 2 + 2.4, (sy + ey) / 2], 1.2, brass);
     const a2 = loose ? a + 0.7 + Math.sin(p.t * 7) * 0.35 : a * 0.6 + 0.45 + 0.55 * run; // the elbow bends more as he runs
     const hx = ex + Math.sin(a2) * 10, hy = ey + Math.cos(a2) * 10;
-    P.hose(ex, ey, hx, hy, loose ? -2 : 1.5, 5, pipe);
-    P.stroke([ex - 1.2, ey + 1.2, hx - 1.2, hy + 0.4], 1, hi(pipe, 0.5), 0.55); // light along the pipe
-    P.dot(ex, ey, 2.4, brass, 1, true);
-    P.dot(ex, ey, 0.9, steelDark);
-    // gripper: a palm with three short fingers
-    for (const k of [-1, 0, 1]) {
-      P.stroke([hx + k * 1.9, hy + 1.2, hx + k * 2.5, hy + 4.6], 2.3, OUTLINE);
-      P.stroke([hx + k * 1.9, hy + 1.2, hx + k * 2.5, hy + 4.4], 1.1, cap);
+    // forearm: a teal armoured cylinder with a copper band at each end, and a steel ball elbow
+    const fx = ex + (hx - ex) * 0.86, fy = ey + (hy - ey) * 0.86;
+    P.stroke([ex, ey, fx, fy], 6.4, OUTLINE);
+    P.stroke([ex, ey, fx, fy], 4.6, pipe);
+    P.stroke([ex - 1.3, ey + 1, fx - 1.3, fy + 0.6], 1.2, hi(pipe, 0.5), 0.65);
+    P.stroke([ex - 2.6 * Math.cos(a2), ey + 2.6 * Math.sin(a2) + 1.6, ex + 2.6 * Math.cos(a2), ey - 2.6 * Math.sin(a2) + 1.6], 1.6, brass);
+    P.stroke([fx - 2.6 * Math.cos(a2), fy + 2.6 * Math.sin(a2), fx + 2.6 * Math.cos(a2), fy - 2.6 * Math.sin(a2)], 1.6, brass);
+    P.dot(ex, ey, 2.7, steel, 1, true);
+    P.dot(ex, ey, 1, brass);
+    // an articulated hand: palm and four jointed fingers
+    P.dot(hx, hy, 2.6, cap, 1, true);
+    for (const k of [-1.5, -0.5, 0.5, 1.5]) {
+      P.stroke([hx + k * 1.3, hy + 1.2, hx + k * 1.7, hy + 3.2, hx + k * 1.5 + (k < 0 ? -0.4 : 0.4), hy + 5], 1.7, OUTLINE);
+      P.stroke([hx + k * 1.3, hy + 1.2, hx + k * 1.7, hy + 3.2, hx + k * 1.5 + (k < 0 ? -0.4 : 0.4), hy + 5], 0.8, cap);
     }
-    P.dot(hx, hy, 3.3, cap, 1, true);
-    P.dot(hx - 0.8, hy - 0.8, 0.8, 0xffffff, 0.7);
-    P.dot(hx, hy, 1.2, OUTLINE);
+    P.dot(hx - 0.7, hy - 0.8, 0.7, 0xffffff, 0.7);
   };
-  limbArm(tx - 16, torsoTop + 3, armBack, suit.dark, steel, false);
+  limbArm(tx - 16, torsoTop + 3, armBack, suit.trim, steelDark, false);
 
-  // ---- body: open bay with cogs, then the lower plate
-  P.blob(tx, torsoTop + 5, 23, 14, lean, suit.dark, 3);
+  // ---- body: a cream barrel torso with a chest panel of dials, a ribbed waist and a tool belt
   const spin = p.reduced ? 0 : p.t * (rusty ? 1.1 : 1.8) + (rusty ? Math.sin(p.t * 5) * 0.3 : 0);
-  P.gear(tx - 8, torsoTop + 7, 3, 8, spin, steel);
-  P.gear(tx + 8, torsoTop + 7.4, 2.5, 7, -spin * 1.3, steelDark);
-  // vent slats either side, and the V-shaped chest plate, like the old tin robots
-  for (let k = 0; k < 3; k++) {
-    P.stroke([tx - 11, torsoTop + 2.2 + k * 2.3, tx - 5.2, torsoTop + 2.2 + k * 2.3], 1.2, steelDark);
-    P.stroke([tx + 5.2, torsoTop + 2.2 + k * 2.3, tx + 11, torsoTop + 2.2 + k * 2.3], 1.2, steelDark);
-  }
-  P.poly([tx - 5.6, torsoTop + 1, tx + 5.6, torsoTop + 1, tx, torsoTop + 9.4], suit.body);
-  P.stroke([tx - 5, torsoTop + 1.9, tx, torsoTop + 8.4, tx + 5, torsoTop + 1.9], 1.1, brass);
-  P.poly([tx - 4.6, torsoTop + 1.4, tx - 1.6, torsoTop + 1.4, tx - 2.2, torsoTop + 4.2], hi(suit.body, 0.4), false);
-  const plate = [tx - 10.5, torsoTop + 9, tx + 10.5, torsoTop + 9, tx + 8, torsoBottom, tx - 8, torsoBottom];
-  P.poly(plate, suit.body);
-  P.poly([tx - 10.2, torsoTop + 9.6, tx - 6.5, torsoTop + 9.6, tx - 5.6, torsoBottom - 0.6, tx - 7.8, torsoBottom - 0.6], hi(suit.body, 0.3), false); // lit edge
-  P.poly([tx + 6.6, torsoTop + 9.6, tx + 10.2, torsoTop + 9.6, tx + 7.8, torsoBottom - 0.6, tx + 5.2, torsoBottom - 0.6], lo(suit.body, 0.3), false); // shaded edge
-  P.stroke([tx - 9.2, torsoTop + 12, tx + 9.2, torsoTop + 12], 1.3, suit.trim);
-  P.blob(tx, torsoTop + 10.5, 6, 3.2, 0, suit.dark, 2.4);
-  P.dot(tx, torsoTop + 10.5, 1.4, suit.eye, 1);
-  [[-8, 10.5], [8, 10.5], [-6.8, 14], [6.8, 14]].forEach(([rx, ry]) => P.dot(tx + rx, torsoTop + ry - 1, 0.9, cream, 0.8));
-  if (rusty || suit.name === 'Patchwork') {
-    P.poly([tx - 8, torsoTop + 13, tx - 3, torsoTop + 13, tx - 4, torsoBottom - 0.5, tx - 8, torsoBottom - 0.5], suit.trim, false);
-    P.stroke([tx + 4, torsoTop + 14, tx + 9 + Math.sin(p.t * 6) * 1.5, torsoBottom + 7], 1.3, 0xd24a4a);
-    P.stroke([tx + 3, torsoTop + 11, tx + 7, torsoTop + 16], 0.9, cream, 0.4);
-  }
+  P.blob(tx, torsoTop + 9.6, 25, 19, lean, suit.body, 3);
+  P.blob(tx + 7, torsoTop + 11, 12, 9, lean, lo(suit.body, 0.2), 2.4, 0.5, false);
+  P.blob(tx - 8, torsoTop + 4.2, 7, 4, lean, hi(suit.body, 0.5), 2.4, 0.55, false);
+  // the chest panel: two dials, a knob, two lamps and an amber meter
+  P.blob(tx, torsoTop + 7.8, 13.6, 8.6, 0, lerpColor(suit.dark, steelDark, 0.45), 3);
+  const needle = (cx: number, cy: number, a: number) => P.stroke([cx, cy, cx + Math.cos(a) * 1.7, cy + Math.sin(a) * 1.7], 0.9, 0xb02a22);
+  P.dot(tx - 4.6, torsoTop + 5.9, 2.6, cream, 1, true);
+  needle(tx - 4.6, torsoTop + 5.9, -1.1 + (p.reduced ? 0 : Math.sin(p.t * 2.1) * 0.5));
+  P.dot(tx + 0.8, torsoTop + 5.9, 2.6, cream, 1, true);
+  needle(tx + 0.8, torsoTop + 5.9, -2.0 + (p.reduced ? 0 : Math.sin(p.t * 1.6 + 1) * 0.6));
+  P.dot(tx - 4.6, torsoTop + 9.6, 1.2, steel, 1, true);
+  P.dot(tx - 1.8, torsoTop + 9.6, 0.8, 0xe0503a);
+  P.dot(tx - 0.2, torsoTop + 9.6, 0.8, 0x6fe0a0);
+  P.blob(tx + 3.8, torsoTop + 12.6, 5, 2.6, 0, amber, 2.6, 1, true);
+  P.stroke([tx + 2.2, torsoTop + 10.1, tx + 5.4, torsoTop + 10.1], 0.6, 0x7a4a14);
+  P.dot(tx + 7.4, torsoTop + 5.2, 0.7, hi(suit.dark, 0.5));
   if (suit.glow) {
-    P.stroke([tx - 7, torsoBottom - 1, tx - 7, torsoTop + 13, tx - 3, torsoTop + 13], 1.2, 0x9dffb0, 0.95);
-    P.stroke([tx + 7, torsoBottom - 1, tx + 7, torsoTop + 13, tx + 3, torsoTop + 13], 1.2, 0x9dffb0, 0.95);
+    P.stroke([tx - 7, torsoBottom - 1, tx - 7, torsoTop + 13, tx - 3, torsoTop + 11], 1.2, 0x9dffb0, 0.95);
+    P.stroke([tx + 7, torsoBottom - 1, tx + 7, torsoTop + 13, tx + 3, torsoTop + 11], 1.2, 0x9dffb0, 0.95);
   }
+  // ribbed waist (an accordion of steel rings), then the belt with its buckle, pouches and a raygun holster
+  P.blob(tx, torsoBottom - 1.2, 15, 4.4, 0, steelDark, 3);
+  for (const k of [-1.4, 0.2, 1.8]) P.stroke([tx - 6.6, torsoBottom - 1.2 + k, tx + 6.6, torsoBottom - 1.2 + k], 0.7, steel, 0.8);
+  P.blob(tx, torsoBottom + 0.9, 22, 3.4, lean, leather, 3);
+  P.stroke([tx - 9.4, torsoBottom - 0.2, tx + 9.4, torsoBottom - 0.2], 0.9, hi(leather, 0.45), 0.7);
+  P.blob(tx, torsoBottom + 0.9, 4.4, 3.2, 0, steel, 2.6);
+  P.blob(tx - 9, torsoBottom + 3, 4, 4, 0, lo(leather, 0.1), 3);
+  P.blob(tx + 9.4, torsoBottom + 3, 4, 4, 0, lo(leather, 0.1), 3);
+  P.stroke([tx - 10.4, torsoBottom + 1.6, tx - 6.8, torsoBottom + 1.6], 0.8, hi(leather, 0.4), 0.8);
+  // the holster hangs on his hip with the raygun grip and a little fin sticking up
+  P.blob(tx + 3.6, torsoBottom + 4.4, 3.4, 5.6, 0.12, lo(leather, 0.2), 3);
+  P.poly([tx + 2.2, torsoBottom + 1.8, tx + 4.4, torsoBottom + 1.6, tx + 5.6, torsoBottom - 1.4, tx + 3.2, torsoBottom + 0.2], suit.trim);
+  P.dot(tx + 3.6, torsoBottom + 6.6, 0.6, brass);
 
-  // ---- the arched, riveted shoulder shell
+  // ---- the arched, riveted shoulder yoke with a steel ball joint at each end
   const arc: number[] = [];
   for (let i = 0; i <= 18; i++) {
     const a = Math.PI + (i / 18) * Math.PI;
     arc.push(tx + Math.cos(a) * 17.5, shellBase + Math.sin(a) * 9.5 * (rusty && i < 6 ? 0.82 : 1));
   }
   P.poly([...arc, tx + 12, shellBase + 3, tx - 12, shellBase + 3], suit.body);
-  P.stroke(arc.map((v, i) => (i % 2 ? v + 2.4 : v * 0.88 + tx * 0.12)), 1.1, suit.trim, 0.8); // inner seam
+  P.stroke(arc.map((v, i) => (i % 2 ? v + 2.4 : v * 0.88 + tx * 0.12)), 1.1, lo(suit.body, 0.35), 0.7); // inner seam
   for (let i = 1; i < 18; i += 2) {
     const a = Math.PI + (i / 18) * Math.PI;
-    P.dot(tx + Math.cos(a) * 15, shellBase + Math.sin(a) * 7.2, 0.8, cream, 0.85); // rivets
+    P.dot(tx + Math.cos(a) * 15, shellBase + Math.sin(a) * 7.2, 0.8, steel, 0.95); // rivets
   }
-  P.stroke(arc.slice(6, 20).map((v, i) => (i % 2 ? v + 1.5 : v)), 1.4, 0xffffff, 0.22);
-  P.stroke(arc.slice(4, 22).map((v, i) => (i % 2 ? v + 1.6 : v - 0.5 + tx * 0)), 2.2, hi(suit.body, 0.5), 0.6); // light catching the top of the shell
-  P.stroke([tx - 13, shellBase + 2.6, tx + 13, shellBase + 2.6], 1.8, lo(suit.body, 0.4), 0.55); // shadow under the rim
-  P.stroke([tx - 14.5, shellBase - 1.2, tx + 14.5, shellBase - 1.2], 0.8, lo(suit.body, 0.5), 0.5); // panel seam
-  P.stroke(arc.slice(24, 38), 1.3, 0xffd9a0, 0.5); // warm rim light on the far shoulder
-  P.stroke([tx - 5.5, shellBase - 3.6, tx, shellBase + 0.6, tx + 5.5, shellBase - 3.6], 2.2, OUTLINE); // chest chevron, like the V plate on the old tin robots
-  P.stroke([tx - 5.5, shellBase - 3.6, tx, shellBase + 0.6, tx + 5.5, shellBase - 3.6], 1.2, brass);
-  for (const sx of [-15.2, 15.2]) {
-    P.blob(tx + sx, shellBase - 0.6, 8, 7, 0, red, 3, 1, true);
-    P.stroke([tx + sx - 3.2, shellBase + 2.2, tx + sx + 3.2, shellBase + 2.2], 1.3, brass);
-    P.dot(tx + sx - 1.2, shellBase - 2.4, 1, 0xffffff, 0.8);
+  P.stroke(arc.slice(4, 22).map((v, i) => (i % 2 ? v + 1.6 : v - 0.5 + tx * 0)), 2.2, hi(suit.body, 0.55), 0.6); // light on the top of the shell
+  P.stroke([tx - 13, shellBase + 2.6, tx + 13, shellBase + 2.6], 1.8, lo(suit.body, 0.4), 0.5); // shadow under the rim
+  P.stroke(arc.slice(24, 38), 1.3, 0xfff0d0, 0.45); // warm rim light on the far shoulder
+  P.blob(tx, shellBase + 1.6, 6, 3, 0, steelDark, 2.6); // the collar's neck socket
+  for (const sx of [-15.4, 15.4]) {
+    P.blob(tx + sx, shellBase - 0.4, 8.6, 8.2, 0, steel, 3, 1, true);
+    P.stroke([tx + sx - 3.4, shellBase + 2.6, tx + sx + 3.4, shellBase + 2.6], 1.4, brass);
+    P.dot(tx + sx - 1.4, shellBase - 2.4, 1.1, 0xffffff, 0.8);
   }
-  P.stroke([tx - 10, torsoBottom - 0.6, tx + 10, torsoBottom - 0.6], 1.7, brass, 0.95); // waist band
   if (rusty) {
-    // heavier rust: dark mottled patches and streaks running down from the edges
-    P.blob(tx - 8, shellBase - 3.6, 7, 3.4, 0.3, lo(suit.body, 0.38), 2, 0.6, false);
-    P.blob(tx + 8, shellBase - 1.6, 6, 3, -0.3, lo(suit.body, 0.38), 2, 0.6, false);
-    P.stroke([tx - 12, shellBase + 2.8, tx - 12.6, shellBase + 8], 1.3, suit.trim, 0.9);
-    P.stroke([tx + 9, shellBase + 2.8, tx + 9.4, shellBase + 6], 1.1, suit.trim, 0.9);
-    P.blob(tx - 6, torsoBottom - 2, 5, 2.6, 0, lo(suit.body, 0.35), 2, 0.6, false);
+    // weathering: rust blotches on the cream paint and teal patina, with streaks running down
+    P.blob(tx - 8, shellBase - 3.4, 7, 3.4, 0.3, 0xa8522a, 2, 0.6, false);
+    P.blob(tx + 8.5, shellBase - 1.4, 6, 3, -0.3, 0xa8522a, 2, 0.55, false);
+    P.stroke([tx - 12, shellBase + 2.8, tx - 12.6, shellBase + 8], 1.2, 0xa8522a, 0.85);
+    P.stroke([tx + 9, shellBase + 2.8, tx + 9.4, shellBase + 6], 1, 0xa8522a, 0.85);
+    P.blob(tx - 7, torsoTop + 9.6, 5, 2.6, 0, 0xa8522a, 2, 0.5, false);
+    P.blob(tx + 7.5, torsoTop + 2.6, 4.4, 2.4, 0, 0xa8522a, 2, 0.45, false);
   }
   if (rusty || suit.name === 'Patchwork') {
-    // worn patina: oxide freckles, and bright burnished scuffs where the metal has been rubbed back
-    [[-12, -3], [-8, -7], [-3, -8.4], [6, -8], [11, -4], [13, -1], [-14, 0], [2, -9]].forEach(([fx, fy], i) => P.dot(tx + fx, shellBase + fy, 0.6 + (i % 3) * 0.3, suit.trim, 0.9));
-    P.stroke([tx - 11, shellBase - 5, tx - 7.5, shellBase - 8], 1.1, hi(suit.body, 0.65), 0.85);
-    P.stroke([tx + 4, shellBase - 9, tx + 9, shellBase - 7], 1.1, hi(suit.body, 0.65), 0.85);
-    P.stroke([tx - 8, torsoBottom - 3, tx - 6, torsoBottom - 6], 1, hi(suit.body, 0.6), 0.8);
+    [[-12, -3], [-8, -7], [-3, -8.4], [6, -8], [11, -4], [13, -1], [-14, 0], [2, -9]].forEach(([fx, fy], i) => P.dot(tx + fx, shellBase + fy, 0.6 + (i % 3) * 0.3, 0xa8522a, 0.8));
+    P.stroke([tx - 11, shellBase - 5, tx - 7.5, shellBase - 8], 1.1, 0xffffff, 0.5);
+    P.stroke([tx + 4, shellBase - 9, tx + 9, shellBase - 7], 1.1, 0xffffff, 0.5);
   }
-  P.stroke([tx - 15, shellBase - 2, tx - 13.5, shellBase + 2], 1, cream, 0.35);
-  if (rusty) P.poly([tx + 8, shellBase - 6, tx + 13, shellBase - 2, tx + 10, shellBase - 1], suit.trim, false); // rust bloom
+  void spin;
 
   // ---- smoke puffs from the shoulder vents
   const smoke = clumsy > 0.12 ? clumsy : 0;
@@ -740,34 +747,39 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   const hx = tx + 1 + run * 1.2;
   const hdx = Math.sin(p.t * 2.3) * 1.1 * clumsy + Math.sin(wob) * 2.5; // head sloshes around in the dome
   const hy = domeY + 1 - Math.abs(Math.sin(cyc)) * 0.8 * run;
-  P.blob(hx, domeY + 8, 17, 5, 0, steel, 3); // collar ring
-  P.stroke([hx - 8.4, domeY + 8.6, hx + 8.4, domeY + 8.6], 1.4, brass, 0.95);
-  P.gear(hx - 6.5 + hdx * 0.3, hy - 3, 2.8, 6, p.reduced ? 0 : p.t * 2, steelDark);
-  P.gear(hx + 6.5 + hdx * 0.3, hy - 2, 2.4, 6, p.reduced ? 0 : -p.t * 2.4, steelDark);
-  P.blob(hx + hdx, hy, 11, 13, wob, suit.body, 3);
-  P.blob(hx + hdx - 2, hy - 4.5, 5, 2.4, wob, 0xffffff, 2, 0.28, false);
-  P.blob(hx + hdx + 3.2, hy + 3.5, 6.5, 6, wob, lo(suit.body, 0.3), 2, 0.38, false); // shaded cheek
-  P.dot(hx + hdx, hy - 7.6, 1.5, steel, 1, true); // little cap on top
-  // cyclops eye
-  const look = Phaser.Math.Clamp(p.vx / 250, -1, 1) * 1.1 + 0.5;
+  P.blob(hx, domeY + 8, 17, 5, 0, steel, 3); // ribbed collar ring with a vent grille
+  P.stroke([hx - 8.4, domeY + 8.6, hx + 8.4, domeY + 8.6], 1.3, brass, 0.95);
+  P.blob(hx + 0.4, domeY + 8.2, 7, 2.6, 0, suit.dark, 3, 1, false);
+  for (const k of [-2, -0.7, 0.6, 1.9]) P.stroke([hx + 0.4 + k, domeY + 7.2, hx + 0.4 + k, domeY + 9.2], 0.7, steel, 0.85);
+  // inside the dome: a little green alien robot, with a couple of tubes and wires behind it
+  const alien = rusty || suit.name === 'Patchwork' ? 0x78b8a6 : suit.trim;
+  P.stroke([hx - 6.5 + hdx * 0.3, hy + 4, hx - 7.5, hy - 2, hx - 5.5, hy - 6], 1.3, 0xc9703a);
+  P.stroke([hx + 6.5 + hdx * 0.3, hy + 4, hx + 7.6, hy - 1, hx + 6, hy - 5], 1.1, 0xe0a84a);
+  P.blob(hx + hdx, hy + 1.5, 12.6, 11.4, wob, alien, 3);
+  P.blob(hx + hdx - 2.4, hy - 2, 5, 2.4, wob, 0xffffff, 2, 0.3, false);
+  P.blob(hx + hdx + 3.2, hy + 4.4, 6.4, 5, wob, lo(alien, 0.3), 2, 0.4, false);
+  P.stroke([hx + hdx - 2.6, hy - 4.2, hx + hdx - 4.4, hy - 8.4], 1, steelDark);
+  P.dot(hx + hdx - 4.6, hy - 8.8, 1.1, 0xe08a3a, 1, true);
+  P.stroke([hx + hdx + 2.6, hy - 4.2, hx + hdx + 4.6, hy - 8.8], 1, steelDark);
+  P.dot(hx + hdx + 4.8, hy - 9.2, 1.1, 0xe0a84a, 1, true);
+  // two big round eyes that follow where he is going
+  const look = Phaser.Math.Clamp(p.vx / 250, -1, 1) * 0.8 + 0.5;
   const blink = !p.reduced && Math.sin(p.t * 1.7) > 0.96;
-  const ex = hx + hdx + 1, ey = hy - 1.2;
   const dead = rusty && !p.reduced && Math.sin(p.t * 9) > 0.85;
-  if (blink) {
-    P.stroke([ex - 3.6, ey, ex + 3.6, ey], 1.8, OUTLINE);
-  } else {
-    P.dot(ex, ey, 6.2, suit.eye, 0.16);
-    P.dot(ex, ey, 3.9, 0xf6f0e2, 1, true);
-    P.dot(ex + look, ey + (air ? (p.vy < 0 ? -0.7 : 0.7) : 0.3), 2.4, dead ? 0x6b7a80 : suit.eye);
-    P.dot(ex + look, ey + (air ? (p.vy < 0 ? -0.7 : 0.7) : 0.3), 1.1, OUTLINE);
-    P.dot(ex + look - 0.8, ey - 1, 0.7, 0xffffff);
-    P.dot(ex + look + 0.9, ey + 0.8, 0.4, 0xffffff, 0.8);
+  const lookY = air ? (p.vy < 0 ? -0.5 : 0.5) : 0.2;
+  for (const dx of [-3.3, 3.5]) {
+    const ex = hx + hdx + dx, ey = hy + 0.6;
+    if (blink) P.stroke([ex - 2.4, ey, ex + 2.4, ey], 1.4, OUTLINE);
+    else {
+      P.dot(ex, ey, 3.7, suit.eye, 0.18);
+      P.dot(ex, ey, 2.6, 0xe4f6ea, 1, true);
+      P.dot(ex + look * 0.6, ey + lookY, 1.6, dead ? 0x6b7a80 : suit.eye);
+      P.dot(ex + look * 0.6, ey + lookY, 0.8, OUTLINE);
+      P.dot(ex + look * 0.6 - 0.5, ey + lookY - 0.7, 0.5, 0xffffff);
+    }
   }
-  P.stroke([ex - 4.2, ey - 3.6, ex + 4.2, ey - 3.0 + (p.stumble > 0.3 ? 1.5 : 0)], 1.4, OUTLINE); // brow / lid
-  // speaker grille mouth
-  const gy = hy + 4.6;
-  if (p.stumble > 0.3) P.blob(hx + hdx + 1, gy, 5, 2.4, 0, OUTLINE, 2.6, 1, false);
-  else for (let i = 0; i < 3; i++) P.stroke([hx + hdx - 1.6 + i * 2.2, gy - 1.2, hx + hdx - 1.6 + i * 2.2, gy + 1.2], 1, OUTLINE);
+  if (p.stumble > 0.3) P.blob(hx + hdx + 0.2, hy + 5.2, 4, 2, 0, OUTLINE, 2.6, 1, false);
+  else P.stroke([hx + hdx - 1.6, hy + 4.8, hx + hdx, hy + 5.5, hx + hdx + 1.6, hy + 4.8], 0.9, OUTLINE);
   // the glass
   const ring: number[] = [];
   for (let i = 0; i <= 28; i++) ring.push(hx + Math.cos((i / 28) * Math.PI * 2) * 11.5, domeY + 0.5 + Math.sin((i / 28) * Math.PI * 2) * 11.5);
@@ -797,18 +809,18 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
     P.poly([hx - 9, domeY - 6, hx - 3.5, domeY - 10, hx - 10, domeY - 22], suit.body);
     P.poly([hx + 3.5, domeY - 10, hx + 9, domeY - 6, hx + 9, domeY - 22], suit.body);
   } else {
-    // antenna rod out of the dome; snapped on the worn suits
-    const bendA = clumsy > 0.3 ? 0.9 + Math.sin(p.t * 3) * 0.2 : 0.15;
-    const ax = hx + 1, ay = domeY - 11.5;
-    const bx = ax + Math.sin(bendA) * 5, by = ay - Math.cos(bendA) * 5;
-    P.stroke([ax, ay, bx, by], 2.8, OUTLINE);
-    P.stroke([ax, ay, bx, by], 1.1, steel);
-    if (clumsy < 0.5) P.dot(bx, by, 1.9, 0xd24a4a, 1, true);
-    // a second, shorter antenna with a brass ball, as on the old toy robots
-    const a2x = hx - 5.5, a2y = domeY - 9.5, b2x = a2x - Math.sin(clumsy > 0.3 ? 0.5 : 0.25) * 4.5, b2y = a2y - 5.2;
-    P.stroke([a2x, a2y, b2x, b2y], 2.4, OUTLINE);
-    P.stroke([a2x, a2y, b2x, b2y], 0.9, steel);
-    P.dot(b2x, b2y, 1.6, brass, 1, true);
+    // a spring antenna with a little glowing bulb on top; it bobs as he runs
+    const ax = hx + 0.5, ay = domeY - 11.5;
+    const sway = Math.sin(p.t * 4.2) * (0.6 + run * 1.6) + p.stumble * 2;
+    const coil: number[] = [ax, ay];
+    for (let i = 1; i <= 6; i++) coil.push(ax + (i % 2 ? 2.2 : -2.2) * (1 - i * 0.04) + sway * (i / 6) * 1.2, ay - i * 1.9);
+    P.stroke([ax, ay, ax, ay - 1.4], 2.6, OUTLINE);
+    P.stroke(coil, 2.6, OUTLINE);
+    P.stroke(coil, 1, clumsy > 0.3 ? 0x8a8f94 : 0xc7ccd0);
+    const bx = coil[coil.length - 2], by = coil[coil.length - 1] - 1.6;
+    P.dot(bx, by, 2.2, 0xffd96a, 1, true);
+    P.dot(bx - 0.7, by - 0.7, 0.8, 0xffffff, 0.9);
+    if (!p.reduced) P.dot(bx, by, 3.8, 0xffe9a0, 0.18 + Math.sin(p.t * 3) * 0.06);
   }
 
   if (oiled) {
@@ -829,7 +841,7 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
     // arm out in front, holding the gun
     const a = 1.45, a2 = a * 0.8 + 0.25, kick = (p.fire ?? 0) * 2.5;
     const sx = tx + 16 - kick * 0.4, sy = torsoTop + 3;
-    limbArm(sx, sy, a, suit.body, cream, false);
+    limbArm(sx, sy, a, suit.trim, steel, false);
     const gx = sx + Math.sin(a) * 9 + Math.sin(a2) * 10, gy = sy + Math.cos(a) * 9 + Math.cos(a2) * 10;
     if (p.gun === 1) {
       P.poly([gx - 3, gy - 3.5, gx + 9, gy - 3.5, gx + 9, gy + 0.5, gx + 3, gy + 0.5, gx + 2, gy + 5.5, gx - 1.5, gy + 5.5], steelDark);
@@ -852,8 +864,8 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
       P.stroke([gx + 4, gy - 5, gx + 4, gy + 2.5], 1.2, cream, 0.6);
     }
     if ((p.fire ?? 0) > 0.5 && !p.reduced) P.dot(gx + (p.gun >= 4 ? 19 : 13), gy - 1, 3.5, 0xfff3b0, 0.9);
-  } else if (rusty) limbArm(tx + 16, torsoTop + 3, 0.28 + Math.sin(p.t * 4) * 0.2 + (air ? -1.3 : 0) - sway * 0.5, suit.body, steel, true);
-  else limbArm(tx + 16, torsoTop + 3, armNear, suit.body, cream, false);
+  } else if (rusty) limbArm(tx + 16, torsoTop + 3, 0.28 + Math.sin(p.t * 4) * 0.2 + (air ? -1.3 : 0) - sway * 0.5, suit.trim, steel, true);
+  else limbArm(tx + 16, torsoTop + 3, armNear, suit.trim, steel, false);
 
   if ((p.star ?? 0) > 0) {
     // golden aura; cycles through colours (and flickers faster in the last two seconds) unless motion is reduced
