@@ -40,9 +40,11 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
     #game, #game canvas { width: 100%; height: 100%; display: block; }
     #game:focus-visible { outline: none; }
     .stage:has(#game:focus-visible) { border-color: var(--accent); }
-    .overlay { position: absolute; inset: 0; display: grid; place-content: center; background: rgb(0 0 0 / .78); }
-    .overlay .panel { background: var(--panel); border: 2px solid var(--border); border-radius: 12px; padding: 1.5rem; min-width: min(22rem, 90%); max-width: 100%; max-height: 100%; overflow-y: auto; box-sizing: border-box; }
+    .overlay { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; align-content: center; background: rgb(0 0 0 / .78); }
+    .overlay .panel { background: var(--panel); border: 2px solid var(--border); border-radius: 12px; padding: 1.5rem; width: min(26rem, 92%); max-width: 100%; max-height: 100%; overflow-y: auto; box-sizing: border-box; }
     .overlay .panel.wide { width: min(40rem, 96%); }
+    .overlay .panel .stack { max-width: none; }
+    .overlay .panel:not(.wide) .stack { max-width: 24rem; margin-inline: auto; }
     .overlay h2 { margin: 0 0 .5rem; }
     .stats { margin: 0 0 1rem; display: grid; grid-template-columns: auto 1fr; gap: .15rem 1rem; }
     .stats dt { opacity: .85; } .stats dd { margin: 0; font-weight: 700; }
