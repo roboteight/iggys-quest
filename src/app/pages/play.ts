@@ -257,7 +257,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
               <li><strong>Breadboards</strong>: every 100 earns a free life. <strong>Rings</strong> upgrade Iggy's suit, and the higher suits learn tricks: <strong>Steel Sentinel</strong> dashes (Shoot when you have no gun), <strong>Night Guardian</strong> ground-pounds (Duck in mid-air) and <strong>Gold Circuit</strong> glides (hold Jump while falling after your double jump).</li>
               <li><strong>Golden breadboard:</strong> each level hides one high above a gap. It is worth 500 points and needs a double jump.</li>
               <li><strong>Golden rings:</strong> jump through them for bonus points. Rings passed in quick succession build a chain worth more each time, up to 100 points a ring.</li>
-              <li><strong>Glowing power-ups:</strong> spring legs, magnet, shield, overclock, the golden star and guns.</li>
+              <li><strong>Glowing power-ups:</strong> spring legs, magnet, shield, overclock, the golden star, guns and the oil can. Oil keeps Iggy's joints smooth for 15 seconds: a little faster, no stumbling and no rattling.</li>
               <li><strong>Golden star:</strong> Iggy is invincible for 8 seconds. Pylons, walls and enemies are smashed when you touch them, but falling into a gap still costs a life.</li>
               <li><strong>Guns</strong> have a limited number of shots, with no time limit, so you can save them. Grab another gun while you still have shots to upgrade it: blaster, twin blaster, spread gun, then rocket launcher.</li>
             </ul>

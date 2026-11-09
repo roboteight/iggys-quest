@@ -605,6 +605,7 @@ export function makePlatformTextures(scene: Phaser.Scene) {
   };
   slab('plat-moving', 0x7fd0ff, 0x2f6f8f, 0xffffff); // blue steel with white stripes: moves
   slab('plat-crumble', 0xe0b070, 0x8a5a2a, 0x3a2410); // cracked wood: falls apart
+  slab('plat-secret', 0xffe27a, 0xb8860b, 0xffffff); // glowing gold: the hidden sky layer
   const flag = (key: string, cloth: number) => {
     const g = gfx(scene);
     g.fillStyle(0x000000, 1).fillRect(0, 0, 8, 76);
