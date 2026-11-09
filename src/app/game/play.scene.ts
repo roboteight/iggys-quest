@@ -4,7 +4,7 @@ import {
   H, SUITS, W, drawBuilding, drawHollowBuilding, drawRobot, makeFlakes, makeFog, makeHollowFog, makeHollowLayer, makeHollowSky,
   makeRain, makeSky, makeSkyline, makeSmallTextures, suitFor,
 } from './art';
-import { ensureStyle, drawLevelBuilding, makeEnemyTextures, makeFlyerTextures, makeRingTextures, makePlatformTextures, ExtraStyle } from './art-levels';
+import { ensureStyle, drawLevelBuilding, makeEnemyTextures, makeFlyerTextures, makeRingTextures, makeWarTextures, makePlatformTextures, ExtraStyle } from './art-levels';
 import { BOSSES, BOSS_SCORE, BossAttack, BossDef, LevelDef, levelById } from './levels';
 import { BOSS_H, makeBossTextures } from './boss-art';
 import { makeForeTexture } from './art-fore';
@@ -66,13 +66,14 @@ const POWER: Record<PowerId, { label: string; secs: number | null; tex: string; 
 
 interface Shot { s: Phaser.GameObjects.Image; vx: number; vy: number; kind: 'bolt' | 'rocket'; trail: number; big?: boolean; bossHit?: boolean; hit?: Set<Item> }
 interface Building { x: number; top: number; w: number; gfx: Phaser.GameObjects.Graphics; zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }
-interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer' | 'secret' | 'hazard' | 'switch'; hint?: boolean; bonus?: boolean; pressed?: boolean; hz?: Haz; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
+interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer' | 'secret' | 'hazard' | 'switch' | 'mine'; mT?: number; hint?: boolean; bonus?: boolean; pressed?: boolean; hz?: Haz; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
 
 /** Roof hazards that run on a timer: falling debris (city, hollow, wastes), steam vents (drowned), laser grids (void, spores). */
 interface Haz {
   type: 'debris' | 'vent' | 'laser'; gfx: Phaser.GameObjects.Graphics; x: number; top: number;
   state: 'idle' | 'warn' | 'active' | 'done'; t: number; fall: number; ticks: number;
 }
+interface Shell { x: number; top: number; state: 'warn' | 'boom'; t: number; gfx: Phaser.GameObjects.Graphics; boomed: boolean }
 interface Plat {
   kind: 'moving' | 'crumble' | 'secret'; img: Phaser.Physics.Arcade.Image; collider: Phaser.Physics.Arcade.Collider; baseX: number; baseY: number; amp: number; phase: number;
   stood: boolean; timer: number; state: 'idle' | 'shaking' | 'falling';
@@ -169,6 +170,10 @@ export class PlayScene extends Phaser.Scene {
   private ghostBox?: Phaser.GameObjects.Rectangle;
   private secretAt = 3000;
   private secretPlaced = false;
+  // warzone: random artillery shells and landmines
+  private shells: Shell[] = [];
+  private shellCD = 3.5;
+  private shellWarned = false;
   private switchPlaced = false;
   /** once the hidden path is revealed: the stretch of the level it covers, where breadboards become optional bonus */
   private layerSpan: [number, number] | null = null;
@@ -254,6 +259,10 @@ export class PlayScene extends Phaser.Scene {
     this.trace = [];
     this.secretAt = 2200 + this.rand() * 2800; // somewhere along the level a golden breadboard hides above a gap
     this.secretPlaced = false;
+    this.shells.forEach((sh) => sh.gfx.destroy());
+    this.shells = [];
+    this.shellCD = 3.5;
+    this.shellWarned = false;
     this.switchPlaced = false;
     this.layerSpan = null;
     this.landedNow = false;
@@ -400,6 +409,7 @@ export class PlayScene extends Phaser.Scene {
     makeFlyerTextures(this);
     makeRingTextures(this);
     makePlatformTextures(this);
+    if (this.level.style === 'war') makeWarTextures(this);
     makeBossTextures(this, this.level.style);
     const style = this.level.style;
     let sky: string, layers: [string, number][], fogKey: string, precipKey: string;
@@ -475,13 +485,14 @@ export class PlayScene extends Phaser.Scene {
     const lim = this.cameras.main.scrollX + W + 900;
     while (this.nextX < lim) {
       const d = this.difficulty();
-      const rise = this.between(-140, 70); // positive = lower
-      let top = Phaser.Math.Clamp(this.lastTop + rise, 290, 450);
+      const war = this.level.style === 'war'; // the trenches are one long stretch of low ground with only small craters to jump
+      const rise = war ? this.between(-16, 16) : this.between(-140, 70); // positive = lower
+      let top = war ? Phaser.Math.Clamp(this.lastTop + rise, 405, 440) : Phaser.Math.Clamp(this.lastTop + rise, 290, 450);
       const stepUp = Math.max(0, this.lastTop - top);
       if (stepUp > 75) top = this.lastTop - 75;
       const maxGap = 120 + d * 60 - stepUp * 0.9;
-      const gap = this.between(60, Math.max(70, Math.floor(maxGap)));
-      const w = this.between(170, 440 - Math.floor(d * 120));
+      const gap = war ? this.between(46, 92) : this.between(60, Math.max(70, Math.floor(maxGap)));
+      const w = war ? this.between(250, 520 - Math.floor(d * 110)) : this.between(170, 440 - Math.floor(d * 120));
       const x = this.nextX + gap;
       const prev = this.buildings[this.buildings.length - 1];
       const b = this.addBuilding(x, top, w);
@@ -538,7 +549,14 @@ export class PlayScene extends Phaser.Scene {
     // a patrolling enemy walking back and forth across a clear roof
     if (hazards.length === 0 && b.w > 220 && this.maxX > 200 && this.rand() < 0.22 + d * 0.3) this.addPatrol(b);
     // a timed roof hazard on a clear roof, a different kind for each look of level
-    if (hazards.length === 0 && b.w > 280 && this.maxX > 600 && this.rand() < 0.14 + d * 0.18) {
+    if (this.level.style === 'war') {
+      // landmines buried in the ground on clear stretches
+      if (hazards.length === 0 && b.w > 260 && this.maxX > 500 && this.rand() < 0.3 + d * 0.2) {
+        const mx = b.x + this.between(110, b.w - 110);
+        this.addMine(mx, b.top);
+        hazards.push(mx);
+      }
+    } else if (hazards.length === 0 && b.w > 280 && this.maxX > 600 && this.rand() < 0.14 + d * 0.18) {
       const hx = b.x + this.between(110, b.w - 110);
       this.addHazard(hx, b.top);
       hazards.push(hx);
@@ -1100,6 +1118,82 @@ export class PlayScene extends Phaser.Scene {
     });
   }
 
+  private addMine(x: number, top: number) {
+    const sprite = this.add.image(x, top - 5, 'mine-war-a').setDepth(6);
+    this.items.push({ kind: 'mine', sprite, baseY: sprite.y, phase: this.rand() * 3 });
+  }
+
+  /** An explosion on the ground: noise, shake, debris and a flash. It only hurts when Iggy is close. */
+  private blast(x: number, groundY: number, radius = 56) {
+    this.sfx.explosion();
+    if (!this.reduced) this.cameras.main.shake(220, 0.012);
+    this.debris(x, groundY - 6, 'brick', this.reduced ? 3 : 10, 1.8);
+    this.debris(x, groundY - 10, 'spark', this.reduced ? 3 : 12, 1.6);
+    this.dust(x, groundY, 9, 60, 30, 1.8);
+    this.burst(x, groundY - 14, [0xffd23a, 0xff7a1a, 0xffffff, 0x6b5a4a], 26, 300);
+    const flash = this.add.circle(x, groundY - 12, radius * 0.6, 0xffb347, 0.85).setDepth(13);
+    this.tweens.add({ targets: flash, scale: this.reduced ? 1.4 : 2.4, alpha: 0, duration: 380, onComplete: () => flash.destroy() });
+    const b = this.body;
+    if (Math.abs(b.center.x - x) < radius && b.bottom > groundY - 80 && this.invuln <= 0) this.hit('blast');
+  }
+
+  private detonateMine(it: Item, hurt: boolean, points = 0) {
+    it.taken = true;
+    if (points) this.bonus += points;
+    this.blast(it.sprite.x, it.sprite.y + 5, hurt ? 56 : 0.1);
+  }
+
+  /** The Iron Marshal's artillery: a shell whistles in, a marker shows where it will land, then it explodes. */
+  private updateShells(dt: number) {
+    if (this.level.style !== 'war') return;
+    if (!this.over && this.arenaX === null) {
+      this.shellCD -= dt;
+      if (this.shellCD <= 0) {
+        this.shellCD = Math.max(1.4, 3.3 - this.difficulty() * 1.6) + Math.random() * 1.6;
+        const px = this.body.center.x;
+        for (let tries = 0; tries < 6; tries++) {
+          const x = px + this.between(-90, 380) * (Math.random() < 0.8 ? 1 : 0.5);
+          const b = this.buildings.find((bb) => x >= bb.x + 24 && x <= bb.x + bb.w - 24);
+          if (!b) continue;
+          this.shells.push({ x, top: b.top, state: 'warn', t: 0, gfx: this.add.graphics().setDepth(12), boomed: false });
+          this.sfx.whistle();
+          if (!this.shellWarned) {
+            this.shellWarned = true;
+            this.announce('Artillery! Listen for the whistle and watch for the orange marker on the ground, then get clear before the shell lands.');
+          }
+          break;
+        }
+      }
+    }
+    this.shells = this.shells.filter((sh) => {
+      sh.t += dt;
+      sh.gfx.clear();
+      if (sh.state === 'warn') {
+        const u = Math.min(1, sh.t / 1.15);
+        // the shell itself, streaking in from up and to the right
+        const sx = sh.x + 120 * (1 - u), sy = sh.top - 420 * (1 - u);
+        sh.gfx.lineStyle(3, 0xffd9a0, 0.7).lineBetween(sx + 30 * (1 - u) + 8, sy - 38, sx, sy);
+        sh.gfx.fillStyle(0x2a2420, 1).fillCircle(sx, sy, 5).lineStyle(2, 0xffb060, 1).strokeCircle(sx, sy, 5);
+        // the marker on the ground (steady when motion is reduced)
+        if (this.reduced || Math.floor(sh.t / 0.14) % 2 === 0) {
+          sh.gfx.lineStyle(3, 0xff7a1a, 1).strokeEllipse(sh.x, sh.top - 3, 78, 16);
+          sh.gfx.lineStyle(3, 0xffd23a, 1).lineBetween(sh.x - 10, sh.top - 3, sh.x + 10, sh.top - 3).lineBetween(sh.x, sh.top - 8, sh.x, sh.top + 2);
+        }
+        if (sh.t >= 1.15) {
+          sh.state = 'boom';
+          sh.t = 0;
+        }
+        return true;
+      }
+      if (!sh.boomed) {
+        sh.boomed = true;
+        this.blast(sh.x, sh.top, 58);
+      }
+      sh.gfx.destroy();
+      return false;
+    });
+  }
+
   private addHazard(x: number, top: number) {
     const style = this.level.style;
     const type: Haz['type'] = style === 'drowned' ? 'vent' : style === 'void' || style === 'spores' ? 'laser' : 'debris';
@@ -1180,7 +1274,9 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private addItem(kind: Item['kind'], x: number, y: number, power?: PowerId) {
-    const tex = kind === 'secret' ? 'secret' : kind === 'bb' ? 'breadboard' : kind === 'pylon' ? 'pylon' : kind === 'wall' ? 'wall' : POWER[power!].tex;
+    const war = this.level.style === 'war';
+    const wallTex = ['wall-war-dirt', 'wall-war-block', 'wall-war-hog'][Math.abs(Math.floor(x / 7)) % 3];
+    const tex = war && kind === 'pylon' ? 'wire-war' : war && kind === 'wall' ? wallTex : kind === 'secret' ? 'secret' : kind === 'bb' ? 'breadboard' : kind === 'pylon' ? 'pylon' : kind === 'wall' ? 'wall' : POWER[power!].tex;
     const inSpan = kind === 'bb' && !!this.layerSpan && x >= this.layerSpan[0] && x <= this.layerSpan[1];
     if (kind === 'bb' && !inSpan) this.bbSpawned++;
     const sprite = this.add.image(x, y, tex).setDepth(kind === 'pylon' || kind === 'wall' ? 6 : 7);
@@ -1401,13 +1497,13 @@ export class PlayScene extends Phaser.Scene {
           return false;
         }
       }
-      const hitIt = this.items.find((it) => !it.taken && !sh.hit?.has(it) && (it.kind === 'pylon' || it.kind === 'wall' || it.kind === 'patrol' || it.kind === 'flyer') && Math.abs(s.x - it.sprite.x) < (it.kind === 'patrol' ? 16 : it.kind === 'flyer' ? 22 : 18) && Math.abs(s.y - it.sprite.y) < (it.kind === 'wall' ? 34 : it.kind === 'patrol' ? it.sprite.height / 2 + 4 : it.kind === 'flyer' ? 20 : 24));
+      const hitIt = this.items.find((it) => !it.taken && !sh.hit?.has(it) && (it.kind === 'pylon' || it.kind === 'wall' || it.kind === 'patrol' || it.kind === 'flyer' || it.kind === 'mine') && Math.abs(s.x - it.sprite.x) < (it.kind === 'patrol' ? 16 : it.kind === 'flyer' ? 22 : it.kind === 'mine' ? 20 : 18) && Math.abs(s.y - it.sprite.y) < (it.kind === 'mine' ? 34 : it.kind === 'wall' ? 34 : it.kind === 'patrol' ? it.sprite.height / 2 + 4 : it.kind === 'flyer' ? 20 : 24));
       const hitBuilding = this.buildings.some((b) => s.x >= b.x && s.x <= b.x + b.w && s.y > b.top + 2);
       const off = s.x < cam.scrollX - 60 || s.x > cam.scrollX + W + 120 || s.y < -60 || s.y > H + 60;
       if (hitIt || hitBuilding) {
         const dmg = sh.big ? 3 : 1;
         if (sh.kind === 'rocket') this.explode(s.x, s.y, sh.big ? 150 : 85);
-        else if (hitIt) hitIt.kind === 'pylon' ? this.destroyPylon(hitIt) : hitIt.kind === 'patrol' || hitIt.kind === 'flyer' ? this.damagePatrol(hitIt, dmg) : this.damageWall(hitIt, dmg);
+        else if (hitIt) hitIt.kind === 'mine' ? this.detonateMine(hitIt, false) : hitIt.kind === 'pylon' ? this.destroyPylon(hitIt) : hitIt.kind === 'patrol' || hitIt.kind === 'flyer' ? this.damagePatrol(hitIt, dmg) : this.damageWall(hitIt, dmg);
         else this.debris(s.x, s.y, 'spark', 2, 0.4);
       }
       if (sh.big && sh.kind === 'bolt' && hitIt && !hitBuilding) sh.hit!.add(hitIt); // charged bolts pierce targets
@@ -1475,9 +1571,10 @@ export class PlayScene extends Phaser.Scene {
     const bs = this.boss;
     if (bs && bs.state !== 'dead' && Math.hypot(bs.sprite.x - x, bs.sprite.y - bs.sprite.displayHeight / 2 - y) < radius + 55) this.damageBoss(radius > 100 ? 6 : 3);
     for (const it of this.items) {
-      if (it.taken || (it.kind !== 'pylon' && it.kind !== 'wall' && it.kind !== 'patrol' && it.kind !== 'flyer')) continue;
+      if (it.taken || (it.kind !== 'pylon' && it.kind !== 'wall' && it.kind !== 'patrol' && it.kind !== 'flyer' && it.kind !== 'mine')) continue;
       if (Math.hypot(it.sprite.x - x, it.sprite.y - y) < radius) {
-        if (it.kind === 'pylon') this.destroyPylon(it);
+        if (it.kind === 'mine') this.detonateMine(it, false);
+        else if (it.kind === 'pylon') this.destroyPylon(it);
         else if (it.kind === 'patrol' || it.kind === 'flyer') this.defeatPatrol(it, 'shot');
         else this.breakWall(it, true);
       }
@@ -1575,7 +1672,7 @@ export class PlayScene extends Phaser.Scene {
     this.emitHud(true);
   }
 
-  private hit(reason: 'pylon' | 'enemy' | 'fall') {
+  private hit(reason: 'pylon' | 'enemy' | 'blast' | 'fall') {
     if (this.over) return;
     if (reason === 'fall') this.setDucked(false);
     if (reason !== 'fall') {
@@ -1601,7 +1698,7 @@ export class PlayScene extends Phaser.Scene {
         this.debris(this.body.center.x, this.body.center.y, 'cog', 4, 1.3);
         this.debris(this.body.center.x, this.body.center.y, 'spark', this.reduced ? 3 : 8, 1.4);
         this.body.setVelocity(-this.facing * 280, -380);
-        this.announce(`${reason === 'enemy' ? 'Bonked' : 'Zapped'}! Suit downgraded to ${SUITS[this.suitIdx].name}.`);
+        this.announce(`${this.hitWord(reason)}! Suit downgraded to ${SUITS[this.suitIdx].name}.`);
         this.emitHud(true);
         return;
       }
@@ -1623,7 +1720,7 @@ export class PlayScene extends Phaser.Scene {
     this.rings = 0;
     const where = this.respawn();
     this.announce(
-      (reason === 'fall' ? `Iggy fell. ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.` : `${reason === 'enemy' ? 'Bonked' : 'Zapped'}! ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.`) +
+      (reason === 'fall' ? `Iggy fell. ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.` : `${this.hitWord(reason)}! ${this.lives} ${this.lives === 1 ? 'life' : 'lives'} left.`) +
         (lostSuit ? ` Back to the ${SUITS[0].name} suit.` : '') + ` ${where}`,
     );
     this.invuln = this.grace();
@@ -1648,8 +1745,11 @@ export class PlayScene extends Phaser.Scene {
     if (!inArena) this.cameras.main.scrollX = Math.max(-20, spot.x - 330);
     // clear anything nasty standing right where he lands
     this.items.forEach((it) => {
-      if ((it.kind === 'pylon' || it.kind === 'patrol' || it.kind === 'wall' || it.kind === 'flyer') && Math.abs(it.sprite.x - spot.x) < 110) it.taken = true;
+      if ((it.kind === 'pylon' || it.kind === 'patrol' || it.kind === 'wall' || it.kind === 'flyer' || it.kind === 'mine') && Math.abs(it.sprite.x - spot.x) < 110) it.taken = true;
     });
+    this.shells.forEach((sh) => sh.gfx.destroy());
+    this.shells = [];
+    this.shellCD = Math.max(this.shellCD, 2.5);
     this.bossShots.forEach((sh) => sh.img.destroy());
     this.bossWaves.forEach((w) => w.img.destroy());
     this.bossShots = [];
@@ -1762,6 +1862,10 @@ export class PlayScene extends Phaser.Scene {
   /** how worn Iggy's joints are right now: oil takes the rattle out of them */
   private looseNow() {
     return this.power.oil > 0 ? 0 : SUITS[this.suitIdx].loose;
+  }
+
+  private hitWord(reason: string) {
+    return reason === 'enemy' ? 'Bonked' : reason === 'blast' ? 'Blasted' : 'Zapped';
   }
 
   private grace() {
@@ -2018,6 +2122,25 @@ export class PlayScene extends Phaser.Scene {
               body.setVelocityY(-430);
             } else this.hit('enemy');
           }
+        } else if (it.kind === 'mine') {
+          const dx = Math.abs(px - s.x);
+          if (dx < 520) s.setTexture(this.reduced ? 'mine-war-b' : Math.floor(this.t * 3 + it.phase) % 2 ? 'mine-war-b' : 'mine-war-a');
+          if (!it.hint && dx < 380 && px < s.x + 30) {
+            it.hint = true;
+            this.announce('A landmine is buried in the ground ahead. Beeping gets faster as you get close. Jump over it, or shoot it from a distance.');
+          }
+          if (dx < 260 && px < s.x + 24) {
+            it.mT = (it.mT ?? 0) - dt;
+            if (it.mT <= 0) {
+              it.mT = 0.12 + 0.55 * (dx / 260);
+              this.sfx.mineBeep();
+            }
+          }
+          const onGround = body.touching.down || body.blocked.down;
+          if (dx < 18 && body.bottom > s.y - 8 && onGround) {
+            if (this.smashing()) this.detonateMine(it, false, 30);
+            else this.detonateMine(it, true);
+          }
         } else if (it.kind === 'switch') {
           if (!it.pressed) {
             if (!it.hint && Math.abs(px - s.x) < 340) {
@@ -2071,6 +2194,7 @@ export class PlayScene extends Phaser.Scene {
 
       this.updatePlatforms(dt);
       this.updateBoss(dt, edt);
+      this.updateShells(edt);
 
       // speed trail behind Iggy while overclocked or invincible
       this.trailT -= dt;

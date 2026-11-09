@@ -1,6 +1,6 @@
 import type { ThemeName } from './music';
 
-export type LevelStyle = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores';
+export type LevelStyle = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores' | 'war';
 
 /** One entry per level. The scene, art and music all read from here. */
 export interface LevelDef {
@@ -40,6 +40,7 @@ export const BOSSES: Record<LevelStyle, BossDef> = {
   wastes: { name: 'Dune Scorpion', blurb: 'A four-legged walker with a cannon on its tail.', hp: 28, speed: 60, attacks: ['spread', 'volley', 'stomp'], muzzle: [40, -150] },
   drowned: { name: 'Deep Diver', blurb: 'A diving-suit mech with a glass dome and heavy claws.', hp: 30, speed: 35, attacks: ['volley', 'mortar', 'stomp'], muzzle: [-60, -60] },
   void: { name: 'Neon Warden', blurb: 'A hovering sentinel on a ring of light.', hp: 30, speed: 70, attacks: ['spread', 'volley', 'spread', 'stomp'], muzzle: [-70, -88] },
+  war: { name: 'Iron Marshal', blurb: 'A rolling siege tank with a long gun, the one that has been shelling the trenches.', hp: 36, speed: 38, attacks: ['mortar', 'volley', 'spread', 'stomp'], muzzle: [-84, -96] },
   spores: { name: 'Spore Mother', blurb: 'A tripod walker under a giant mushroom cap.', hp: 34, speed: 30, attacks: ['mortar', 'spread', 'stomp'], muzzle: [-70, -45] },
 };
 
@@ -84,7 +85,14 @@ export const LEVELS: LevelDef[] = [
     blurb: 'Giant glowing mushrooms under twin moons and an aurora.',
     style: 'spores', music: 'spores', precip: { vx: 8, vy: 36 }, lightning: false, bg: '#020c14',
     intro: 'The Spore Garden is warm, soft and not entirely friendly. Giant caps glow in the dark, and at the very top of the hill a tripod walks slowly under a mushroom the size of a house.',
-    outro: 'The Spore Mother settles into the moss and lets out one long puff of light. Iggy\'s gears are humming. All his parts work, the road home is clear, and for the first time in a long while nothing rattles.',
+    outro: 'The Spore Mother settles into the moss and lets out one long puff of light. Beyond the garden the sky turns the colour of old brass, and far off something heavy is firing.',
+  },
+  {
+    id: 'trenches', number: 7, name: 'Ember Trenches',
+    blurb: 'Barbed wire, rubble and shell craters under a smoking sky.',
+    style: 'war', music: 'war', precip: { vx: 30, vy: -90 }, lightning: true, bg: '#1a0f0d',
+    intro: 'The trenches are all mud, wire and smoke. Somewhere past the ridge the Iron Marshal, a siege tank with a very long gun, has been shelling this ground for years, and it has not run out of shells yet. Listen for the whistle, find the marker and get out of the way.',
+    outro: 'The Iron Marshal rolls to a stop and its long gun droops. The smoke thins, the last shell lands somewhere harmless, and for the first time in years the trenches are quiet. Iggy\'s gears are humming. All his parts work, the road home is clear, and nothing rattles.',
   },
 ];
 

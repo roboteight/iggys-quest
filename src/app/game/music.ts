@@ -41,9 +41,40 @@ interface Theme {
   hat: (s: number) => number; // gain, 0 = none
 }
 
-export type ThemeName = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores';
+export type ThemeName = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores' | 'war';
 
 const THEMES: Record<ThemeName, Theme> = {
+  // a slow D-minor march: brass-like square lead over a snare roll
+  war: {
+    bpm: 108,
+    steps: 16,
+    chords: [
+      { root: 38, arp: [62, 65, 69] }, // Dm
+      { root: 34, arp: [58, 62, 65] }, // Bb
+      { root: 41, arp: [65, 69, 72] }, // F
+      { root: 33, arp: [57, 61, 64] }, // A
+    ],
+    progression: [0, 0, 1, 2, 0, 0, 1, 3],
+    lead: parse([
+      'D5 _ _ D5 F5 _ A5 _ D6 _ _ _ . . . .',
+      'D5 _ _ D5 F5 _ A5 _ C6 _ A5 _ . . . .',
+      'A#4 _ _ A#4 D5 _ F5 _ A#5 _ _ _ . . . .',
+      'F5 _ A5 _ C6 _ _ _ A5 _ F5 _ . . . .',
+      'D5 _ _ D5 F5 _ A5 _ D6 _ _ _ C6 _ A5 _',
+      'D5 _ _ D5 F5 _ A5 _ C6 _ A5 _ F5 _ . .',
+      'A#5 _ _ A5 F5 _ D5 _ F5 _ _ _ . . . .',
+      'E5 _ G5 _ A5 _ C#6 _ E6 _ _ _ . . . .',
+    ]),
+    leadWave: 'square',
+    leadGain: 0.16,
+    arp: null,
+    stabs: [6, 14],
+    bass: (s) => (s % 4 === 0 ? (s % 8 === 4 ? 7 : 0) : null),
+    kick: (s) => s % 8 === 0,
+    snare: (s) => s === 4 || s === 12 || s === 14,
+    hat: (s) => (s % 2 === 1 ? 0.05 : 0),
+    bassLen: 2,
+  },
   city: {
     bpm: 150,
     steps: 16,
@@ -237,6 +268,35 @@ const THEMES: Record<ThemeName, Theme> = {
  *  - spores:  frantic marimba runs in C/D/Em/G, 136 BPM
  */
 const BOSS_THEMES: Record<ThemeName, Theme> = {
+  // the Iron Marshal: the march doubles up and drives
+  war: {
+    bpm: 150,
+    steps: 16,
+    chords: [
+      { root: 38, arp: [62, 65, 69] }, // Dm
+      { root: 34, arp: [58, 62, 65] }, // Bb
+      { root: 41, arp: [65, 69, 72] }, // F
+      { root: 33, arp: [57, 61, 64] }, // A
+    ],
+    progression: [0, 1, 2, 3, 0, 3],
+    lead: parse([
+      'D5 D5 . D5 F5 . A5 . D6 D6 . C6 . A5 . .',
+      'A#4 A#4 . A#4 D5 . F5 . A#5 A#5 . A5 . F5 . .',
+      'F5 F5 . F5 A5 . C6 . F6 F6 . E6 . C6 . .',
+      'A5 A5 . A5 C#6 . E6 . A5 A5 . G5 . E5 . .',
+      'D6 _ C6 _ A5 _ F5 _ D5 D5 F5 F5 A5 _ _ _',
+      'E5 E5 G5 G5 A5 _ C#6 _ E6 _ D6 _ C#6 _ A5 _',
+    ]),
+    leadWave: 'sawtooth',
+    leadGain: 0.12,
+    arp: null,
+    stabs: [6, 14],
+    bass: (s) => (s % 2 === 0 ? 0 : null),
+    kick: (s) => s % 4 === 0 || s === 10,
+    snare: (s) => s === 4 || s === 12,
+    hat: (s) => (s % 2 === 0 ? 0.1 : 0.05),
+    bassLen: 2,
+  },
   city: {
     bpm: 168,
     steps: 16,

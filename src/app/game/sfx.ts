@@ -135,6 +135,10 @@ export class Sfx {
   /** wood splintering: a low creak and a scatter of clicks */
   crumble() { this.tone(95, 70, 0.4, 'triangle', 0.7); for (let i = 0; i < 6; i++) this.tick(500 + Math.random() * 900, 0.04, 0.6, Math.random() * 0.35); }
   firework() { this.tone(900, 3200, 0.1, 'sine', 0.15); this.tick(900, 0.25, 0.8, 0.02); this.tone(110, 50, 0.3, 'triangle', 0.7, 0.02); for (let i = 0; i < 5; i++) this.tick(4000 + Math.random() * 2500, 0.03, 0.4, 0.1 + Math.random() * 0.4); }
+  /** an incoming shell: a long falling whistle */
+  whistle() { this.tone(2600, 700, 1.1, 'sine', 0.35); this.tone(2610, 710, 1.1, 'triangle', 0.15); }
+  explosion() { this.tone(90, 28, 0.7, 'sawtooth', 1); this.tick(300, 0.5, 1); this.tick(900, 0.3, 0.8, 0.05); this.tone(180, 50, 0.4, 'square', 0.5); }
+  mineBeep() { this.tone(1500, 1500, 0.06, 'square', 0.3); }
   warn() { this.tone(1800, 1800, 0.07, 'square', 0.35); }
   crash() { this.tone(110, 40, 0.35, 'sawtooth', 0.9); this.tick(700, 0.25, 0.9); }
   jet() { this.tick(2500, 0.5, 0.5); this.tone(400, 700, 0.5, 'sawtooth', 0.25); }

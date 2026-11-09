@@ -58,6 +58,16 @@ const DRAW: Record<LevelStyle, Draw> = {
     for (let i = 0; i < 8; i++) { const x = 40 + i * 110 + r() * 40, h = 22 + r() * 40; g.fillStyle(0x0b0420, 1).fillTriangle(x, 0, x + 26, 0, x + 13, h); g.lineStyle(2, 0xff3df0, 0.8).lineBetween(x, 0, x + 13, h); }
     for (let i = 0; i < 7; i++) { const x = 60 + i * 130 + r() * 40, h = 14 + r() * 24; g.fillStyle(0x0b0420, 1).fillTriangle(x, H, x + 22, H, x + 11, H - h); g.lineStyle(2, 0x3df0ff, 0.8).lineBetween(x + 22, H, x + 11, H - h); }
   },
+  // snapped telegraph poles with sagging wire on top, stakes and barbed wire along the bottom
+  war: (g, r) => {
+    for (const x0 of [70, 360, 650]) { g.fillStyle(0x0a0504, 1).fillRect(x0 - 3, 0, 6, 40 + r() * 20); sag(g, x0, x0 + 230, 24 + r() * 16, 2, 0x0a0504); }
+    for (let i = 0; i < 9; i++) {
+      const x = 40 + i * 105 + r() * 20;
+      g.fillStyle(0x0a0504, 1).fillRect(x, H - 36 - r() * 10, 5, 46);
+      g.lineStyle(2, 0x0a0504, 1).beginPath().moveTo(x, H - 26).lineTo(x + 26, H - 34).lineTo(x + 52, H - 24).lineTo(x + 78, H - 34).lineTo(x + 100, H - 26).strokePath();
+      for (let k = 0; k < 4; k++) g.lineBetween(x + 14 + k * 22, H - 38, x + 22 + k * 22, H - 22);
+    }
+  },
   // mushroom-cap edges and glowing hanging strands on top, fern fronds at the bottom
   spores: (g, r) => {
     for (const x of [100, 420, 760]) { g.fillStyle(0x07151c, 1).fillEllipse(x, 0, 150 + r() * 40, 60); g.fillStyle(0x6dffb0, 0.5).fillCircle(x - 30, 22, 3).fillCircle(x + 22, 26, 3); }

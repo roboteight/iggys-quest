@@ -7,7 +7,7 @@ import { H, W, flat, gfx, lerpColor, rng } from './art';
  * a precipitation tile for a style; `drawLevelBuilding` draws one rooftop.
  */
 
-export type ExtraStyle = 'wastes' | 'drowned' | 'void' | 'spores';
+export type ExtraStyle = 'wastes' | 'drowned' | 'void' | 'spores' | 'war';
 
 export interface StyleAssets {
   sky: string;
@@ -57,6 +57,16 @@ function makeSkyTex(scene: Phaser.Scene, key: string, style: ExtraStyle) {
       const x = r() * W, y = 60 + r() * 170;
       for (let k = 0; k < 4; k++) g.fillStyle(0x5a2418, 0.12).fillEllipse(x, y + k * 2, 220 - k * 30, 10 + k * 3);
     }
+  } else if (style === 'war') {
+    // a smoke-choked sunset: a dull sun behind black smoke, flashes of distant gunfire on the horizon
+    gradient(g, [[0, 0x120808], [0.4, 0x3d1a10], [0.75, 0xa8532a], [1, 0xe39a4e]]);
+    halo(g, 720, 330, 50, 230, 0xffa35a, 0.05);
+    g.fillStyle(0xffcf8a, 0.8).fillCircle(720, 330, 54);
+    for (let i = 0; i < 9; i++) {
+      const x = r() * W, y = 40 + r() * 230;
+      for (let k = 0; k < 5; k++) g.fillStyle(0x1a0c08, 0.16).fillEllipse(x + k * 14, y + k * 3, 300 - k * 44, 34 - k * 4);
+    }
+    for (let i = 0; i < 6; i++) halo(g, 60 + r() * 840, 380 + r() * 60, 4, 46, 0xffb060, 0.07); // far-off gunfire
   } else if (style === 'drowned') {
     gradient(g, [[0, 0x06191c], [0.5, 0x1f5753], [0.85, 0x6fa896], [1, 0xa4cdb0]]);
     halo(g, 700, 150, 38, 190, 0xe2f6d0, 0.045);
@@ -296,6 +306,71 @@ const sporesNear: Draw = (g, r, c, base) => {
   g.fillStyle(c, 1).fillRect(0, base - 14, TW, 16);
 };
 
+// ====================================================================== war layers
+/** A strand of barbed wire between two points: a sagging line with little crossed barbs. */
+function barbed(g: Pt, x0: number, x1: number, y: number, sagAmt: number, color: number) {
+  const pts: number[] = [];
+  const n = 14;
+  for (let i = 0; i <= n; i++) pts.push(x0 + ((x1 - x0) * i) / n, y + Math.sin((i / n) * Math.PI) * sagAmt);
+  g.lineStyle(2, color, 1).strokePoints(flat(pts), false, false);
+  for (let i = 1; i < n; i += 2) {
+    const px = pts[i * 2], py = pts[i * 2 + 1];
+    g.lineStyle(1.5, color, 1).lineBetween(px - 3, py - 3, px + 3, py + 3).lineBetween(px - 3, py + 3, px + 3, py - 3);
+  }
+}
+
+const warFar: Draw = (g, r, c, base) => {
+  // a burnt-out town: jagged broken walls with smoke columns climbing from a few of them
+  for (let x = 0; x < TW - 70; x += 64 + r() * 70) {
+    const w = 46 + r() * 70, h = 100 + r() * 220;
+    const j = [r() * 24, r() * 18, r() * 30, r() * 22, r() * 26];
+    const smoke = r() < 0.4;
+    wrap(x, w, (x0) => {
+      const top = base - h;
+      g.fillStyle(c, 1).fillPoints(flat([x0, base, x0, top + j[0], x0 + w * 0.25, top - 6 + j[1], x0 + w * 0.45, top + 16 + j[2], x0 + w * 0.7, top + j[3], x0 + w, top + 14 + j[4], x0 + w, base]), true);
+      if (smoke) for (let k = 0; k < 6; k++) g.fillStyle(0x1a0c08, 0.22 - k * 0.025).fillEllipse(x0 + w * 0.5 + k * 6, top - 14 - k * 30, 34 + k * 14, 40 + k * 8);
+    });
+  }
+};
+const warMid: Draw = (g, r, c, base) => {
+  // broken walls with window holes, dead trees and snapped telegraph poles with sagging wire
+  for (let x = 20; x < TW - 140; x += 150 + r() * 110) {
+    const w = 60 + r() * 60, h = 70 + r() * 90;
+    const holes = [r() < 0.7, r() < 0.7, r() < 0.7];
+    wrap(x, w, (x0) => {
+      g.fillStyle(c, 1).fillPoints(flat([x0, base, x0, base - h, x0 + w * 0.35, base - h + 14, x0 + w * 0.6, base - h - 8, x0 + w, base - h + 26, x0 + w, base]), true);
+      holes.forEach((hole, i) => hole && g.fillStyle(0x000000, 0.35).fillRect(x0 + 10 + i * (w / 3.2), base - h + 26, 12, 18));
+    });
+  }
+  for (let x = 60; x < TW - 90; x += 230 + r() * 120) {
+    const h = 90 + r() * 50;
+    wrap(x, 6, (x0) => {
+      g.fillStyle(c, 1).fillRect(x0, base - h, 5, h);
+      g.fillRect(x0 - 12, base - h + 8, 29, 4);
+      barbed(g, x0 + 4, x0 + 4 + 150, base - h + 10, 16, c);
+    });
+  }
+};
+const warNear: Draw = (g, r, c, base) => {
+  // hedgehogs, wire fences, a wrecked tank hull
+  for (let x = 30; x < TW - 60; x += 110 + r() * 120) {
+    const k = r();
+    wrap(x, 60, (x0) => {
+      if (k < 0.4) {
+        // czech hedgehog: three crossed beams
+        g.lineStyle(5, c, 1).lineBetween(x0, base - 4, x0 + 36, base - 40).lineBetween(x0 + 36, base - 4, x0, base - 40).lineBetween(x0 - 4, base - 22, x0 + 40, base - 22);
+      } else if (k < 0.75) {
+        g.fillStyle(c, 1).fillRect(x0, base - 46, 4, 46).fillRect(x0 + 56, base - 46, 4, 46);
+        barbed(g, x0 + 2, x0 + 58, base - 40, 6, c);
+        barbed(g, x0 + 2, x0 + 58, base - 26, 6, c);
+      } else {
+        g.fillStyle(c, 1).fillRoundedRect(x0, base - 30, 76, 24, 6).fillRect(x0 + 20, base - 48, 36, 20);
+        g.lineStyle(5, c, 1).lineBetween(x0 + 52, base - 40, x0 + 100, base - 52);
+      }
+    });
+  }
+};
+
 // ====================================================================== fog + precipitation
 function makeFogTex(scene: Phaser.Scene, key: string, color: number, alpha: number, seed: number) {
   const g = gfx(scene);
@@ -321,6 +396,16 @@ function makePrecipTex(scene: Phaser.Scene, key: string, style: ExtraStyle) {
       const x = r() * 256, y = r() * 256, l = 10 + r() * 22;
       g.lineBetween(x, y, x - l, y + 0.5);
     }
+  } else if (style === 'war') {
+    // drifting ash and a few glowing embers
+    for (let i = 0; i < 46; i++) {
+      const x = 4 + r() * 248, y = 4 + r() * 248;
+      g.fillStyle(0xb9aca0, 0.28 + r() * 0.3).fillCircle(x, y, 1 + r() * 1.5);
+    }
+    for (let i = 0; i < 12; i++) {
+      const x = 4 + r() * 248, y = 4 + r() * 248;
+      g.fillStyle(0xff9a3a, 0.2).fillCircle(x, y, 4).fillStyle(0xffd27a, 0.95).fillCircle(x, y, 1.4);
+    }
   } else {
     const col = style === 'drowned' ? 0xb8ffd0 : style === 'void' ? 0xf0c0ff : 0x9dffd6;
     for (let i = 0; i < 40; i++) {
@@ -334,7 +419,7 @@ function makePrecipTex(scene: Phaser.Scene, key: string, style: ExtraStyle) {
 
 // ====================================================================== public: per-style assets
 export function ensureStyle(scene: Phaser.Scene, style: ExtraStyle): StyleAssets {
-  const p = style.slice(0, 2) + '-';
+  const p = style === 'war' ? 'wr-' : style.slice(0, 2) + '-'; // 'wastes' and 'war' would both start with 'wa'
   const keys: StyleAssets = { sky: p + 'sky', layers: [[p + 'far', 0.08], [p + 'mid', 0.2], [p + 'near', 0.38]], fog: p + 'fog', precip: p + 'precip', fogAlpha: 0.9 };
   if (scene.textures.exists(keys.sky)) return keys;
   makeSkyTex(scene, keys.sky, style);
@@ -357,6 +442,12 @@ export function ensureStyle(scene: Phaser.Scene, style: ExtraStyle): StyleAssets
       makeLayerTex(scene, p + 'far', 27, 0x2a0f52, 0.5, 0xc03a9a, voidFar);
       makeLayerTex(scene, p + 'mid', 28, 0x1a0a3a, 0.4, 0xa02a90, voidMid);
       makeLayerTex(scene, p + 'near', 29, 0x0d0524, 0.1, 0x802090, voidNear);
+      break;
+    case 'war':
+      makeFogTex(scene, keys.fog, 0xb86a3a, 0.04, 37);
+      makeLayerTex(scene, p + 'far', 38, 0x3a1a12, 0.9, 0xd9803a, warFar);
+      makeLayerTex(scene, p + 'mid', 39, 0x261109, 0.6, 0xb8652c, warMid);
+      makeLayerTex(scene, p + 'near', 41, 0x140805, 0.3, 0x8a4a22, warNear);
       break;
     case 'spores':
       makeFogTex(scene, keys.fog, 0x7dffc0, 0.022, 34);
@@ -482,6 +573,37 @@ export function drawLevelBuilding(scene: Phaser.Scene, style: ExtraStyle, x: num
         else g.lineBetween(wx + 3, wy + 19, wx + 9, wy + 5).lineBetween(wx + 9, wy + 5, wx + 15, wy + 19);
       }
     }
+  } else if (style === 'war') {
+    // behind the player: posts with barbed wire, a sandbag stack, a broken wall, a wrecked cart wheel
+    const post = 0x2a1a12;
+    const px1 = 24 + r() * 40, px2 = px1 + 90 + r() * 80;
+    g.fillStyle(post, 1).fillRect(px1, -44, 5, 44).fillRect(Math.min(w - 20, px2), -44, 5, 44);
+    g.lineStyle(2, 0x3a2a20, 1).lineBetween(px1 + 2, -38, Math.min(w - 20, px2) + 2, -34).lineBetween(px1 + 2, -24, Math.min(w - 20, px2) + 2, -22);
+    for (let bx = px1 + 12; bx < Math.min(w - 20, px2) - 6; bx += 18) g.lineBetween(bx, -40, bx + 7, -30).lineBetween(bx, -30, bx + 7, -40);
+    if (w > 260) {
+      const sx = w - 90 - r() * 40;
+      for (let row = 0; row < 3; row++) for (let k = 0; k < 4 - row; k++) {
+        g.fillStyle(row % 2 ? 0x6f5a3a : 0x7c6644, 1).fillRoundedRect(sx + k * 22 + row * 11, -14 - row * 12, 22, 13, 5);
+        g.lineStyle(1.5, 0x2a1a12, 1).strokeRoundedRect(sx + k * 22 + row * 11, -14 - row * 12, 22, 13, 5);
+      }
+    }
+    // the trench: packed earth with plank facing, beams, stones and puddles
+    g.fillStyle(lerpColor(0x4a3526, 0x5a4230, r()), 1).fillRect(0, 0, w, bodyH);
+    g.fillStyle(0x3a281c, 1).fillRect(-4, 0, w + 8, 12);
+    edge(0xcfa56a);
+    for (let py = 22; py < bodyH; py += 18) {
+      g.fillStyle(0x2f2016, 0.55).fillRect(0, py, w, 2);
+      for (let pxx = (py / 18) % 2 ? 30 : 0; pxx < w; pxx += 60) g.fillStyle(0x2f2016, 0.5).fillRect(pxx, py, 2, 18);
+    }
+    for (let bx = 40 + r() * 20; bx < w - 20; bx += 90 + r() * 40) {
+      g.fillStyle(0x2a1a12, 1).fillRect(bx, 12, 8, bodyH);
+      g.fillStyle(0x6b4a2c, 0.8).fillRect(bx + 1, 12, 2, bodyH);
+    }
+    for (let i = 0; i < w / 34; i++) {
+      const sx = r() * w, sy = 20 + r() * (bodyH - 40);
+      g.fillStyle(r() < 0.5 ? 0x7a6f66 : 0x5f554d, 1).fillEllipse(sx, sy, 8 + r() * 12, 6 + r() * 7);
+    }
+    for (let i = 0; i < w / 90; i++) g.fillStyle(0x18120e, 0.7).fillEllipse(r() * w, 6, 40 + r() * 30, 4); // puddles on the floor
   } else {
     // spores: a living stump with glowing mushrooms on top
     const body = lerpColor(0x1d3a2e, 0x2a4a38, r());
@@ -675,4 +797,68 @@ export function makeFlyerTextures(scene: Phaser.Scene) {
     g.generateTexture(`flyer-spores-${f}`, 48, 40);
     g.destroy();
   });
+}
+
+/** Warzone props: barbed wire, dirt and stone piles, road blocks, hedgehogs and landmines. */
+export function makeWarTextures(scene: Phaser.Scene) {
+  if (scene.textures.exists('wire-war')) return;
+  const OUT = 0x120a06;
+  // barbed wire coil on two posts (34 x 42)
+  let g = gfx(scene);
+  g.fillStyle(OUT, 1).fillRect(2, 8, 6, 34).fillRect(26, 8, 6, 34);
+  g.fillStyle(0x6b4a2c, 1).fillRect(3.5, 9, 3, 33).fillRect(27.5, 9, 3, 33);
+  for (let i = 0; i < 4; i++) {
+    g.lineStyle(4, OUT, 1).strokeEllipse(17, 18 + i * 6, 30, 14);
+    g.lineStyle(1.6, 0xb8bcc2, 1).strokeEllipse(17, 18 + i * 6, 30, 14);
+  }
+  for (let i = 0; i < 9; i++) {
+    const bx = 5 + i * 3.4, by = 14 + (i % 4) * 7;
+    g.lineStyle(1.6, 0xe0e3e8, 1).lineBetween(bx - 2, by - 2, bx + 2, by + 2).lineBetween(bx - 2, by + 2, bx + 2, by - 2);
+  }
+  g.generateTexture('wire-war', 34, 42);
+  g.destroy();
+
+  // pile of dirt and stone (44 x 64)
+  g = gfx(scene);
+  g.fillStyle(OUT, 1).fillPoints(flat([0, 64, 6, 40, 14, 24, 24, 8, 32, 22, 40, 38, 44, 64]), true);
+  g.fillStyle(0x5f4630, 1).fillPoints(flat([3, 62, 9, 41, 16, 26, 24, 11, 31, 24, 38, 40, 41, 62]), true);
+  g.fillStyle(0x77593a, 1).fillPoints(flat([9, 41, 16, 26, 24, 11, 26, 30, 18, 48]), true);
+  const stones: [number, number, number, number, number][] = [[12, 50, 9, 7, 0x8a8178], [28, 46, 11, 8, 0x6f675f], [20, 34, 8, 6, 0x938a80], [33, 56, 9, 6, 0x7b736b], [10, 58, 7, 5, 0x6f675f]];
+  stones.forEach(([x, y, w, h, c]) => { g.fillStyle(OUT, 1).fillEllipse(x, y, w + 2, h + 2); g.fillStyle(c, 1).fillEllipse(x, y, w, h); });
+  g.lineStyle(3, OUT, 1).lineBetween(30, 18, 40, 4); // a splintered plank
+  g.lineStyle(1.5, 0x9a7a52, 1).lineBetween(30, 18, 40, 4);
+  g.generateTexture('wall-war-dirt', 44, 64);
+  g.destroy();
+
+  // concrete road block with hazard stripes (40 x 64)
+  g = gfx(scene);
+  g.fillStyle(OUT, 1).fillPoints(flat([2, 64, 6, 20, 12, 4, 28, 4, 34, 20, 38, 64]), true);
+  g.fillStyle(0xa8a69e, 1).fillPoints(flat([4.5, 62, 8, 21, 13.5, 6.5, 26.5, 6.5, 32, 21, 35.5, 62]), true);
+  g.fillStyle(0xd8d6ce, 1).fillRect(14, 8, 3, 52);
+  for (let i = 0; i < 4; i++) g.fillStyle(0xf2c230, 1).fillPoints(flat([8 + i * 7, 22, 14 + i * 7, 22, 8 + i * 7, 30, 2 + i * 7, 30]), true);
+  g.lineStyle(1.4, 0x55524b, 1).lineBetween(10, 40, 18, 50).lineBetween(18, 50, 16, 58).lineBetween(26, 34, 30, 44);
+  g.generateTexture('wall-war-block', 40, 64);
+  g.destroy();
+
+  // czech hedgehog: three crossed steel beams (44 x 64)
+  g = gfx(scene);
+  for (const [w, c] of [[9, OUT], [5, 0x8a5a38]] as const) {
+    g.lineStyle(w, c, 1).lineBetween(4, 60, 40, 6).lineBetween(40, 60, 4, 6).lineBetween(0, 33, 44, 33);
+  }
+  g.lineStyle(1.5, 0xc99a6a, 1).lineBetween(8, 52, 20, 33).lineBetween(34, 52, 24, 33);
+  g.generateTexture('wall-war-hog', 44, 64);
+  g.destroy();
+
+  // landmine: a half-buried disc with a blinking light (30 x 12)
+  for (const [key, lamp, glow] of [['mine-war-a', 0x5a1010, false], ['mine-war-b', 0xff3b30, true]] as const) {
+    g = gfx(scene);
+    if (glow) g.fillStyle(0xff3b30, 0.3).fillCircle(15, 4, 8);
+    g.fillStyle(OUT, 1).fillEllipse(15, 8, 30, 12);
+    g.fillStyle(0x56603a, 1).fillEllipse(15, 7.5, 26, 8);
+    g.fillStyle(0x7a8656, 1).fillEllipse(13, 6, 14, 3);
+    g.fillStyle(OUT, 1).fillCircle(15, 4.2, 3.6);
+    g.fillStyle(lamp, 1).fillCircle(15, 4.2, 2.4);
+    g.generateTexture(key, 30, 12);
+    g.destroy();
+  }
 }

@@ -139,7 +139,29 @@ const mother: Draw = (p, glow) => {
   p.line([104, 126, 140, 120, 158, 132], 9, STEM); p.ell(158, 134, 22, 22, GLOW);
 };
 
-const DRAWERS: Record<LevelStyle, Draw> = { city: enforcer, hollow: jackbox, wastes: scorpion, drowned: diver, void: warden, spores: mother };
+/** 7. Ember Trenches: the Iron Marshal, a siege tank on long treads with a huge gun, and a commander's hatch. */
+const tank: Draw = (p, glow) => {
+  const OLIVE = 0x68763f, DARK = 0x2e3520, STEEL = 0x88917b, RUST = 0x95502a;
+  p.rect(12, 140, 150, 38, DARK, 16); // tread
+  for (const x of [34, 62, 90, 118, 146]) p.ell(x, 159, 22, 22, STEEL); // road wheels
+  p.rect(16, 136, 142, 8, OLIVE, 3); // fender
+  p.poly([20, 138, 40, 102, 142, 96, 160, 138], OLIVE); // hull
+  p.rect(58, 112, 64, 8, DARK);
+  p.rect(58, 124, 64, 6, DARK); // vents
+  p.poly([68, 98, 82, 60, 134, 58, 148, 96], STEEL); // turret
+  p.rect(92, 44, 34, 16, DARK, 5); // commander's cupola
+  p.rect(100, 36, 18, 10, RUST, 3);
+  p.rect(0, 72, 86, 16, DARK); // long gun
+  p.rect(0, 68, 22, 24, STEEL); // muzzle brake
+  p.rect(68, 64, 20, 34, OLIVE); // gun mantlet
+  p.lamp(112, 76, 4, 0xff3030, glow);
+  p.lamp(128, 76, 4, 0xff3030, glow);
+  p.line([146, 58, 156, 14], 3, DARK); // antenna
+  p.poly([34, 118, 46, 110, 48, 122, 38, 126], RUST); // a rusted patch on the hull
+  p.ell(54, 124, 12, 12, 0xe9e6d8); // star
+};
+
+const DRAWERS: Record<LevelStyle, Draw> = { city: enforcer, hollow: jackbox, wastes: scorpion, drowned: diver, void: warden, spores: mother, war: tank };
 
 export function makeBossTextures(scene: Phaser.Scene, style: LevelStyle) {
   if (scene.textures.exists(`boss-${style}-a`)) return;
