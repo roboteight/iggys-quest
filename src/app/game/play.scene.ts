@@ -66,7 +66,7 @@ const POWER: Record<PowerId, { label: string; secs: number | null; tex: string; 
 
 interface Shot { s: Phaser.GameObjects.Image; vx: number; vy: number; kind: 'bolt' | 'rocket'; trail: number; big?: boolean; bossHit?: boolean; hit?: Set<Item> }
 interface Building { x: number; top: number; w: number; gfx: Phaser.GameObjects.Graphics; zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }
-interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer' | 'secret' | 'hazard'; hint?: boolean; bonus?: boolean; hz?: Haz; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
+interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer' | 'secret' | 'hazard' | 'switch'; hint?: boolean; bonus?: boolean; pressed?: boolean; hz?: Haz; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
 
 /** Roof hazards that run on a timer: falling debris (city, hollow, wastes), steam vents (drowned), laser grids (void, spores). */
 interface Haz {
@@ -152,6 +152,7 @@ export class PlayScene extends Phaser.Scene {
   private rand: () => number = Math.random;
   private seed: number | null = null;
   // suit abilities: Steel Sentinel dashes, Night Guardian ground-pounds, Gold Circuit glides
+  private runPhase = 0; // run-cycle phase: advances with distance run so the feet keep pace with the ground
   private dashT = 0;
   private dashCD = 0;
   private pounding = false;
@@ -168,7 +169,10 @@ export class PlayScene extends Phaser.Scene {
   private ghostBox?: Phaser.GameObjects.Rectangle;
   private secretAt = 3000;
   private secretPlaced = false;
-  private layerHinted = false;
+  private switchPlaced = false;
+  /** once the hidden path is revealed: the stretch of the level it covers, where breadboards become optional bonus */
+  private layerSpan: [number, number] | null = null;
+  private landedNow = false;
   private between(a: number, b: number) {
     return Math.floor(this.rand() * (b - a + 1) + a);
   }
@@ -185,6 +189,8 @@ export class PlayScene extends Phaser.Scene {
   private over = false;
   private breadboards = 0;
   private bbSpawned = 0;
+  private bbCollected = 0; // required breadboards only: bonus ones (the hidden path) don't count
+
   private bbMissed = false;
   private lives = 3;
   private suitIdx = 0;
@@ -248,7 +254,9 @@ export class PlayScene extends Phaser.Scene {
     this.trace = [];
     this.secretAt = 2200 + this.rand() * 2800; // somewhere along the level a golden breadboard hides above a gap
     this.secretPlaced = false;
-    this.layerHinted = false;
+    this.switchPlaced = false;
+    this.layerSpan = null;
+    this.landedNow = false;
     this.hc = this.settings.highContrast;
     this.level = levelById(this.registry.get('level') as string | undefined);
     this.sfx = new Sfx(this.settings.volume);
@@ -328,6 +336,7 @@ export class PlayScene extends Phaser.Scene {
     this.ducked = false;
     this.breadboards = 0;
     this.bbSpawned = 0;
+    this.bbCollected = 0;
     this.bbMissed = false;
     this.lives = this.live().startLives;
     this.suitIdx = 0;
@@ -374,7 +383,6 @@ export class PlayScene extends Phaser.Scene {
     this.addBuilding(this.nextX, 400, 1000);
     this.nextX += 1000;
     this.generate();
-    if (this.level.id === 'rooftops') this.addSecretLayer();
 
     this.down.clear();
 
@@ -548,6 +556,11 @@ export class PlayScene extends Phaser.Scene {
         this.addItem('bb', x, b.top - (high ? 115 : 34));
       }
     }
+    // level 1's hidden path: a brass button in the roof. Landing on it makes the sky layer appear.
+    if (this.level.id === 'rooftops' && !this.switchPlaced && b.x > 2300 && b.w > 220 && hazards.length === 0) {
+      this.switchPlaced = true;
+      this.addSwitch(b.x + b.w / 2, b.top);
+    }
     // power-ups
     if (this.maxX > 300 && this.rand() < 0.14) {
       const ids: PowerId[] = ['spring', 'magnet', 'shield', 'turbo', 'star', 'gun', 'gun', 'oil', 'oil'];
@@ -559,29 +572,55 @@ export class PlayScene extends Phaser.Scene {
 
   /** A one-way platform floating in a wide gap: sliding sideways, or crumbling a moment after Iggy lands on it. */
   /**
-   * Level 1's hidden sky layer: a staircase of faint golden slabs far above the rooftops, leading to a long high road of bonus
-   * breadboards and a star. None of it is needed to finish the level, and its breadboards don't count against a perfect run.
+   * Level 1's hidden sky layer. Landing on a brass button set into a rooftop reveals a staircase of golden slabs leading to a high
+   * road of bonus breadboards and a star. None of it is needed to finish the level, and its breadboards don't count against a perfect run.
    */
-  private addSecretLayer() {
-    const steps: [number, number][] = [[3200, 270], [3345, 235], [3490, 200], [3635, 165], [3790, 150], [3925, 150], [4060, 150], [4195, 150], [4330, 150]];
-    for (const [x, y] of steps) {
-      const img = this.physics.add.image(x, y, 'plat-secret').setDepth(7).setAlpha(0.3);
+  private addSwitch(x: number, top: number) {
+    const sprite = this.add.image(x, top - 8, 'switch-off').setDepth(6);
+    this.items.push({ kind: 'switch', sprite, baseY: sprite.y, phase: 0 });
+  }
+
+  private pressSwitch(it: Item) {
+    it.pressed = true;
+    it.sprite.setTexture('switch-on');
+    this.sfx.secret();
+    this.banner('Click! A hidden path appears.');
+    this.announce('Click! A hidden path has appeared high above, to the right. A staircase of golden slabs leads up to it. Breadboards in that stretch are now optional bonus, so skipping them keeps a perfect run alive.');
+    this.burst(it.sprite.x, it.sprite.y - 6, [0x4dff88, 0xffd23a, 0xffffff], 22, 220);
+    const x0 = it.sprite.x + 330;
+    // everything the hidden path flies over becomes optional, so taking it never costs a perfect run
+    this.layerSpan = [x0 - 90, x0 + 1130 + 140];
+    for (const o of this.items) {
+      if (o.kind === 'bb' && !o.bonus && !o.taken && o.sprite.x >= this.layerSpan[0] && o.sprite.x <= this.layerSpan[1]) {
+        o.bonus = true;
+        this.bbSpawned--;
+      }
+    }
+    this.addSecretLayer(x0);
+    this.emitHud(true);
+  }
+
+  private addSecretLayer(x0: number) {
+    const steps: [number, number][] = [[0, 270], [145, 235], [290, 200], [435, 165], [590, 150], [725, 150], [860, 150], [995, 150], [1130, 150]];
+    steps.forEach(([dx, y], i) => {
+      const x = x0 + dx;
+      const img = this.physics.add.image(x, y, 'plat-secret').setDepth(7).setAlpha(this.reduced ? 1 : 0);
       const body = img.body as Phaser.Physics.Arcade.Body;
       body.setAllowGravity(false).setImmovable(true);
       body.setSize(84, 12).setOffset(0, 2);
       const plat: Plat = { collider: undefined as unknown as Phaser.Physics.Arcade.Collider, kind: 'secret', img, baseX: x, baseY: y, amp: 0, phase: 0, stood: false, timer: 0, state: 'idle' };
       plat.collider = this.physics.add.collider(this.player, img, undefined, () => this.body.velocity.y >= 0 && this.body.prev.y + this.body.height <= body.top + 6);
       this.plats.push(plat);
-    }
+      if (!this.reduced) this.tweens.add({ targets: img, alpha: 0.35, duration: 400, delay: i * 90 }); // the slabs light up one after another
+    });
     // golden breadboards along the high road (bonus only)
-    for (let x = 3790; x <= 4330; x += 45) {
-      this.addItem('bb', x, 108);
+    for (let dx = 590; dx <= 1130; dx += 45) {
+      this.addItem('bb', x0 + dx, 108);
       const it = this.items[this.items.length - 1];
-      this.bbSpawned--;
-      it.bonus = true;
+      it.bonus = true; // inside the span, so addItem has already left it out of the perfect-run count
       it.sprite.setTint(0xffe27a);
     }
-    this.addItem('pu', 4330, 100, 'star');
+    this.addItem('pu', x0 + 1130, 100, 'star');
   }
 
   private addPlatform(prev: Building, b: Building, gap: number) {
@@ -700,7 +739,7 @@ export class PlayScene extends Phaser.Scene {
 
   /** Every breadboard that appeared in the level was collected. */
   private isPerfect() {
-    return !this.bbMissed && this.bbSpawned > 0 && this.breadboards >= this.bbSpawned;
+    return !this.bbMissed && this.bbSpawned > 0 && this.bbCollected >= this.bbSpawned;
   }
 
   /** Rockets rise from below the view and burst into coloured sprays. With reduced motion they just pop in place, fewer and softer. */
@@ -915,11 +954,6 @@ export class PlayScene extends Phaser.Scene {
       } else if (p.kind === 'secret') {
         // faint until Iggy is close, then it shines
         const near = Math.abs(this.body.center.x - p.img.x);
-        if (!this.layerHinted && p.baseX === 3200 && near < 420) {
-          this.layerHinted = true;
-          this.sfx.secretNear();
-          this.announce('A faint golden shimmer hangs high above. Something is hidden up there.');
-        }
         p.img.setAlpha(this.reduced ? 1 : Phaser.Math.Clamp(1 - (near - 200) / 260, 0.3, 1));
       } else if (p.state === 'idle' && p.stood) {
         p.state = 'shaking';
@@ -1147,9 +1181,10 @@ export class PlayScene extends Phaser.Scene {
 
   private addItem(kind: Item['kind'], x: number, y: number, power?: PowerId) {
     const tex = kind === 'secret' ? 'secret' : kind === 'bb' ? 'breadboard' : kind === 'pylon' ? 'pylon' : kind === 'wall' ? 'wall' : POWER[power!].tex;
-    if (kind === 'bb') this.bbSpawned++;
+    const inSpan = kind === 'bb' && !!this.layerSpan && x >= this.layerSpan[0] && x <= this.layerSpan[1];
+    if (kind === 'bb' && !inSpan) this.bbSpawned++;
     const sprite = this.add.image(x, y, tex).setDepth(kind === 'pylon' || kind === 'wall' ? 6 : 7);
-    this.items.push({ kind, power, sprite, baseY: y, phase: Math.random() * 6, hp: kind === 'wall' ? 5 : undefined });
+    this.items.push({ kind, power, sprite, baseY: y, phase: Math.random() * 6, hp: kind === 'wall' ? 5 : undefined, bonus: inSpan || undefined });
   }
 
   /** A power-up that drifts down from above the screen (it just appears where it lands if motion is reduced). */
@@ -1485,6 +1520,7 @@ export class PlayScene extends Phaser.Scene {
   private collectBreadboard(it: Item) {
     it.taken = true;
     this.breadboards++;
+    if (!it.bonus) this.bbCollected++;
     this.sfx.collect();
     this.debris(it.sprite.x, it.sprite.y, 'spark', this.reduced ? 2 : 5, 0.6);
     if (this.breadboards % LIFE_EVERY === 0) {
@@ -1813,6 +1849,7 @@ export class PlayScene extends Phaser.Scene {
     const dt = Math.min(delta, 50) / 1000;
     const edt = dt * (this.live().enemySpeed / 100); // assist: enemies and bosses can run slower than the world
     this.t += dt;
+    if (this.body.touching.down || this.body.blocked.down) this.runPhase += (dt * Math.PI * 2 * Math.abs(this.body.velocity.x)) / 70; // one full stride every 70px
     if (!this.over) {
       this.runTime += dt;
       this.traceT += dt;
@@ -1922,6 +1959,7 @@ export class PlayScene extends Phaser.Scene {
       }
       this.abilities(dt, ground, jumpDown, this.held('fire') || this.touch.fire || pad.fire, this.held('duck') || this.touch.duck || pad.duck);
       if (ground) this.stompChain = 0;
+      this.landedNow = ground && !this.wasGround;
       this.wasGround = ground;
       this.prevVy = body.velocity.y;
 
@@ -1979,6 +2017,16 @@ export class PlayScene extends Phaser.Scene {
               this.defeatPatrol(it, 'stomp');
               body.setVelocityY(-430);
             } else this.hit('enemy');
+          }
+        } else if (it.kind === 'switch') {
+          if (!it.pressed) {
+            if (!it.hint && Math.abs(px - s.x) < 340) {
+              it.hint = true;
+              this.sfx.warn();
+              this.announce('A brass button is set into the roof ahead. Land on it, or stand on it and duck, to press it.');
+            }
+            const onIt = Math.abs(px - s.x) < 30 && body.bottom > s.y - 6 && body.bottom < s.y + 14;
+            if (onIt && (this.landedNow || this.ducked)) this.pressSwitch(it); // land on it, or crouch on it
           }
         } else if (it.kind === 'hazard' && it.hz) {
           this.updateHazard(it, edt);
@@ -2128,6 +2176,7 @@ export class PlayScene extends Phaser.Scene {
     this.robot.setAlpha(this.invuln > 0 ? (this.reduced ? 0.6 : Math.sin(this.t * 40) > 0 ? 1 : 0.35) : 1);
     drawRobot(this.robot, SUITS[this.suitIdx], {
       t: this.t,
+      phase: this.runPhase,
       vx: body.velocity.x,
       vy: body.velocity.y,
       onGround: body.touching.down || body.blocked.down,

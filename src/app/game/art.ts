@@ -304,6 +304,19 @@ export function makeSmallTextures(scene: Phaser.Scene) {
   orb('pu-blaster', 0xff7ad9, (o) => {
     o.fillRect(17, 23, 20, 7).fillRect(21, 29, 6, 9).fillRect(36, 25, 4, 3);
   });
+  // SECRET SWITCH: a brass button set into a rooftop plate; red until pressed, then green
+  for (const [key, lamp] of [['switch-off', 0xff4b4b], ['switch-on', 0x4dff88]] as const) {
+    g = gfx(scene);
+    g.fillStyle(0x000000, 1).fillRoundedRect(0, 8, 40, 9, 2);
+    g.fillStyle(0x6b7280, 1).fillRoundedRect(1.5, 9.5, 37, 6, 1.5);
+    g.fillStyle(0x000000, 1).fillRoundedRect(8, 1, 24, 12, 5);
+    g.fillStyle(key === 'switch-off' ? 0xd2a43c : 0x8a6a1c, 1).fillRoundedRect(9.5, 2.5, 21, key === 'switch-off' ? 9 : 5, 4);
+    g.fillStyle(0xfff0a8, 1).fillRect(12, 4, 9, 2);
+    g.fillStyle(0x000000, 1).fillCircle(35, 5, 3.4);
+    g.fillStyle(lamp, 1).fillCircle(35, 5, 2.4);
+    g.generateTexture(key, 40, 17);
+    g.destroy();
+  }
   // brick wall obstacle (26 x 64)
   g = gfx(scene);
   g.fillStyle(0x15110f, 1).fillRect(0, 0, 26, 64);
@@ -415,6 +428,7 @@ export interface Pose {
   gun?: number; // 1 blaster, 2 twin blaster, 3 spread gun, 4 rocket launcher
   fire?: number; // 0..1 recoil
   duck?: number; // 0 standing .. 1 crouched
+  phase?: number; // run-cycle phase in radians (advances with distance run, so the feet keep pace with the ground)
   oil?: number; // seconds of oil left: smooth joints and a glossy sheen
 }
 
@@ -512,15 +526,17 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   g.clear();
   const P = new Painter(g, p.spin, 0, -30);
   const run = p.onGround ? Math.min(1, Math.abs(p.vx) / 200) : 0;
-  const cyc = p.t * 13;
+  const TAU = Math.PI * 2;
+  const cyc = p.phase ?? p.t * 13;
   const air = !p.onGround;
   const oiled = (p.oil ?? 0) > 0;
   const clumsy = oiled ? 0 : suit.loose; // oiled joints: no wobble, no rattle
   const hi = (c: number, k: number) => lerpColor(c, 0xffffff, k);
   const lo = (c: number, k: number) => lerpColor(c, 0x000000, k);
   const rusty = suit.name === 'Rusty Original';
-  const bob = p.onGround ? Math.abs(Math.sin(cyc)) * 1.8 * run : 0;
-  const lean = 0.04 + run * 0.08 + p.stumble * 0.3 + Math.sin(p.t * 3.1) * 0.025 * clumsy;
+  // the body rides a double bounce (up as each leg passes under it), or breathes gently when standing
+  const bob = p.onGround ? Math.abs(Math.sin(cyc)) * 3.2 * run + Math.sin(p.t * 2.2) * 0.45 * (1 - run) : 0;
+  const lean = 0.05 + run * 0.13 + p.stumble * 0.3 + Math.sin(p.t * 3.1) * 0.025 * clumsy;
   const duck = p.duck ?? 0;
   const tx = Math.sin(lean) * 3 + 3 * duck;
   const cream = 0xeadfc8, steel = 0x9aa3ad, steelDark = 0x5d6670;
@@ -543,29 +559,56 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   }
 
   // ---- legs: twin struts into flared bell boots, with a hip block on top
-  const sw1 = air ? (p.vy < 0 ? 0.7 : 0.25) : Math.sin(cyc) * 0.9 * run;
-  const sw2 = air ? (p.vy < 0 ? -0.35 : -0.5) : -Math.sin(cyc) * 0.9 * run;
-  const leg = (hx: number, ang: number, boot: number) => {
-    const sx = hx, sy = hipY + 4;
-    const lift = p.onGround ? Math.max(0, Math.sin(ang * 1.2)) * 3 * run : 0;
-    const len = 9 - 8 * duck;
-    const ax = sx + Math.sin(ang) * len, ay = sy + Math.cos(ang) * len - lift;
-    for (const off of [-1.7, 1.7]) {
-      P.stroke([sx + off, sy, ax + off, ay], 3.6, OUTLINE);
+  // each foot follows a stride path: planted, pushing off (heel lifts), then lifted and swung forward. The hip rides a double bounce.
+  const stride = 3 + 7 * run, lift = 6.5 * run;
+  const foot = (off: number) => {
+    if (air) {
+      const rising = p.vy < 0, fwd = off !== 0;
+      return fwd
+        ? { fx: rising ? 6 : 3.5, fy: rising ? -6 : -0.5, pitch: rising ? -0.25 : 0.1 }
+        : { fx: rising ? -5 : -3.5, fy: rising ? -1.5 : -2.5, pitch: rising ? 0.35 : 0.2 };
     }
-    for (const off of [-1.7, 1.7]) P.stroke([sx + off, sy, ax + off, ay], 1.5, steel);
-    P.stroke([sx - 1.7, sy + 2, ax + 1.7, ay - 2.5], 1, steelDark); // cross brace
-    P.stroke([sx + 1.7, sy + 2, ax - 1.7, ay - 2.5], 1, steelDark);
-    if (clumsy > 0.3) for (let i = 0; i < 4; i++) P.stroke([ax - 2 + (i % 2) * 4, ay - 6 + i * 1.5, ax + 2 - (i % 2) * 4, ay - 5 + i * 1.5], 0.9, steelDark); // loose spring
-    // bell boot, tilted a little with the swing
-    const ca = Math.cos(ang * 0.35), sa = Math.sin(ang * 0.35);
+    const idle = { fx: off === 0 ? -2.4 : 2.4, fy: 0, pitch: 0 };
+    if (run < 0.04) return idle;
+    const u = (((cyc + off) % TAU) + TAU) % TAU;
+    let fx: number, fy = 0, pitch = 0;
+    if (u < Math.PI) {
+      const t = u / Math.PI, e = t * t * (3 - 2 * t);
+      fx = -stride + 2 * stride * e;
+      fy = -lift * Math.sin(Math.PI * t);
+      pitch = -0.35 * Math.sin(Math.PI * t) + 0.15 * t;
+    } else {
+      const t = (u - Math.PI) / Math.PI;
+      fx = stride - 2 * stride * t;
+      pitch = t > 0.72 ? (0.6 * (t - 0.72)) / 0.28 : 0;
+    }
+    const w = Math.min(1, run * 2.2);
+    return { fx: idle.fx + (fx - idle.fx) * w, fy: fy * w, pitch: pitch * w };
+  };
+  const leg = (hx: number, off: number, boot: number) => {
+    const f = foot(off);
+    const sx = hx, sy = hipY + 4;
+    const ax = sx + f.fx, ay = -8 + f.fy; // an ankle sits 8 above the ground when the foot is planted
+    const ang = Math.atan2(ax - sx, ay - sy);
+    const ox = Math.cos(ang) * 1.7, oy = -Math.sin(ang) * 1.7;
+    for (const k of [-1, 1]) P.stroke([sx + ox * k, sy + oy * k, ax + ox * k, ay + oy * k], 3.6, OUTLINE);
+    for (const k of [-1, 1]) P.stroke([sx + ox * k, sy + oy * k, ax + ox * k, ay + oy * k], 1.5, steel);
+    // a sleeve at the hip that the rods slide out of, and a brass knee collar
+    P.stroke([sx, sy, sx + (ax - sx) * 0.42, sy + (ay - sy) * 0.42], 5.2, OUTLINE);
+    P.stroke([sx, sy, sx + (ax - sx) * 0.42, sy + (ay - sy) * 0.42], 3.4, steelDark);
+    const mx = (sx + ax) / 2, my = (sy + ay) / 2 + 0.5;
+    P.stroke([mx - ox * 1.6, my - oy * 1.6, mx + ox * 1.6, my + oy * 1.6], 2.4, OUTLINE);
+    P.stroke([mx - ox * 1.6, my - oy * 1.6, mx + ox * 1.6, my + oy * 1.6], 1.3, brass);
+    // flared boot: pitches toe-up as it swings and heel-up as it pushes off
+    const rot = f.pitch + ang * 0.25;
+    const ca = Math.cos(rot), sa = Math.sin(rot);
     const cx = ax, cy = ay + 4;
     const raw = [-3.5, -4, 3.5, -4, 5.5, 0, 8, 3.2, 8, 4, -8, 4, -8, 3.2, -5.5, 0];
     const pts: number[] = [];
     for (let i = 0; i < raw.length; i += 2) pts.push(cx + raw[i] * ca - raw[i + 1] * sa, cy + raw[i] * sa + raw[i + 1] * ca);
     P.poly(pts, boot);
-    P.blob(cx + 5.4 * ca, cy + 2.2, 4.8, 3.2, 0, hi(boot, 0.3), 2, 0.75, false); // toe cap catching the light
-    P.stroke([cx - 4.4 * ca, cy - 3.4, cx + 4.4 * ca, cy - 3.4], 1.7, brass, 0.95); // ankle band
+    P.blob(cx + 5.4 * ca, cy + 2.2 + 5.4 * sa, 4.8, 3.2, rot, hi(boot, 0.3), 2, 0.75, false); // toe cap catching the light
+    P.stroke([cx - 4.4 * ca, cy - 3.4, cx + 4.4 * ca, cy - 3.4 + 4.4 * sa], 1.7, brass, 0.95); // ankle band
     P.stroke([cx - 6.5 * ca - 1.6 * sa, cy - 6.5 * sa + 1.6 * ca, cx + 6.5 * ca - 1.6 * sa, cy + 6.5 * sa + 1.6 * ca], 1, cream, 0.55);
     P.dot(cx - 3.8, cy + 0.4, 0.8, cream, 0.8);
     P.dot(cx + 3.8, cy + 0.4, 0.8, cream, 0.8);
@@ -573,18 +616,24 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
     P.stroke([hx - 3.6, hipY + 5.4, hx + 3.6, hipY + 5.4], 1.5, brass, 0.95);
     P.dot(hx, hipY + 1, 0.9, cream, 0.8);
   };
-  leg(-5, sw2, suit.dark);
-  leg(5, sw1, suit.trim);
+  leg(-5, 0, suit.dark);
+  leg(5, Math.PI, suit.trim);
 
   // ---- arms: thin twin rods from the shoulder, then an orange pipe forearm capped with a disc
-  const arm = air ? -2.2 - (p.vy < 0 ? 0.5 : 0) : Math.sin(cyc + Math.PI) * 0.9 * run;
+  // arms swing opposite the leg on their side; in the air they fly up
+  const armAir = -2.2 - (p.vy < 0 ? 0.5 : 0);
+  const sway = air ? 0 : Math.cos(cyc) * 0.95 * run;
+  const armBack = air ? armAir * 0.9 + 0.1 : 0.1 + sway + Math.sin(p.t * 1.6) * 0.03 * (1 - run);
+  const armNear = air ? -armAir : 0.1 - sway + Math.sin(p.t * 1.6 + 1) * 0.03 * (1 - run);
   const limbArm = (sx: number, sy: number, a: number, pipe: number, cap: number, loose: boolean) => {
     const ex = sx + Math.sin(a) * 9, ey = sy + Math.cos(a) * 9;
     P.stroke([sx - 1, sy, ex - 1, ey], 3.4, OUTLINE);
     P.stroke([sx + 1, sy, ex + 1, ey], 3.4, OUTLINE);
     P.stroke([sx - 1, sy, ex - 1, ey], 1.4, steel);
     P.stroke([sx + 1, sy, ex + 1, ey], 1.4, steel);
-    const a2 = loose ? a + 0.7 + Math.sin(p.t * 7) * 0.35 : a * 0.8 + 0.25;
+    P.stroke([(sx + ex) / 2 - 2.6, (sy + ey) / 2, (sx + ex) / 2 + 2.6, (sy + ey) / 2], 2.2, OUTLINE);
+    P.stroke([(sx + ex) / 2 - 2.4, (sy + ey) / 2, (sx + ex) / 2 + 2.4, (sy + ey) / 2], 1.2, brass);
+    const a2 = loose ? a + 0.7 + Math.sin(p.t * 7) * 0.35 : a * 0.6 + 0.45 + 0.55 * run; // the elbow bends more as he runs
     const hx = ex + Math.sin(a2) * 10, hy = ey + Math.cos(a2) * 10;
     P.hose(ex, ey, hx, hy, loose ? -2 : 1.5, 5, pipe);
     P.stroke([ex - 1.2, ey + 1.2, hx - 1.2, hy + 0.4], 1, hi(pipe, 0.5), 0.55); // light along the pipe
@@ -599,13 +648,21 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
     P.dot(hx - 0.8, hy - 0.8, 0.8, 0xffffff, 0.7);
     P.dot(hx, hy, 1.2, OUTLINE);
   };
-  limbArm(tx - 16, torsoTop + 3, arm * 0.9 + 0.1, suit.dark, steel, false);
+  limbArm(tx - 16, torsoTop + 3, armBack, suit.dark, steel, false);
 
   // ---- body: open bay with cogs, then the lower plate
   P.blob(tx, torsoTop + 5, 23, 14, lean, suit.dark, 3);
   const spin = p.reduced ? 0 : p.t * (rusty ? 1.1 : 1.8) + (rusty ? Math.sin(p.t * 5) * 0.3 : 0);
-  P.gear(tx - 5.5, torsoTop + 5, 4.4, 8, spin, steel);
-  P.gear(tx + 4.5, torsoTop + 6, 3.4, 7, -spin * 1.3, steelDark);
+  P.gear(tx - 8, torsoTop + 7, 3, 8, spin, steel);
+  P.gear(tx + 8, torsoTop + 7.4, 2.5, 7, -spin * 1.3, steelDark);
+  // vent slats either side, and the V-shaped chest plate, like the old tin robots
+  for (let k = 0; k < 3; k++) {
+    P.stroke([tx - 11, torsoTop + 2.2 + k * 2.3, tx - 5.2, torsoTop + 2.2 + k * 2.3], 1.2, steelDark);
+    P.stroke([tx + 5.2, torsoTop + 2.2 + k * 2.3, tx + 11, torsoTop + 2.2 + k * 2.3], 1.2, steelDark);
+  }
+  P.poly([tx - 5.6, torsoTop + 1, tx + 5.6, torsoTop + 1, tx, torsoTop + 9.4], suit.body);
+  P.stroke([tx - 5, torsoTop + 1.9, tx, torsoTop + 8.4, tx + 5, torsoTop + 1.9], 1.1, brass);
+  P.poly([tx - 4.6, torsoTop + 1.4, tx - 1.6, torsoTop + 1.4, tx - 2.2, torsoTop + 4.2], hi(suit.body, 0.4), false);
   const plate = [tx - 10.5, torsoTop + 9, tx + 10.5, torsoTop + 9, tx + 8, torsoBottom, tx - 8, torsoBottom];
   P.poly(plate, suit.body);
   P.poly([tx - 10.2, torsoTop + 9.6, tx - 6.5, torsoTop + 9.6, tx - 5.6, torsoBottom - 0.6, tx - 7.8, torsoBottom - 0.6], hi(suit.body, 0.3), false); // lit edge
@@ -643,9 +700,10 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   P.stroke(arc.slice(24, 38), 1.3, 0xffd9a0, 0.5); // warm rim light on the far shoulder
   P.stroke([tx - 5.5, shellBase - 3.6, tx, shellBase + 0.6, tx + 5.5, shellBase - 3.6], 2.2, OUTLINE); // chest chevron, like the V plate on the old tin robots
   P.stroke([tx - 5.5, shellBase - 3.6, tx, shellBase + 0.6, tx + 5.5, shellBase - 3.6], 1.2, brass);
-  for (const sx of [-14.2, 14.2]) {
-    P.dot(tx + sx, shellBase - 1.6, 1.7, red, 1, true);
-    P.dot(tx + sx - 0.4, shellBase - 2.1, 0.5, 0xffffff, 0.8);
+  for (const sx of [-15.2, 15.2]) {
+    P.blob(tx + sx, shellBase - 0.6, 8, 7, 0, red, 3, 1, true);
+    P.stroke([tx + sx - 3.2, shellBase + 2.2, tx + sx + 3.2, shellBase + 2.2], 1.3, brass);
+    P.dot(tx + sx - 1.2, shellBase - 2.4, 1, 0xffffff, 0.8);
   }
   P.stroke([tx - 10, torsoBottom - 0.6, tx + 10, torsoBottom - 0.6], 1.7, brass, 0.95); // waist band
   if (rusty) {
@@ -794,8 +852,8 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
       P.stroke([gx + 4, gy - 5, gx + 4, gy + 2.5], 1.2, cream, 0.6);
     }
     if ((p.fire ?? 0) > 0.5 && !p.reduced) P.dot(gx + (p.gun >= 4 ? 19 : 13), gy - 1, 3.5, 0xfff3b0, 0.9);
-  } else if (rusty) limbArm(tx + 16, torsoTop + 3, 0.28 + Math.sin(p.t * 4) * 0.2 + (air ? -1.3 : 0) + Math.sin(cyc) * 0.45 * run, suit.body, steel, true);
-  else limbArm(tx + 16, torsoTop + 3, -arm, suit.body, cream, false);
+  } else if (rusty) limbArm(tx + 16, torsoTop + 3, 0.28 + Math.sin(p.t * 4) * 0.2 + (air ? -1.3 : 0) - sway * 0.5, suit.body, steel, true);
+  else limbArm(tx + 16, torsoTop + 3, armNear, suit.body, cream, false);
 
   if ((p.star ?? 0) > 0) {
     // golden aura; cycles through colours (and flickers faster in the last two seconds) unless motion is reduced
