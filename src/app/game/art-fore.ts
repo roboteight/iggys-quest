@@ -68,6 +68,16 @@ const DRAW: Record<LevelStyle, Draw> = {
       for (let k = 0; k < 4; k++) g.lineBetween(x + 14 + k * 22, H - 38, x + 22 + k * 22, H - 22);
     }
   },
+  // chains and hooks hanging from the roof, a row of glowing slag spatter along the bottom
+  plant: (g, r) => {
+    for (let i = 0; i < 6; i++) {
+      const x = 60 + i * 160 + r() * 40, h = 30 + r() * 70;
+      g.lineStyle(3, 0x080404, 1).lineBetween(x, 0, x, h);
+      g.fillStyle(0x080404, 1).fillTriangle(x - 7, h, x + 7, h, x, h + 14);
+    }
+    for (let i = 0; i < 14; i++) { const x = r() * W; g.fillStyle(0xff6a2a, 0.22).fillCircle(x, H - 4, 10 + r() * 14); g.fillStyle(0xffb060, 0.5).fillCircle(x, H - 2, 3 + r() * 3); }
+    g.fillStyle(0x080404, 1).fillRect(0, H - 8, W, 8);
+  },
   // mushroom-cap edges and glowing hanging strands on top, fern fronds at the bottom
   spores: (g, r) => {
     for (const x of [100, 420, 760]) { g.fillStyle(0x07151c, 1).fillEllipse(x, 0, 150 + r() * 40, 60); g.fillStyle(0x6dffb0, 0.5).fillCircle(x - 30, 22, 3).fillCircle(x + 22, 26, 3); }

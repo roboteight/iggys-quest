@@ -494,6 +494,7 @@ const DEFS: Record<LevelStyle, Def> = {
   void: { w: 100, h: 106, draw: warden, hover: true },
   spores: { w: 92, h: 104, draw: mother },
   war: { w: 94, h: 68, draw: tank },
+  plant: { w: 94, h: 68, draw: tank }, // fallback only: the Reclaimer is a Spine rig (reclaimer.ts)
 };
 
 /** render one frame at the small grid and make its edges crisp */

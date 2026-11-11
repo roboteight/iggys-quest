@@ -152,7 +152,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
         @if (hud().boss; as boss) {
           <li class="boss"><span class="label">Boss: {{ boss.name }}</span>
             <meter [min]="0" [max]="boss.max" [value]="boss.hp" [attr.aria-label]="boss.name + ' health'" [attr.title]="boss.hp + ' of ' + boss.max"></meter>
-            <span class="sub">{{ boss.hp }} of {{ boss.max }} health</span>
+            <span class="sub">{{ boss.hp }} of {{ boss.max }} health@if (boss.note) { · <strong>{{ boss.note }}</strong> }</span>
           </li>
         }
         @if (hud().powerUps.length) {
@@ -246,6 +246,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
               <li><strong>Move left:</strong> @for (c of keys('left'); track c) { <kbd>{{ label(c) }}</kbd> } <strong>right:</strong> @for (c of keys('right'); track c) { <kbd>{{ label(c) }}</kbd> }</li>
               <li><strong>Jump:</strong> @for (c of keys('jump'); track c) { <kbd>{{ label(c) }}</kbd> }. Hold for a higher jump; press again in mid-air for a double jump.</li>
               <li><strong>Wall kick:</strong> if you fall into a gap, press jump while touching the side of a building.</li>
+              <li><strong>Hang and climb:</strong> jump at a tall cliff and Iggy catches the edge with his hands. Press jump, or keep holding toward the wall, to climb up. Press duck to let go, or jump while holding away from the wall to kick off it. Hold duck as you pass an edge if you don’t want to grab it.</li>
               <li><strong>Duck:</strong> hold @for (c of keys('duck'); track c) { <kbd>{{ label(c) }}</kbd> }. Iggy crouches and can’t run, and his shots fly low, so he can hit small targets on the ground, like crawlers, that standing shots pass over.</li>
               <li><strong>Shoot:</strong> @for (c of keys('fire'); track c) { <kbd>{{ label(c) }}</kbd> } (hold to keep firing), once you have a gun.</li>
               <li><strong>Pause:</strong> <kbd>Esc</kbd> or the Pause button. You can change the keys, and make the game easier, under Options in the pause menu or on the Settings page. The Fullscreen button fills your screen; press <kbd>Esc</kbd> to leave it.</li>
@@ -256,7 +257,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
           <div>
             <h3>Collect</h3>
             <ul>
-              <li><strong>Breadboards</strong>: every 100 earns a free life. <strong>Rings</strong> upgrade Iggy's suit, and the higher suits learn tricks: <strong>Steel Sentinel</strong> dashes (Shoot when you have no gun), <strong>Night Guardian</strong> ground-pounds (Duck in mid-air) and <strong>Gold Circuit</strong> glides (hold Jump while falling after your double jump).</li>
+              <li><strong>Breadboards</strong>: every 100 earns a free life. <strong>Rings</strong> upgrade Iggy's suit, and the higher suits learn tricks: <strong>Steel Sentinel</strong> dashes (Shoot when you have no gun), <strong>Night Guardian</strong> ground-pounds (Duck in mid-air) and <strong>Gold Circuit</strong> glides (hold Jump while falling after your double jump). In story mode Iggy keeps the suit he finishes a level in when he starts the next one.</li>
               <li><strong>Golden breadboard:</strong> each level hides one high above a gap. It is worth 500 points and needs a double jump.</li>
               <li><strong>Golden rings:</strong> jump through them for bonus points. Rings passed in quick succession build a chain worth more each time, up to 100 points a ring.</li>
               <li><strong>Glowing power-ups:</strong> spring legs, magnet, shield, overclock, the golden star, guns and the oil can. Oil keeps Iggy's joints smooth for 15 seconds: a little faster, no stumbling and no rattling.</li>
@@ -359,6 +360,11 @@ export class PlayPage implements OnDestroy {
     game.registry.set('seed', this.seed());
     game.registry.set('mode', this.gameMode());
     game.registry.set('ghost', this.loadGhost());
+    game.registry.set('startRings', this.startRings());
+  }
+  /** Story mode carries Iggy's suit from level to level; the daily challenge, endless and time attack start everyone fresh. */
+  private startRings() {
+    return this.gameMode() === 'story' && !this.isDaily() ? this.progress.startRings(levelById(this.level()).id) : 0;
   }
   protected readonly overlay = signal<Overlay>('none');
   /** the pause menu shows either its buttons or the options */
@@ -417,7 +423,7 @@ export class PlayPage implements OnDestroy {
     afterNextRender(async () => {
       // Load Phaser lazily so the menu pages stay small.
       const { createGame } = await import('../game/game-host');
-      this.game = createGame(this.host().nativeElement, this.settings.settings(), this.touch, levelById(this.level()).id, this.seed(), this.gameMode(), this.loadGhost());
+      this.game = createGame(this.host().nativeElement, this.settings.settings(), this.touch, levelById(this.level()).id, this.seed(), this.gameMode(), this.loadGhost(), this.startRings());
       if (isDevMode()) (window as unknown as { __game?: Phaser.Game }).__game = this.game; // dev-only handle for debugging
       this.game.events.on('hud', (s: HudState) => this.zone.run(() => this.hud.set(s)));
       this.game.events.once('hud', () => this.zone.run(() => this.maybeIntro()));
@@ -427,6 +433,7 @@ export class PlayPage implements OnDestroy {
       this.game.events.on('complete', (s: GameOverState) =>
         this.zone.run(() => {
           this.over.set(s);
+          if (s.mode === 'story' && !this.isDaily()) this.progress.keepSuit(s.level, s.rings);
           if (s.mode === 'time') {
             const r = this.progress.record(s.level, this.settings.settings().playerName, s.time, true, false, this.board(s.level));
             this.rank.set(r);

@@ -48,14 +48,14 @@ export interface Suit {
 export const SUITS: Suit[] = [
   { name: 'Rusty Original', blurb: 'Dented, leaking and held together by hope.', need: 0,
     body: 0xe4d8b8, trim: 0x7fb3a3, dark: 0x4a3a2c, eye: 0x6fe6c8, loose: 1, cape: false, ears: false, glow: false, plates: false },
-  { name: 'Patchwork', blurb: 'Fresh copper patches and a new left arm.', need: 3,
+  { name: 'Patchwork', blurb: 'Mismatched welded scrap, a headlamp and a scavenger tool for an arm.', need: 3,
     body: 0xdccaa0, trim: 0xb5793e, dark: 0x3c2a20, eye: 0x6fe6c8, loose: 0.65, cape: false, ears: false, glow: false, plates: false },
   { name: 'Steel Sentinel', blurb: 'Riveted steel plating. Hardly rattles.', need: 8,
     body: 0xaab5be, trim: 0x6a8c9c, dark: 0x1f2735, eye: 0x1aa7c8, loose: 0.35, cape: false, ears: false, glow: false, plates: true },
-  { name: 'Night Guardian', blurb: 'Matte black, a cape and pointed ears.', need: 15,
-    body: 0x2f3547, trim: 0x59627a, dark: 0x0d1017, eye: 0xffc44a, loose: 0.15, cape: true, ears: true, glow: false, plates: true },
-  { name: 'Gold Circuit', blurb: 'Gleaming. Everything finally works.', need: 25,
-    body: 0xe2b53c, trim: 0xfff0a8, dark: 0x5a3d0a, eye: 0x25b866, loose: 0.02, cape: true, ears: true, glow: true, plates: true },
+  { name: 'Night Guardian', blurb: 'Dark steel night-patrol armour with amber lamps and a searchlight.', need: 15,
+    body: 0x2f3547, trim: 0x59627a, dark: 0x0d1017, eye: 0xffc44a, loose: 0.15, cape: false, ears: false, glow: false, plates: true },
+  { name: 'Gold Circuit', blurb: 'Gold and brass plating with glowing circuits. Everything finally works.', need: 25,
+    body: 0xe2b53c, trim: 0xfff0a8, dark: 0x5a3d0a, eye: 0x25b866, loose: 0.02, cape: false, ears: false, glow: true, plates: true },
 ];
 
 export function suitFor(rings: number) {
@@ -430,6 +430,8 @@ export interface Pose {
   duck?: number; // 0 standing .. 1 crouched
   phase?: number; // run-cycle phase in radians (advances with distance run, so the feet keep pace with the ground)
   oil?: number; // seconds of oil left: smooth joints and a glossy sheen
+  hang?: number; // 1 = hanging from a roof edge by his hands (the edge is in front of him, level with his hands)
+  climb?: number; // 0..1 through climbing up from a hang: haul up (to 0.55), then step onto the roof
 }
 
 const OUTLINE = 0x2b1710;
@@ -536,7 +538,11 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   const rusty = suit.name === 'Rusty Original';
   // the body rides a double bounce (up as each leg passes under it), or breathes gently when standing
   const bob = p.onGround ? Math.abs(Math.sin(cyc)) * 3.2 * run + Math.sin(p.t * 2.2) * 0.45 * (1 - run) : 0;
-  const lean = 0.05 + run * 0.13 + p.stumble * 0.3 + Math.sin(p.t * 3.1) * 0.025 * clumsy;
+  const hanging = (p.hang ?? 0) > 0, climb = p.climb ?? 0;
+  const pull = hanging ? Math.min(1, climb / 0.55) : 0, stepOn = hanging ? Math.max(0, (climb - 0.55) / 0.45) : 0;
+  const hangK = hanging ? 1 - stepOn : 0; // the hanging pose fades out as he steps onto the roof
+  const mix = (a: number, b: number, k: number) => a + (b - a) * k;
+  const lean = hangK * 0.12 + 0.05 + run * 0.13 + p.stumble * 0.3 + Math.sin(p.t * 3.1) * 0.025 * clumsy;
   const duck = p.duck ?? 0;
   const tx = Math.sin(lean) * 3 + 3 * duck;
   const cream = 0xeadfc8, steel = 0x9aa3ad, steelDark = 0x5d6670;
@@ -563,6 +569,13 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   // each foot follows a stride path: planted, pushing off (heel lifts), then lifted and swung forward. The hip rides a double bounce.
   const stride = 3 + 7 * run, lift = 6.5 * run;
   const foot = (off: number) => {
+    if (hanging) {
+      // legs dangle against the wall (swaying a little), tuck up as he hauls himself up, then plant on the roof
+      const sw = p.reduced ? 0 : Math.sin(p.t * 2.4 + off) * 1.2 * (1 - pull);
+      const f = off === 0 ? { fx: -1.5 + sw + 3 * pull, fy: 2 - 12 * pull, pitch: 0.2 } : { fx: 4 + sw * 0.6 + 2 * pull, fy: -1 - 9 * pull, pitch: -0.4 };
+      const idle = { fx: off === 0 ? -2.4 : 2.4, fy: 0, pitch: 0 };
+      return { fx: mix(f.fx, idle.fx, stepOn), fy: mix(f.fy, idle.fy, stepOn), pitch: mix(f.pitch, idle.pitch, stepOn) };
+    }
     if (air) {
       const rising = p.vy < 0, fwd = off !== 0;
       return fwd
@@ -629,7 +642,7 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   const sway = air ? 0 : Math.cos(cyc) * 0.95 * run;
   const armBack = air ? armAir * 0.9 + 0.1 : 0.1 + sway + Math.sin(p.t * 1.6) * 0.03 * (1 - run);
   const armNear = air ? -armAir : 0.1 - sway + Math.sin(p.t * 1.6 + 1) * 0.03 * (1 - run);
-  const limbArm = (sx: number, sy: number, a: number, pipe: number, cap: number, loose: boolean) => {
+  const limbArm = (sx: number, sy: number, a: number, pipe: number, cap: number, loose: boolean, fa?: number) => {
     const ex = sx + Math.sin(a) * 9, ey = sy + Math.cos(a) * 9;
     P.stroke([sx - 1, sy, ex - 1, ey], 3.4, OUTLINE);
     P.stroke([sx + 1, sy, ex + 1, ey], 3.4, OUTLINE);
@@ -637,7 +650,7 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
     P.stroke([sx + 1, sy, ex + 1, ey], 1.4, steel);
     P.stroke([(sx + ex) / 2 - 2.6, (sy + ey) / 2, (sx + ex) / 2 + 2.6, (sy + ey) / 2], 2.2, OUTLINE);
     P.stroke([(sx + ex) / 2 - 2.4, (sy + ey) / 2, (sx + ex) / 2 + 2.4, (sy + ey) / 2], 1.2, brass);
-    const a2 = loose ? a + 0.7 + Math.sin(p.t * 7) * 0.35 : a * 0.6 + 0.45 + 0.55 * run; // the elbow bends more as he runs
+    const a2 = fa !== undefined ? fa : loose ? a + 0.7 + Math.sin(p.t * 7) * 0.35 : a * 0.6 + 0.45 + 0.55 * run; // the elbow bends more as he runs
     const hx = ex + Math.sin(a2) * 10, hy = ey + Math.cos(a2) * 10;
     // forearm: a teal armoured cylinder with a copper band at each end, and a steel ball elbow
     const fx = ex + (hx - ex) * 0.86, fy = ey + (hy - ey) * 0.86;
@@ -656,7 +669,11 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
     }
     P.dot(hx - 0.7, hy - 0.8, 0.7, 0xffffff, 0.7);
   };
-  limbArm(tx - 16, torsoTop + 3, armBack, suit.trim, steelDark, false);
+  // hanging: both hands reach up onto the roof in front of him, then push down as he hauls himself up
+  const hangA = (rest: number) => mix(mix(Math.PI - 0.3, 0.9, pull), rest, stepOn);
+  const hangA2 = (rest: number) => mix(mix(Math.PI - 0.4, 0.35, pull), rest * 0.6 + 0.45, stepOn);
+  if (hanging) limbArm(tx - 16 + 26 * hangK, torsoTop + 3, hangA(armBack), suit.trim, steelDark, false, hangA2(armBack));
+  else limbArm(tx - 16, torsoTop + 3, armBack, suit.trim, steelDark, false);
 
   // ---- body: a cream barrel torso with a chest panel of dials, a ribbed waist and a tool belt
   const spin = p.reduced ? 0 : p.t * (rusty ? 1.1 : 1.8) + (rusty ? Math.sin(p.t * 5) * 0.3 : 0);
@@ -766,7 +783,7 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   const look = Phaser.Math.Clamp(p.vx / 250, -1, 1) * 0.8 + 0.5;
   const blink = !p.reduced && Math.sin(p.t * 1.7) > 0.96;
   const dead = rusty && !p.reduced && Math.sin(p.t * 9) > 0.85;
-  const lookY = air ? (p.vy < 0 ? -0.5 : 0.5) : 0.2;
+  const lookY = hanging ? -0.9 * hangK : air ? (p.vy < 0 ? -0.5 : 0.5) : 0.2;
   for (const dx of [-3.3, 3.5]) {
     const ex = hx + hdx + dx, ey = hy + 0.6;
     if (blink) P.stroke([ex - 2.4, ey, ex + 2.4, ey], 1.4, OUTLINE);
@@ -837,7 +854,8 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   }
 
   // ---- front arm over everything
-  if (p.gun) {
+  if (hanging) limbArm(tx + 16, torsoTop + 3, hangA(armNear), suit.trim, steel, false, hangA2(armNear));
+  else if (p.gun) {
     // arm out in front, holding the gun
     const a = 1.45, a2 = a * 0.8 + 0.25, kick = (p.fire ?? 0) * 2.5;
     const sx = tx + 16 - kick * 0.4, sy = torsoTop + 3;
@@ -867,6 +885,11 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
   } else if (rusty) limbArm(tx + 16, torsoTop + 3, 0.28 + Math.sin(p.t * 4) * 0.2 + (air ? -1.3 : 0) - sway * 0.5, suit.trim, steel, true);
   else limbArm(tx + 16, torsoTop + 3, armNear, suit.trim, steel, false);
 
+  drawPowerFx(g, p);
+}
+
+/** Power-up effects around Iggy: the invincibility aura and the shield bubble. Drawn with the robot, or on their own around the Spine Iggy. */
+export function drawPowerFx(g: Phaser.GameObjects.Graphics, p: Pick<Pose, 't' | 'star' | 'shield' | 'reduced'>) {
   if ((p.star ?? 0) > 0) {
     // golden aura; cycles through colours (and flickers faster in the last two seconds) unless motion is reduced
     const ending = (p.star ?? 0) < 2;

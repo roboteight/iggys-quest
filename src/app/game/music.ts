@@ -7,6 +7,7 @@
  *  - drowned: dreamy C-minor sine lead, 88 BPM
  *  - void: F-minor synthwave, 128 BPM
  *  - spores: marimba-like triangle lead in C/D/Em, 100 BPM
+ *  - plant: a slow, heavy C-minor industrial pulse, 92 BPM (its boss track 138 BPM)
  */
 
 const NAMES: Record<string, number> = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 };
@@ -41,9 +42,41 @@ interface Theme {
   hat: (s: number) => number; // gain, 0 = none
 }
 
-export type ThemeName = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores' | 'war';
+export type ThemeName = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores' | 'war' | 'plant';
 
 const THEMES: Record<ThemeName, Theme> = {
+  // the Reclamation Plant: a slow, heavy C-minor pulse, low square lead over clanking machinery
+  plant: {
+    bpm: 92,
+    steps: 16,
+    chords: [
+      { root: 36, arp: [60, 63, 67] }, // Cm
+      { root: 32, arp: [56, 60, 63] }, // Ab
+      { root: 31, arp: [55, 59, 62] }, // G
+      { root: 29, arp: [53, 56, 60] }, // Fm
+    ],
+    progression: [0, 0, 1, 2, 0, 0, 3, 2],
+    lead: parse([
+      'C4 _ _ . C4 _ D#4 _ G4 _ _ _ . . . .',
+      'C4 _ _ . C4 _ D#4 _ F4 _ D#4 _ . . . .',
+      'G#3 _ _ . C4 _ D#4 _ G#4 _ _ _ . . . .',
+      'G3 _ _ . B3 _ D4 _ G4 _ F4 _ D4 _ . .',
+      'C4 _ _ . C4 _ D#4 _ G4 _ _ _ C5 _ _ _',
+      'C4 _ _ . C4 _ D#4 _ F4 _ D#4 _ C4 _ . .',
+      'F4 _ _ . G#4 _ C5 _ G#4 _ F4 _ . . . .',
+      'G4 _ F4 _ D4 _ B3 _ G3 _ _ _ . . . .',
+    ]),
+    leadWave: 'square',
+    leadGain: 0.13,
+    arp: null,
+    stabs: [10],
+    bass: (s) => (s % 4 === 0 ? 0 : s === 6 ? 7 : null),
+    kick: (s) => s === 0 || s === 8 || s === 10,
+    snare: (s) => s === 4 || s === 12,
+    hat: (s) => (s % 4 === 2 ? 0.07 : s % 2 === 1 ? 0.03 : 0),
+    kickGain: 0.5,
+    bassLen: 2,
+  },
   // a slow D-minor march: brass-like square lead over a snare roll
   war: {
     bpm: 108,
@@ -268,6 +301,38 @@ const THEMES: Record<ThemeName, Theme> = {
  *  - spores:  frantic marimba runs in C/D/Em/G, 136 BPM
  */
 const BOSS_THEMES: Record<ThemeName, Theme> = {
+  // the Reclaimer: the plant's pulse doubled into a grinding chase
+  plant: {
+    bpm: 138,
+    steps: 16,
+    chords: [
+      { root: 36, arp: [60, 63, 67] }, // Cm
+      { root: 32, arp: [56, 60, 63] }, // Ab
+      { root: 31, arp: [55, 59, 62] }, // G
+      { root: 29, arp: [53, 56, 60] }, // Fm
+    ],
+    progression: [0, 1, 3, 2, 0, 1, 2, 2],
+    lead: parse([
+      'C5 C5 . C5 D#5 . G5 . C6 C6 . A#5 . G5 . .',
+      'G#4 G#4 . G#4 C5 . D#5 . G#5 G#5 . G5 . D#5 . .',
+      'F4 F4 . F4 G#4 . C5 . F5 F5 . D#5 . C5 . .',
+      'G4 G4 . G4 B4 . D5 . G5 G5 . F5 . D5 . .',
+      'C6 _ A#5 _ G5 _ D#5 _ C5 C5 D#5 D#5 G5 _ _ _',
+      'G#5 _ G5 _ D#5 _ C5 _ G#4 G#4 C5 C5 D#5 _ _ _',
+      'G5 G5 F5 F5 D5 _ B4 _ G4 _ B4 _ D5 _ F5 _',
+      'G5 _ _ _ B5 _ _ _ D6 _ _ _ . . . .',
+    ]),
+    leadWave: 'sawtooth',
+    leadGain: 0.11,
+    arp: null,
+    stabs: [6, 14],
+    bass: (s) => (s % 2 === 0 ? 0 : null),
+    kick: (s) => s % 4 === 0 || s === 10 || s === 14,
+    snare: (s) => s === 4 || s === 12,
+    hat: (s) => (s % 2 === 0 ? 0.1 : 0.05),
+    kickGain: 0.55,
+    bassLen: 2,
+  },
   // the Iron Marshal: the march doubles up and drives
   war: {
     bpm: 150,

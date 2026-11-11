@@ -50,6 +50,9 @@
               }
             ],
             "styles": [
+              "@fontsource/rubik-dirt/latin-400.css",
+              "@fontsource/architects-daughter/latin-400.css",
+              "@fontsource-variable/space-grotesk/index.css",
               "src/styles.css"
             ]
           },
@@ -63,8 +66,8 @@
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "8kB",
-                  "maximumError": "10kB"
+                  "maximumWarning": "10kB",
+                  "maximumError": "14kB"
                 }
               ],
               "outputHashing": "all",

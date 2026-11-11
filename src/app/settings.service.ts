@@ -55,6 +55,8 @@ export interface Settings {
   enemySpeed: number;
   /** assist: stay protected for longer after a hit */
   longGrace: boolean;
+  /** art test: draw Iggy with the new Spine rig of the concept art (moves it doesn't have yet use the old drawing) */
+  spineIggy: boolean;
 }
 
 const KEY = 'iggys-quest.settings';
@@ -73,6 +75,7 @@ function load(): Settings {
     startLives: 3,
     enemySpeed: 100,
     longGrace: false,
+    spineIggy: true,
   };
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? localStorage.getItem(OLD_KEY) ?? '{}');

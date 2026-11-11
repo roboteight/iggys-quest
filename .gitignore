@@ -42,3 +42,9 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Python tool caches
+__pycache__/
+
+# debug previews written by the art cutting tools
+art-src/**/cutout-preview.png

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { Settings } from '../settings.service';
 import {
-  H, SUITS, W, drawBuilding, drawHollowBuilding, drawRobot, makeFlakes, makeFog, makeHollowFog, makeHollowLayer, makeHollowSky,
+  H, SUITS, W, drawBuilding, drawHollowBuilding, drawPowerFx, drawRobot, makeFlakes, makeFog, makeHollowFog, makeHollowLayer, makeHollowSky,
   makeRain, makeSky, makeSkyline, makeSmallTextures, suitFor,
 } from './art';
 import { ensureStyle, drawLevelBuilding, makeEnemyTextures, makeFlyerTextures, makeRingTextures, makeWarTextures, makePlatformTextures, ExtraStyle } from './art-levels';
@@ -9,6 +9,10 @@ import { BOSSES, BOSS_SCORE, BossAttack, BossDef, LevelDef, levelById } from './
 import { makeBossShots } from './boss-shots';
 import { makeEnemyRigTextures } from './enemy-rigs';
 import { makeBossRigTextures } from './boss-rigs';
+import { makeEnforcerRigTextures, preloadEnforcerRig } from './enforcer-rig';
+import { EnforcerSpine, preloadEnforcerSpine } from './enforcer-spine';
+import { IggySpine, preloadIggySpine } from './iggy-spine';
+import { ReclaimerRig, RECLAIMER_SCALE, preloadReclaimer } from './reclaimer';
 import { makeForeTexture } from './art-fore';
 import { Sfx } from './sfx';
 import { Music } from './music';
@@ -21,7 +25,7 @@ export interface HudState {
   mode: 'story' | 'endless' | 'time';
   /** whole seconds on the clock (time attack) */
   time: number;
-  boss: { name: string; hp: number; max: number } | null;
+  boss: { name: string; hp: number; max: number; note?: string } | null;
   score: number;
   breadboards: number;
   lives: number;
@@ -38,6 +42,8 @@ export interface GameOverState {
   breadboards: number;
   distance: number;
   suit: string;
+  /** rings he finished with (story mode carries these, and so his suit, into the next level) */
+  rings: number;
   best: number;
   newBest: boolean;
   perfect: boolean;
@@ -67,8 +73,62 @@ const POWER: Record<PowerId, { label: string; secs: number | null; tex: string; 
 };
 
 interface Shot { s: Phaser.GameObjects.Image; vx: number; vy: number; kind: 'bolt' | 'rocket'; trail: number; big?: boolean; bossHit?: boolean; hit?: Set<Item> }
-interface Building { x: number; top: number; w: number; gfx: Phaser.GameObjects.Graphics; zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }
-interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer' | 'secret' | 'hazard' | 'switch' | 'mine'; mT?: number; hint?: boolean; bonus?: boolean; pressed?: boolean; hz?: Haz; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number; cd?: number; aim?: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
+interface Building { x: number; top: number; w: number; cliff?: boolean; conveyor?: number; gfx: Phaser.GameObjects.Graphics; zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }
+interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer' | 'secret' | 'hazard' | 'switch' | 'mine' | 'foe'; foe?: Foe; mT?: number; hint?: boolean; bonus?: boolean; pressed?: boolean; hz?: Haz; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number; cd?: number; aim?: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
+
+/**
+ * The newer enemies, drawn from their concept sheets (public/foes, cut by tools/foes-cut.py) and moved in code:
+ * gloop: Gloop Tender, sprays glue puddles that slow Iggy. zeppelin: Rivet Zeppelin, crosses the sky dropping bombs.
+ * mite / minimite: Glitch Mite, touching it jams his gun and suit abilities; shot, it splits in two. copycat: Copycat Unit,
+ * wakes as he passes and follows his exact path a second behind until its battery dies. magnet: Scrap Magnet, pulls him
+ * towards the gap in front of it. pogo: Pogo Trooper, only stompable when its spring is squashed. rat: Rivet Rats, bite his
+ * fingers when he hangs from their roof. magpie: Magpie Drone, steals breadboards; shoot it to get them back.
+ */
+type FoeType = 'gloop' | 'zeppelin' | 'mite' | 'minimite' | 'copycat' | 'magnet' | 'pogo' | 'rat' | 'magpie';
+interface Foe {
+  type: FoeType; state: string; t: number; dir: number; min: number; max: number; top: number; cd: number;
+  vx: number; vy: number; b?: Building; wake?: number; carried?: number; carriedReal?: number; target?: Item;
+}
+const FOE_INFO: Record<FoeType, { name: string; hp: number; points: number; meet: string }> = {
+  gloop: { name: 'Gloop Tender', hp: 3, points: 60, meet: 'A Gloop Tender is spraying glue on the roof ahead. Glue slows Iggy down for a moment. Jump over the puddles, and shoot its drum or stomp it.' },
+  zeppelin: { name: 'Rivet Zeppelin', hp: 3, points: 150, meet: 'A Rivet Zeppelin is crossing the sky, dropping a line of bombs. Watch the gaps between them, or shoot it down.' },
+  mite: { name: 'Glitch Mite', hp: 1, points: 40, meet: 'A Glitch Mite is drifting towards you. Touching it jams your gun and suit abilities for a few seconds. Stomp it; shooting it splits it in two.' },
+  minimite: { name: 'little Glitch Mite', hp: 1, points: 20, meet: '' },
+  copycat: { name: 'Copycat Unit', hp: 2, points: 60, meet: 'A Copycat Unit woke up. It follows your exact path a second behind you until its battery runs out. Keep moving, or shoot it.' },
+  magnet: { name: 'Scrap Magnet', hp: 3, points: 80, meet: 'A Scrap Magnet stands across the gap ahead. When its coils glow it pulls Iggy towards it. Jump while it is off, or shoot it.' },
+  pogo: { name: 'Pogo Trooper', hp: 2, points: 60, meet: 'A Pogo Trooper is bouncing ahead. You can only stomp it when its spring is squashed at the bottom of a bounce. Or shoot it.' },
+  rat: { name: 'Rivet Rat', hp: 1, points: 30, meet: 'Rivet Rats are running along the edge of the cliff ahead. If Iggy hangs from it, they bite his fingers and he lets go. Climb up fast.' },
+  magpie: { name: 'Magpie Drone', hp: 2, points: 50, meet: 'A Magpie Drone is stealing breadboards ahead. It never hurts Iggy. Shoot it to get the breadboards back.' },
+};
+const FOE_TEX: Record<FoeType, string> = { gloop: 'gloop', zeppelin: 'zeppelin', mite: 'mite', minimite: 'minimite', copycat: 'copycat', magnet: 'magnet', pogo: 'pogo', rat: 'rat', magpie: 'magpie' };
+/** which of the newer enemies walk the roofs of each level look (the zeppelin and the rats are placed separately) */
+const FOES_BY_STYLE: Record<string, FoeType[]> = {
+  city: ['gloop', 'magpie'], hollow: ['copycat', 'pogo'], wastes: ['magnet', 'pogo'], drowned: ['gloop', 'magpie'], void: ['mite', 'copycat'], spores: ['mite', 'pogo'], war: ['magnet'],
+  plant: ['gloop', 'mite', 'copycat', 'magnet', 'pogo', 'magpie'], // the last level: everything at once
+};
+/** levels where the Rivet Zeppelin flies over */
+const ZEPPELIN_STYLES = ['drowned', 'war', 'wastes', 'plant'];
+interface Glue { gfx: Phaser.GameObjects.Graphics; x: number; top: number; w: number; life: number }
+interface ZBomb { img: Phaser.GameObjects.Image; vx: number; vy: number }
+
+/** The final boss's fight (level 8). Positions are game pixels; see docs/reclaimer.md for the design. */
+interface Rc {
+  rig?: ReclaimerRig;
+  x: number; // between its feet (sunk into the slag pit behind the arena floor)
+  phase: 1 | 2 | 3;
+  cycle: 'shield' | 'warm' | 'hot'; cycleT: number;
+  act: 'idle' | 'windup' | 'slam' | 'stuck' | 'ball' | 'scrap' | 'intake-tell' | 'intake' | 'spit' | 'roar';
+  actT: number; cd: number; slamX: number;
+  ball: Phaser.GameObjects.Image; ballT: number; ballHigh: boolean; ballPass: number; ballN: number;
+  /** scrap it drops: once landed, each is solid (a step to jump on, and cover from the Intake) */
+  blocks: { x: number; y: number; vy: number; landed: boolean; life: number; warn: number; zone?: Phaser.GameObjects.Zone; collider?: Phaser.Physics.Arcade.Collider }[];
+  belt: number; beltPhase: number;
+  gfx: Phaser.GameObjects.Graphics; floorGfx: Phaser.GameObjects.Graphics;
+  said: Set<string>; deadT: number;
+}
+const RC_FEET_DROP = 215; // its feet sit this far below the arena floor
+const RC_MAW = [-25, -318]; // the furnace mouth, from between its feet
+const RC_SHIELD = { 1: [7, 1, 4], 2: [5, 1, 3] } as const; // shielded, warning, overheated seconds by phase
 
 /** Roof hazards that run on a timer: falling debris (city, hollow, wastes), steam vents (drowned), laser grids (void, spores). */
 interface Haz {
@@ -91,6 +151,8 @@ interface BossState {
   def: BossDef; sprite: Phaser.GameObjects.Image; hp: number; max: number;
   state: 'intro' | 'walk' | 'telegraph' | 'stagger' | 'dead';
   timer: number; cd: number; attack: BossAttack; stomped: boolean; touchCD: number; said: number;
+  /** Enforcer Nine's Spine skeleton, drawn in place of `sprite` (which then only carries his state) */
+  spine?: EnforcerSpine;
 }
 interface BossShot { img: Phaser.GameObjects.Image; vx: number; vy: number; g: number; mortar: boolean }
 interface BossWave { img: Phaser.GameObjects.Image; vx: number }
@@ -108,6 +170,10 @@ type Mode = 'story' | 'endless' | 'time';
 const DASH_V = 600, DASH_TIME = 0.22, DASH_COOLDOWN = 1.1;
 const POUND_V = 950, POUND_RADIUS = 120;
 const GLIDE_FALL = 110;
+/** Ledge hang: with his hands on the roof, his feet hang this far below it, and his middle is this far out from the wall. */
+const HANG_DROP = 61, HANG_OFF = 14;
+/** seconds to haul himself up; holding toward the wall this long while hanging also climbs */
+const CLIMB_TIME = 0.42, HANG_AUTO = 0.3;
 /** what each suit can do beyond soaking a hit, by suit index */
 const ABILITY: Record<number, string> = {
   2: 'Dash: press Shoot when you have no gun.',
@@ -138,6 +204,10 @@ export class PlayScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Zone;
   private body!: Phaser.Physics.Arcade.Body;
   private robot!: Phaser.GameObjects.Graphics;
+  /** the art test: Iggy as a Spine skeleton, shown in place of the drawn robot when the setting is on (see iggy-spine.ts) */
+  private iggySpine?: IggySpine;
+  /** the shield bubble and invincibility aura, drawn around the Spine Iggy (the drawn robot paints its own) */
+  private iggyFx!: Phaser.GameObjects.Graphics;
   private buildings: Building[] = [];
   private items: Item[] = [];
   private plats: Plat[] = [];
@@ -184,6 +254,18 @@ export class PlayScene extends Phaser.Scene {
   /** once the hidden path is revealed: the stretch of the level it covers, where breadboards become optional bonus */
   private layerSpan: [number, number] | null = null;
   private landedNow = false;
+  /** the final boss, while its fight is on */
+  private rc?: Rc;
+  // the newer enemies' effects
+  private glue: Glue[] = [];
+  private zbombs: ZBomb[] = [];
+  private zepT = 14;
+  private glueT = 0; // stuck in glue (the slow itself is slowT)
+  private jamT = 0; // gun and suit abilities jammed by a Glitch Mite
+  private fxT = 0;
+  private foeSeen = new Set<FoeType>();
+  /** where Iggy has been lately (time, middle x, feet y): a Copycat Unit walks it a second behind him */
+  private trailBuf: { t: number; x: number; y: number }[] = [];
   private between(a: number, b: number) {
     return Math.floor(this.rand() * (b - a + 1) + a);
   }
@@ -221,6 +303,12 @@ export class PlayScene extends Phaser.Scene {
   private wallCoyote = 0;
   private wallDir = 0; // direction to kick off in: +1 = right (wall is on his left)
   private wallLock = 0;
+  /** Hanging from a roof edge (side +1 = the wall is on his right), and how far through climbing up he is (-1 = not climbing). */
+  private hang: { b: Building; side: number; climb: number; hold: number } | null = null;
+  private hangLock = 0; // after letting go, a moment before he can grab again
+  private hangHinted = false;
+  private cliffHinted = false;
+  private cliffSeen = false;
   private shots: Shot[] = [];
   private gunLevel = 0; // 0 = no gun, 1..4 = Blaster, Twin blaster, Spread gun, Rocket launcher
   private fireCD = 0;
@@ -249,6 +337,18 @@ export class PlayScene extends Phaser.Scene {
     super('play');
   }
 
+  preload() {
+    preloadIggySpine(this);
+    if (levelById(this.registry.get('level')).style === 'plant') preloadReclaimer(this);
+    for (const k of new Set(Object.values(FOE_TEX))) this.load.image(`foe-${k}`, `foes/${k}.png`);
+    this.load.image('foe-bomb', 'foes/bomb.png');
+    this.load.image('foe-copycat-down', 'foes/copycat-down.png');
+    if (levelById(this.registry.get('level')).style === 'city') {
+      preloadEnforcerRig(this);
+      preloadEnforcerSpine(this);
+    }
+  }
+
   /** The pictures for this level's boss and enemies. */
   create() {
     this.settings = this.registry.get('settings') as Settings;
@@ -274,6 +374,20 @@ export class PlayScene extends Phaser.Scene {
     this.shellCD = 3.5;
     this.shellWarned = false;
     this.switchPlaced = false;
+    this.glue.forEach((g) => g.gfx.destroy());
+    this.glue = [];
+    this.zbombs.forEach((z) => z.img.destroy());
+    this.zbombs = [];
+    this.zepT = 14;
+    this.glueT = 0;
+    this.jamT = 0;
+    this.foeSeen = new Set();
+    this.trailBuf = [];
+    this.hang = null;
+    this.hangLock = 0;
+    this.hangHinted = false;
+    this.cliffHinted = false;
+    this.cliffSeen = false;
     this.layerSpan = null;
     this.landedNow = false;
     this.hc = this.settings.highContrast;
@@ -345,6 +459,7 @@ export class PlayScene extends Phaser.Scene {
     this.arenaX = null;
     this.camLock = null;
     this.boss = undefined;
+    this.rc = undefined;
     this.bossShots = [];
     this.bossWaves = [];
     this.bossAmmoT = 8;
@@ -358,8 +473,9 @@ export class PlayScene extends Phaser.Scene {
     this.bbCollected = 0;
     this.bbMissed = false;
     this.lives = this.live().startLives;
-    this.suitIdx = 0;
-    this.rings = 0;
+    // story mode: he starts in the suit he finished the last level in
+    this.rings = Math.max(0, Math.floor((this.registry.get('startRings') as number | undefined) ?? 0));
+    this.suitIdx = suitFor(this.rings);
     this.maxX = 0;
     this.invuln = 0;
     this.coyote = 0;
@@ -393,6 +509,8 @@ export class PlayScene extends Phaser.Scene {
     this.body = this.player.body as Phaser.Physics.Arcade.Body;
     this.body.setSize(22, 46);
     this.robot = this.add.graphics().setDepth(10);
+    this.iggySpine = IggySpine.create(this, 10);
+    this.iggyFx = this.add.graphics().setDepth(10.5);
     // time attack: a ghost of the best run so far, drawn as a see-through outline so it can't be mistaken for an enemy
     this.ghostBox = this.ghost?.length ? this.add.rectangle(-999, 0, 24, 40, 0x7ad9ff, 0.28).setStrokeStyle(2, 0xffffff, 0.85).setDepth(9) : undefined;
 
@@ -409,7 +527,8 @@ export class PlayScene extends Phaser.Scene {
     this.cameras.main.scrollX = -20;
     this.emitHud(true);
     this.banner(`Level ${this.level.number}: ${this.level.name}`);
-    this.announce(`Level ${this.level.number}: ${this.level.name}. ${this.level.blurb}`);
+    const carried = this.suitIdx > 0 ? ` Iggy is still wearing the ${SUITS[this.suitIdx].name} suit from the last level.` : '';
+    this.announce(`Level ${this.level.number}: ${this.level.name}. ${this.level.blurb}${carried}`);
   }
 
   // ------------------------------------------------------------------ backdrop
@@ -423,6 +542,7 @@ export class PlayScene extends Phaser.Scene {
     makeBossShots(this);
     makeEnemyRigTextures(this, this.level.style); // enemies are drawn and animated in code, then grimed up
     makeBossRigTextures(this, this.level.style); // the bosses are drawn and animated in code
+    if (this.level.style === 'city') makeEnforcerRigTextures(this); // Enforcer Nine is the rigged concept-sheet cut-out (falls back to the drawn one)
     const style = this.level.style;
     let sky: string, layers: [string, number][], fogKey: string, precipKey: string;
     if (style !== 'city' && style !== 'hollow') {
@@ -503,11 +623,23 @@ export class PlayScene extends Phaser.Scene {
       const stepUp = Math.max(0, this.lastTop - top);
       if (stepUp > 75) top = this.lastTop - 75;
       const maxGap = 120 + d * 60 - stepUp * 0.9;
-      const gap = war ? this.between(46, 92) : this.between(60, Math.max(70, Math.floor(maxGap)));
-      const w = war ? this.between(250, 520 - Math.floor(d * 110)) : this.between(170, 440 - Math.floor(d * 120));
+      let gap = war ? this.between(46, 92) : this.between(60, Math.max(70, Math.floor(maxGap)));
+      let w = war ? this.between(250, 520 - Math.floor(d * 110)) : this.between(170, 440 - Math.floor(d * 120));
+      // now and then a cliff: a sheer wall too tall to jump onto. Iggy catches the edge, hangs, and climbs up.
+      // the first one comes early so players meet it; it needs a low roof before it so the top stays on screen
+      const cliff = !war && this.buildings.length > 1 && this.lastTop >= 380 && (this.cliffSeen ? this.rand() < 0.12 + d * 0.1 : this.nextX > 1400);
+      if (cliff) {
+        this.cliffSeen = true;
+        top = Math.max(225, this.lastTop - this.between(145, 175));
+        gap = this.between(40, 70);
+        w = this.between(260, 420);
+      }
       const x = this.nextX + gap;
       const prev = this.buildings[this.buildings.length - 1];
       const b = this.addBuilding(x, top, w);
+      b.cliff = cliff || undefined;
+      // the plant: some gantries are conveyor belts, carrying Iggy one way or the other
+      if (this.level.style === 'plant' && !cliff && w > 200 && this.rand() < 0.35) this.addConveyor(b, this.rand() < 0.5 ? -1 : 1);
       this.populate(b, prev, gap);
       if (prev) this.addPlatform(prev, b, gap);
       if (b.x >= this.nextFlagX && b.w >= 240) {
@@ -522,7 +654,10 @@ export class PlayScene extends Phaser.Scene {
   private populate(b: Building, prev: Building | undefined, gap: number) {
     const d = this.difficulty();
     // breadboards across the gap on a jump arc
-    if (prev && this.rand() < 0.8) {
+    if (prev && b.cliff) {
+      // a column up the cliff face: picked up on the jump, the hang and the climb
+      for (const y of [prev.top - 55, prev.top - 105, b.top + 30]) this.addItem('bb', b.x - 16, y);
+    } else if (prev && this.rand() < 0.8) {
       const n = 3 + (this.rand() < 0.4 ? 1 : 0);
       const x0 = prev.x + prev.w - 4, x1 = b.x + 4;
       const peak = Math.min(prev.top, b.top) - 95;
@@ -559,7 +694,17 @@ export class PlayScene extends Phaser.Scene {
       for (let i = 0; i < n; i++) this.addRing(x0 + i * 90, b.top - (n > 1 && i % 2 === 0 ? 92 : 105));
     }
     // a patrolling enemy walking back and forth across a clear roof
-    if (hazards.length === 0 && b.w > 220 && this.maxX > 200 && this.rand() < 0.22 + d * 0.3) this.addPatrol(b);
+    // (not on a cliff top: he'd climb straight into it)
+    const patrol = !b.cliff && hazards.length === 0 && b.w > 220 && this.maxX > 200 && this.rand() < 0.22 + d * 0.3;
+    if (patrol) this.addPatrol(b);
+    // the newer enemies: one at most per roof, from this level's list
+    const kinds = FOES_BY_STYLE[this.level.style] ?? [];
+    if (!patrol && !b.cliff && kinds.length && hazards.length === 0 && b.w > 240 && this.maxX > 350 && this.rand() < 0.2 + d * 0.15) {
+      const kind = kinds[Math.floor(this.rand() * kinds.length)];
+      if (kind !== 'magnet' || (prev && gap >= 70)) this.addFoe(kind, b);
+    }
+    // rivet rats on the lip of a cliff: the edge Iggy hangs from
+    if (b.cliff && this.level.style !== 'war' && this.rand() < 0.5) for (let i = 0; i < this.between(2, 3); i++) this.addFoe('rat', b, i);
     // a timed roof hazard on a clear roof, a different kind for each look of level
     if (this.level.style === 'war') {
       // landmines buried in the ground on clear stretches
@@ -568,7 +713,7 @@ export class PlayScene extends Phaser.Scene {
         this.addMine(mx, b.top);
         hazards.push(mx);
       }
-    } else if (hazards.length === 0 && b.w > 280 && this.maxX > 600 && this.rand() < 0.14 + d * 0.18) {
+    } else if (!b.cliff && hazards.length === 0 && b.w > 280 && this.maxX > 600 && this.rand() < 0.14 + d * 0.18) {
       const hx = b.x + this.between(110, b.w - 110);
       this.addHazard(hx, b.top);
       hazards.push(hx);
@@ -687,9 +832,11 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private spawnBoss() {
+    if (this.level.style === 'plant') { this.spawnReclaimer(); return; }
     const def = BOSSES[this.level.style];
-    const sprite = this.add.image(this.camLock! + W - 150, this.arenaTop, `boss-${this.level.style}-a`).setOrigin(0.5, 1).setDepth(8);
+    const sprite = this.add.image(this.camLock! + W - 150, this.arenaTop, `boss-${this.level.style}-a`).setOrigin(0.5, this.level.style === 'city' ? 0.95 : 1).setDepth(8); // Enforcer Nine sits a little lower so its feet meet the roof
     this.boss = { def, sprite, hp: def.hp, max: def.hp, state: 'intro', timer: 2.2, cd: 1.5, attack: 'volley', stomped: false, touchCD: 0, said: 0 };
+    if (this.level.style === 'city') this.boss.spine = EnforcerSpine.attach(this, sprite);
     this.banner(`Boss: ${def.name}`);
     this.announce(`Boss fight: ${def.name}. ${def.blurb} Shoot it, or stomp on its head when it kneels.`);
     this.sfx.bossAppear();
@@ -708,17 +855,37 @@ export class PlayScene extends Phaser.Scene {
 
   private inBossRect(x: number, y: number) {
     if (!this.boss || this.boss.state === 'dead') return false;
+    if (this.rc) {
+      // only the furnace mouth (and the conveyor lip under it) can be hit
+      const mx = this.rc.x + RC_MAW[0], my = this.arenaTop + RC_FEET_DROP + RC_MAW[1] + (this.rc.phase === 3 ? 66 : 0);
+      return Math.abs(x - mx) < 75 && y > my - 70 && y < my + 92;
+    }
     const r = this.bossBox(this.boss);
     return x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1;
   }
 
+  private bossCombo = 0;
+  private bossHitAt = -9;
+
   private damageBoss(n: number) {
     const b = this.boss;
     if (!b || b.state === 'dead' || b.state === 'intro') return;
+    const rc = this.rc;
+    if (rc && rc.phase < 3 && rc.cycle !== 'hot') {
+      // the slag shield melts shots
+      this.sfx.zap();
+      this.debris(rc.x + RC_MAW[0], this.arenaTop + RC_FEET_DROP + RC_MAW[1], 'spark', this.reduced ? 1 : 3, 0.6);
+      this.rcSay('fizzle', 'The slag shield melts your shots. Wait for it to overheat.');
+      return;
+    }
     b.hp -= n;
+    b.spine?.flash(this);
+    if (rc?.rig) { rc.rig.spine.setTint(0xffc0a0); this.time.delayedCall(70, () => rc.rig?.spine.active && rc.rig.spine.setTint(0xffffff)); }
     b.sprite.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL); // a quick white flash on every hit
     this.time.delayedCall(70, () => b.sprite.active && b.sprite.clearTint().setTintMode(Phaser.TintModes.MULTIPLY));
-    this.sfx.bossHit();
+    this.bossCombo = this.t - this.bossHitAt < 0.6 ? Math.min(6, this.bossCombo + 1) : 0; // quick hits climb in pitch
+    this.bossHitAt = this.t;
+    this.sfx.bossHit(this.bossCombo, n >= 3);
     this.debris(b.sprite.x + Phaser.Math.Between(-30, 30), b.sprite.y - Phaser.Math.Between(30, b.sprite.displayHeight - 20), 'spark', 3, 1);
     const frac = Math.max(0, b.hp) / b.max;
     const step = frac <= 0.25 ? 3 : frac <= 0.5 ? 2 : frac <= 0.75 ? 1 : 0;
@@ -814,7 +981,8 @@ export class PlayScene extends Phaser.Scene {
     const s = b.sprite, body = this.body;
     const px = body.center.x;
     const enraged = b.hp <= b.max / 2;
-    if (b.state !== 'dead') {
+    if (this.rc) this.updateReclaimer(b, dt, edt);
+    else if (b.state !== 'dead') {
       s.setFlipX(px > s.x);
       s.angle = b.state === 'telegraph' && !this.reduced ? Math.sin(this.t * 70) * 1.4 : 0; // it shudders while it charges
       b.timer -= edt;
@@ -1012,6 +1180,782 @@ export class PlayScene extends Phaser.Scene {
     }
     for (const f of this.flags) {
       if (!f.on && Math.abs(this.body.center.x - f.x) < 26 && Math.abs(this.body.bottom - f.top) < 70) this.reachFlag(f);
+    }
+  }
+
+  // ------------------------------------------------------------------ the Reclaimer (level 8's final boss)
+  private spawnReclaimer() {
+    const def = BOSSES.plant;
+    const x = this.camLock! + W - 200, feet = this.arenaTop + RC_FEET_DROP;
+    // the shared boss code keys off an image; this one stays hidden and only carries the position
+    const sprite = this.add.image(x + RC_MAW[0], this.arenaTop - 60, 'dust').setAlpha(0);
+    this.boss = { def, sprite, hp: def.hp, max: def.hp, state: 'intro', timer: 3, cd: 2, attack: 'volley', stomped: false, touchCD: 0, said: 0 };
+    const rig = ReclaimerRig.create(this, x, feet + 40, -1);
+    const ball = this.add.image(x + 150, feet - 90, 'reclaimer-ball').setScale(0.5).setDepth(-0.6);
+    this.rc = {
+      rig, x, phase: 1, cycle: 'shield', cycleT: RC_SHIELD[1][0], act: 'roar', actT: 2.2, cd: 2, slamX: 0,
+      ball, ballT: 0, ballHigh: false, ballPass: 0, ballN: 0, blocks: [], belt: 0, beltPhase: 0,
+      gfx: this.add.graphics().setDepth(-0.5), floorGfx: this.add.graphics().setDepth(1), said: new Set(), deadT: 0,
+    };
+    // it rises out of the slag pit
+    if (rig) {
+      rig.play('roar', true);
+      rig.spine.y = feet + 260;
+      this.tweens.add({ targets: rig.spine, y: feet, duration: this.reduced ? 1 : 2200, ease: 'Cubic.easeOut' });
+    }
+    this.banner(`Final boss: ${def.name}`);
+    this.announce(`Final boss: ${def.name}. ${def.blurb} Its slag shield melts your shots. When it overheats, its mouth glows white: shoot into it, or land on its conveyor tongue.`);
+    this.sfx.bossAppear();
+    if (!this.reduced) this.cameras.main.shake(2000, 0.006);
+    this.music?.setIntensity(1);
+    this.music?.stinger();
+    for (let i = 0; i < 3; i++) this.time.delayedCall(600 + i * 900, () => this.boss && this.dropBossPowerUp(this.camLock!, true));
+    this.bossAmmoT = 5;
+    this.emitHud(true);
+  }
+
+  /** Say something once per fight (things that repeat get a short form after the first time). */
+  private rcSay(key: string, text: string, again?: string) {
+    const rc = this.rc;
+    if (!rc) return;
+    if (!rc.said.has(key)) { rc.said.add(key); this.announce(text); }
+    else if (again) this.announce(again);
+  }
+
+  private rcNote() {
+    const rc = this.rc!;
+    if (rc.phase === 3) return 'Armour off: hit the core';
+    return rc.cycle === 'hot' ? 'Overheated: hit it now' : rc.cycle === 'warm' ? 'Overheating…' : 'Shielded';
+  }
+
+  private updateReclaimer(b: BossState, dt: number, edt: number) {
+    const rc = this.rc!, body = this.body, cam = this.cameras.main;
+    const floor = this.arenaTop, feet = floor + RC_FEET_DROP;
+    const px = body.center.x, ground = body.touching.down || body.blocked.down;
+    const mawX = rc.x + RC_MAW[0], mawY = feet + RC_MAW[1] + (rc.phase === 3 ? 66 : 0);
+    const g = rc.gfx, fg = rc.floorGfx;
+    g.clear();
+    fg.clear();
+    rc.rig?.spine.setX(rc.x);
+    b.sprite.setPosition(mawX, mawY);
+    if (b.state === 'dead') {
+      // it sinks back into the slag, its eyes going out
+      if (rc.deadT === 0) { rc.blocks.forEach((k) => this.removeScrap(k)); rc.blocks = []; }
+      rc.deadT += dt;
+      rc.rig?.play('die', false);
+      rc.ball.setDepth(-0.6).setPosition(rc.ball.x, rc.ball.y + dt * 80);
+      if (rc.deadT > 2.4 && rc.rig) rc.rig.spine.setAlpha(Math.max(0, 1 - (rc.deadT - 2.4)));
+      return;
+    }
+    if (b.state === 'intro') {
+      b.timer -= edt;
+      if (b.timer <= 0) { b.state = 'walk'; rc.act = 'idle'; rc.cd = 1.2; }
+      return;
+    }
+
+    // ---- phases
+    const phase = b.hp <= 12 ? 3 : b.hp <= 30 ? 2 : 1;
+    if (phase > rc.phase) {
+      rc.phase = phase;
+      rc.act = 'roar';
+      rc.actT = 1.6;
+      this.blastEndAttacks();
+      this.sfx.bossStomp();
+      if (!this.reduced) this.cameras.main.shake(900, 0.012);
+      if (phase === 2) {
+        rc.cycle = 'shield';
+        rc.cycleT = RC_SHIELD[2][0];
+        this.banner('It’s furious!');
+        this.announce('The Reclaimer roars. It will start pulling you in, spitting slag and running the floor towards its mouth.');
+        this.music?.setIntensity(2);
+      } else {
+        this.banner('Armour off!');
+        this.announce('Its armour falls away and the shield is gone. It is dragging itself towards you. Hit the glowing core!');
+        for (let i = 0; i < 8; i++) this.debris(rc.x + Phaser.Math.Between(-120, 120), floor - Phaser.Math.Between(80, 260), 'brick', this.reduced ? 1 : 3, 1.6);
+      }
+      this.emitHud(true);
+    }
+
+    // ---- the shield cycle (phases 1 and 2)
+    if (rc.phase < 3) {
+      rc.cycleT -= edt;
+      if (rc.cycleT <= 0) {
+        const t = RC_SHIELD[rc.phase as 1 | 2];
+        if (rc.cycle === 'shield') { rc.cycle = 'warm'; rc.cycleT = t[1]; this.sfx.warn(); this.rcSay('warm', 'It’s overheating. Get ready.', 'Overheating.'); }
+        else if (rc.cycle === 'warm') {
+          rc.cycle = 'hot'; rc.cycleT = t[2];
+          this.blastEndAttacks();
+          this.sfx.boom();
+          this.dropBossPowerUp(this.camLock!, true);
+          this.rcSay('hot', 'Overheated! Its mouth is glowing white: shoot into it, or land on its conveyor tongue.', 'Overheated: hit it now!');
+        } else { rc.cycle = 'shield'; rc.cycleT = t[0]; this.rcSay('shield', 'The slag shield is back up. Dodge until it overheats again.', 'Shield up.'); }
+        this.emitHud(true);
+      }
+    }
+    const hot = rc.cycle === 'hot' || rc.phase === 3;
+
+    // ---- the machine's next move
+    rc.actT -= edt;
+    rc.cd -= edt;
+    if (rc.phase === 3) {
+      // drags itself forward, pulling almost all the time
+      rc.x = Math.max(this.camLock! + 430, rc.x - 15 * edt);
+      rc.rig?.play('crawl', true);
+      if (rc.act !== 'intake' && rc.act !== 'intake-tell' && rc.act !== 'roar' && rc.cd <= 0) { rc.act = 'intake-tell'; rc.actT = 0.7; this.sfx.bossCharge(true); }
+    } else if (rc.cycle === 'hot' && rc.act !== 'roar') {
+      rc.act = 'idle';
+      rc.rig?.play('slump', true);
+    } else if (rc.act === 'idle' && rc.cd <= 0) {
+      const moves: Rc['act'][] = rc.phase === 1 ? ['windup', 'ball', 'scrap'] : ['windup', 'ball', 'scrap', 'intake-tell', 'spit', 'intake-tell'];
+      rc.act = moves[Math.floor(Math.random() * moves.length)];
+      if (rc.act === 'windup') { rc.actT = 0.9; rc.slamX = Phaser.Math.Clamp(px, rc.x - 360, rc.x - 150); this.sfx.bossCharge(false); this.rcSay('slam', 'The claw is rising. Get out of its shadow.'); }
+      if (rc.act === 'ball') { rc.actT = 0.8; rc.ballN++; rc.ballHigh = rc.ballN % 3 === 0; rc.ballPass = 0; rc.ballT = 0; this.sfx.warn(); this.rcSay('ball', 'The wrecking ball is winding back. Jump the low swings and duck the high one.', rc.ballHigh ? 'High swing: duck!' : undefined); }
+      if (rc.act === 'scrap') { rc.actT = 0.8; this.dropScrap(); }
+      if (rc.act === 'intake-tell') { rc.actT = 1.2; this.sfx.bossCharge(true); this.rcSay('intake', 'Its turbines are spinning up. It is about to pull you in. Run away from it, stay on the ground, or hide behind a scrap block.', 'It’s pulling!'); }
+      if (rc.act === 'spit') { rc.actT = 0.6; this.sfx.bossCharge(false); }
+      if (rc.phase === 2 && Math.random() < 0.35 && rc.belt <= 0) { rc.belt = 6; this.rcSay('belt', 'The floor is moving towards its mouth. Keep running.'); }
+    }
+    switch (rc.act) {
+      case 'idle': if (rc.cycle !== 'hot' && rc.phase < 3) rc.rig?.play('idle', true); break;
+      case 'roar': rc.rig?.play('roar', true); if (rc.actT <= 0) { rc.act = 'idle'; rc.cd = 0.8; } break;
+      case 'windup': {
+        rc.rig?.play('windup', false);
+        const k = 1 - Math.max(0, rc.actT) / 0.9;
+        fg.fillStyle(0x000000, 0.25 + 0.4 * k).fillEllipse(rc.slamX, floor + 2, 120, 14); // the claw's shadow
+        if (rc.actT <= 0) { rc.act = 'slam'; rc.actT = 0.25; }
+        break;
+      }
+      case 'slam':
+        rc.rig?.play('slam', false);
+        fg.fillStyle(0x000000, 0.6).fillEllipse(rc.slamX, floor + 2, 120, 14);
+        if (rc.actT <= 0) {
+          this.sfx.bossStomp();
+          if (!this.reduced) this.cameras.main.shake(260, 0.012);
+          this.dust(rc.slamX, floor, 10, 70, 24, 1.6);
+          this.debris(rc.slamX, floor - 6, 'brick', this.reduced ? 2 : 6, 1.2);
+          if (Math.abs(px - rc.slamX) < 66 && body.bottom > floor - 70) this.hit('enemy');
+          rc.act = 'stuck'; rc.actT = 1.2;
+        }
+        break;
+      case 'stuck': rc.rig?.play('stuck', true); if (rc.actT <= 0) { rc.act = 'idle'; rc.cd = rc.phase === 1 ? 1.4 : 0.9; } break;
+      case 'ball': {
+        rc.rig?.play('idle', true);
+        if (rc.actT <= 0) {
+          // two passes across the floor: out to the far side and back
+          rc.ballT += edt / 1.15;
+          const u = rc.ballT % 1, out = Math.floor(rc.ballT) % 2 === 0;
+          const x0 = rc.x + 140, x1 = cam.scrollX + 30, cy = floor - (rc.ballHigh ? 82 : 34);
+          const e = out ? u : 1 - u;
+          const bx = x0 + (x1 - x0) * e, by = cy - Math.sin(e * Math.PI) * 10 + (1 - Math.min(1, e * 6)) * 120;
+          rc.ball.setPosition(bx, by).setDepth(2).setRotation(this.reduced ? 0 : rc.ball.rotation - edt * 6);
+          if (Math.hypot(bx - px, by - body.center.y) < 30 + 14 && !(rc.ballHigh && this.ducked)) this.hit('enemy');
+          if (rc.ballT >= 2) { rc.act = 'idle'; rc.cd = 1.2; rc.ballT = 0; }
+        }
+        break;
+      }
+      case 'scrap': rc.rig?.play('roar', true); if (rc.actT <= 0) { rc.act = 'idle'; rc.cd = 1.4; } break;
+      case 'intake-tell':
+        rc.rig?.play('intake', true);
+        this.windLines(g, mawX, mawY, 0.4);
+        if (rc.actT <= 0) { rc.act = 'intake'; rc.actT = rc.phase === 3 ? 2 : 3; }
+        break;
+      case 'intake': {
+        rc.rig?.play(rc.phase === 3 ? 'crawl' : 'intake', true);
+        this.windLines(g, mawX, mawY, 1);
+        const sheltered = rc.blocks.some((k) => k.landed && k.x > px && k.x - px < 70);
+        if (!sheltered && !this.over && this.power.star <= 0) {
+          const grace = this.live().longGrace;
+          const pull = ground ? (grace ? 190 : 280) : (grace ? 280 : 400); // about half of this survives the physics step: roughly 140 px/s on the ground, Iggy runs 250
+          body.x += pull * edt;
+        }
+        if (body.right >= rc.x - 72 && !this.over) this.swallow();
+        if (rc.actT <= 0) { rc.act = 'idle'; rc.cd = rc.phase === 3 ? 1.5 : 1.2; }
+        break;
+      }
+      case 'spit':
+        rc.rig?.play('roar', true);
+        g.fillStyle(0xff6a2a, 0.5).fillCircle(mawX, mawY, 46);
+        if (rc.actT <= 0) {
+          this.sfx.bossFire();
+          for (const d of [-90, 0, 90]) this.lobBossShot(mawX - 30, mawY, Phaser.Math.Clamp(px + d, cam.scrollX + 40, rc.x - 120));
+          rc.act = 'idle'; rc.cd = 1.3;
+        }
+        break;
+    }
+    if (rc.act !== 'ball') rc.ball.setDepth(-0.6).setPosition(rc.x + 150, feet - 90 + (this.reduced ? 0 : Math.sin(this.t * 2) * 4)).setRotation(0);
+
+    // ---- landing on the conveyor tongue while it is overheated
+    if (hot && this.landedNow && Math.abs(px - (rc.x - 95)) < 34 && body.bottom >= floor - 4) {
+      this.damageBoss(5);
+      body.setVelocity(-220, -520);
+      this.banner('Tongue stomp!');
+    }
+
+    // ---- the moving floor
+    if (rc.belt > 0) {
+      rc.belt -= edt;
+      rc.beltPhase = (rc.beltPhase + edt * 70) % 30;
+      if (ground && !this.over) body.x += 70 * edt;
+      for (let x = this.camLock! + 10 + rc.beltPhase; x < rc.x - 80; x += 30) fg.fillStyle(0xd9a62a, 0.9).fillTriangle(x, floor - 1, x, floor + 4, x + 7, floor + 1.5);
+    }
+
+    // ---- falling scrap blocks: shadows, landing, cover
+    rc.blocks = rc.blocks.filter((k) => {
+      if (!k.landed) {
+        k.warn -= edt;
+        fg.fillStyle(0x000000, 0.45).fillEllipse(k.x, floor + 2, 46, 8);
+        if (k.warn <= 0) {
+          k.vy += 900 * edt;
+          k.y += k.vy * edt;
+          if (k.y >= floor - 17) {
+            k.y = floor - 17; k.landed = true;
+            this.sfx.crumble();
+            this.dust(k.x, floor, 4, 30, 10);
+            const under = Math.abs(px - k.x) < 30 && body.bottom > floor - 50;
+            if (under) {
+              this.hit('enemy');
+              body.x = k.x + (px < k.x ? -40 : 22) - body.width / 2; // knocked out from under it, not stuck inside
+            }
+            // now it's solid: something to stand on and jump from
+            const zone = this.add.zone(k.x, k.y, 42, 34);
+            this.physics.add.existing(zone, true);
+            k.zone = zone;
+            k.collider = this.physics.add.collider(this.player, zone);
+          }
+        }
+      } else k.life -= edt;
+      if (k.warn <= 0 || k.landed) this.drawScrap(fg, k.x, k.y, k.life);
+      if (k.life <= 0) this.removeScrap(k);
+      return k.life > 0;
+    });
+
+    // ---- the shield, and the white-hot mouth when it overheats
+    if (rc.phase < 3) {
+      const flicker = rc.cycle === 'warm' && !this.reduced && Math.floor(this.t * 14) % 2 === 0;
+      if (rc.cycle !== 'hot' && !flicker) {
+        const pulse = this.reduced ? 0 : Math.sin(this.t * 3) * 0.05;
+        g.fillStyle(0xff7a2a, 0.13 + pulse).fillEllipse(rc.x - 10, floor - 150, 420, 330);
+        g.lineStyle(this.hc ? 4 : 3, this.hc ? 0xffffff : 0xffa040, 0.8).strokeEllipse(rc.x - 10, floor - 150, 420, 330);
+      }
+      if (rc.cycle === 'hot') {
+        g.fillStyle(0xffffff, 0.75).fillCircle(mawX, mawY, 34);
+        g.fillStyle(0xfff0b0, 0.4).fillCircle(mawX, mawY, 56);
+        if (this.hc) g.lineStyle(4, 0xffffff, 1).strokeCircle(mawX, mawY, 60);
+        if (!this.reduced && Math.random() < 0.3) this.dust(rc.x + Phaser.Math.Between(-60, 60), floor - 300, 1, 10, 30, 1.2); // steam from the stacks
+        // the tongue to land on
+        fg.fillStyle(0xffd27a, 0.35 + (this.reduced ? 0 : Math.sin(this.t * 8) * 0.15)).fillRect(rc.x - 129, floor - 2, 68, 4);
+      }
+    } else {
+      g.fillStyle(0xffe08a, 0.7 + (this.reduced ? 0 : Math.sin(this.t * 6) * 0.15)).fillCircle(mawX, mawY, 30); // the exposed core
+      if (this.hc) g.lineStyle(4, 0xffffff, 1).strokeCircle(mawX, mawY, 40);
+    }
+  }
+
+  /** Any attack in progress stops when the shield drops or the phase changes. */
+  private blastEndAttacks() {
+    const rc = this.rc;
+    if (!rc) return;
+    if (rc.act !== 'roar') rc.act = 'idle';
+    rc.ballT = 0;
+    rc.belt = 0;
+  }
+
+  private dropScrap() {
+    const rc = this.rc!, cam = this.cameras.main;
+    const n = rc.phase === 1 ? 2 : 3;
+    for (let i = 0; i < n; i++) {
+      const x = Phaser.Math.Clamp(cam.scrollX + 90 + Math.random() * (rc.x - cam.scrollX - 330), cam.scrollX + 60, rc.x - 160);
+      rc.blocks.push({ x, y: -40, vy: 0, landed: false, life: 10, warn: 0.7 + i * 0.25 });
+    }
+    this.sfx.warn();
+    this.rcSay('scrap', 'Scrap is falling. Dodge the shadows. The blocks are solid: jump on them, or hide behind one when it pulls.');
+  }
+
+  private removeScrap(k: Rc['blocks'][number]) {
+    k.collider?.destroy();
+    k.zone?.destroy();
+    k.collider = undefined;
+    k.zone = undefined;
+  }
+
+  /** A rusted scrap block (drawn in the boss sheet's palette). */
+  private drawScrap(g: Phaser.GameObjects.Graphics, x: number, y: number, life: number) {
+    const a = Math.min(1, life);
+    g.fillStyle(0x4a3a30, a).fillRect(x - 21, y - 17, 42, 34);
+    g.fillStyle(0x5f8a7f, a).fillRect(x - 19, y - 15, 18, 13).fillRect(x + 3, y + 2, 15, 12);
+    g.fillStyle(0xa8522a, a * 0.8).fillRect(x - 19, y + 2, 20, 12).fillRect(x + 3, y - 15, 15, 14);
+    g.lineStyle(2, 0x1a0e0a, a).strokeRect(x - 21, y - 17, 42, 34);
+    for (const [rx, ry] of [[-16, -12], [16, -12], [-16, 12], [16, 12]]) g.fillStyle(0xc98b4a, a).fillCircle(x + rx, y + ry, 1.8);
+  }
+
+  /** Streaks of air and scrap rushing towards its mouth. */
+  private windLines(g: Phaser.GameObjects.Graphics, mx: number, my: number, strength: number) {
+    if (this.reduced) {
+      g.lineStyle(2, 0xffc890, 0.5 * strength).lineBetween(mx - 220, my + 60, mx - 80, my + 20);
+      return;
+    }
+    for (let i = 0; i < 9; i++) {
+      const u = (this.t * 1.6 + i / 9) % 1, y = my + 90 - i * 18 + Math.sin(i * 7) * 10;
+      const x = mx - 420 * (1 - u) - 40;
+      g.lineStyle(2, 0xffc890, 0.15 + 0.45 * strength * u).lineBetween(x, y + (my - y) * u * 0.6, x + 40, y + (my - y) * (u + 0.1) * 0.6);
+    }
+  }
+
+  /** It got him: chewed (a hit) and spat back out across the arena. */
+  private swallow() {
+    const rc = this.rc!;
+    rc.act = 'idle';
+    rc.cd = 1.5;
+    this.sfx.crash();
+    this.sfx.bricks();
+    this.announce('Swallowed! The Reclaimer chewed Iggy up and spat him out.');
+    const livesBefore = this.lives;
+    this.hit('enemy');
+    if (this.over || this.lives < livesBefore) return; // a lost life already sent him back to the arena entrance
+    this.releaseHang();
+    this.body.reset(this.camLock! + 120, this.arenaTop - 30);
+    this.body.setVelocity(120, -300);
+    this.invuln = Math.max(this.invuln, this.live().longGrace ? 2.5 : 1.5);
+    this.debris(rc.x + RC_MAW[0], this.arenaTop + RC_FEET_DROP + RC_MAW[1], 'bolt', 6, 1.6);
+  }
+
+  // ------------------------------------------------------------------ the newer enemies
+  private addFoe(type: FoeType, b: Building, i = 0) {
+    const sprite = this.add.image(0, 0, `foe-${FOE_TEX[type]}`).setScale(0.5).setDepth(type === 'zeppelin' ? 8 : 6);
+    const h = sprite.displayHeight;
+    const f: Foe = { type, state: 'idle', t: 0, dir: -1, min: b.x + 30, max: b.x + b.w - 30, top: b.top, cd: 1 + this.rand() * 2, vx: 0, vy: 0, b };
+    let x = b.x + b.w / 2;
+    if (type === 'gloop' || type === 'pogo') { x = b.x + this.between(110, b.w - 110); f.min = Math.max(b.x + 40, x - 120); f.max = Math.min(b.x + b.w - 40, x + 120); }
+    if (type === 'copycat') x = b.x + Math.min(160, b.w / 2);
+    if (type === 'magnet') { x = b.x + 34; sprite.setFlipX(true); } // stands at the near edge, magnet held out over the gap
+    if (type === 'rat') { x = b.x + 14 + i * 22; f.min = b.x + 8; f.max = b.x + 90; f.dir = i % 2 ? 1 : -1; f.cd = this.rand(); }
+    let y = b.top - h / 2;
+    if (type === 'mite') y = b.top - 52;
+    if (type === 'magpie') { x = b.x + b.w - 40; y = b.top - 150; f.state = 'wait'; }
+    sprite.setPosition(x, y);
+    this.items.push({ kind: 'foe', foe: f, sprite, baseY: y, phase: this.rand() * 6, hp: FOE_INFO[type].hp });
+    return this.items[this.items.length - 1];
+  }
+
+  /** The first time a kind of enemy shows up, say what it does. */
+  private meetFoe(type: FoeType) {
+    if (this.foeSeen.has(type) || !FOE_INFO[type].meet) return;
+    this.foeSeen.add(type);
+    this.sfx.warn();
+    this.announce(FOE_INFO[type].meet);
+  }
+
+  private damageFoe(it: Item, dmg = 1) {
+    const f = it.foe!;
+    if (f.type === 'mite') { this.splitMite(it); return; }
+    it.hp = (it.hp ?? 1) - dmg;
+    it.sprite.setTint(0xff8080);
+    this.time.delayedCall(80, () => it.sprite.active && it.sprite.clearTint());
+    this.debris(it.sprite.x, it.sprite.y, 'spark', 2, 0.6);
+    if (it.hp <= 0) this.defeatFoe(it, 'shot');
+  }
+
+  private defeatFoe(it: Item, how: 'shot' | 'stomp') {
+    const f = it.foe!, info = FOE_INFO[f.type];
+    if (how === 'stomp' && !(this.body.touching.down || this.body.blocked.down)) {
+      if (++this.stompChain === 5) this.game.events.emit('achieve', 'stomp-5');
+    }
+    it.taken = true;
+    this.bonus += info.points;
+    this.sfx.bricks();
+    const x = it.sprite.x, y = it.sprite.y;
+    this.debris(x, y, 'cog', 3, 1.2);
+    this.debris(x, y, 'brick', this.reduced ? 3 : 8, 1.2);
+    if (f.type === 'zeppelin') this.explode(x, y, 60);
+    let extra = '';
+    if (f.type === 'magpie' && (f.carried ?? 0) > 0) {
+      // the breadboards it stole rain back out
+      for (let n = 0; n < f.carried!; n++) {
+        this.breadboards++;
+        if (n < (f.carriedReal ?? 0)) this.bbCollected++;
+      }
+      this.burst(x, y, [0x7ad9ff, 0xffd23a, 0xffffff], 18, 200);
+      this.sfx.collect();
+      extra = ` It dropped ${f.carried} stolen breadboard${f.carried === 1 ? '' : 's'}.`;
+      f.carried = 0;
+      this.emitHud(true);
+    }
+    this.announce(`${how === 'stomp' ? 'Stomped' : 'Shot'} a ${info.name}. Plus ${info.points} points.${extra}`);
+  }
+
+  /** A shot Glitch Mite splits into two little ones that keep coming. */
+  private splitMite(it: Item) {
+    it.taken = true;
+    this.bonus += FOE_INFO.mite.points;
+    this.sfx.zap();
+    this.burst(it.sprite.x, it.sprite.y, [0x8cff6a, 0x3a5a4a, 0xffffff], 14, 180);
+    for (const d of [-1, 1]) {
+      const m = this.add.image(it.sprite.x + d * 10, it.sprite.y, 'foe-minimite').setScale(0.5).setDepth(6);
+      const f: Foe = { type: 'minimite', state: 'chase', t: 0, dir: d, min: 0, max: 0, top: it.foe!.top, cd: 0, vx: d * 90, vy: -60 };
+      this.items.push({ kind: 'foe', foe: f, sprite: m, baseY: m.y, phase: Math.random() * 6, hp: 1 });
+    }
+    this.announce('The Glitch Mite split in two. Plus 40 points.');
+  }
+
+  /** Iggy touches a mite: no damage, but his gun and suit tricks jam for a while. */
+  private jam(secs: number) {
+    if (this.power.star > 0) return;
+    const was = this.jamT > 0;
+    this.jamT = Math.max(this.jamT, secs * (this.live().longGrace ? 0.6 : 1));
+    this.charge = 0;
+    this.sfx.zap();
+    this.burst(this.body.center.x, this.body.center.y, [0x8cff6a, 0xffffff], this.reduced ? 4 : 12, 140);
+    if (!was) this.announce(`Jammed! No gun or suit tricks for ${Math.ceil(this.jamT)} seconds.`);
+    this.emitHud(true);
+  }
+
+  /** Stomp test shared by the walkers: coming down onto its top half. */
+  private stompedOn(s: Phaser.GameObjects.Image) {
+    const body = this.body;
+    return body.velocity.y > 60 && body.bottom < s.y - s.displayHeight * 0.18;
+  }
+
+  private touching(s: Phaser.GameObjects.Image, shrink = 0.36) {
+    const body = this.body;
+    return Math.abs(body.center.x - s.x) < s.displayWidth * shrink + 9 && body.bottom > s.y - s.displayHeight / 2 + 4 && body.top < s.y + s.displayHeight / 2 - 2;
+  }
+
+  private updateFoe(it: Item, edt: number) {
+    const f = it.foe!, s = it.sprite, body = this.body;
+    const px = body.center.x, py = body.center.y, cam = this.cameras.main;
+    f.t += edt;
+    const onScreen = s.x > cam.scrollX - 40 && s.x < cam.scrollX + W + 40;
+    if (onScreen && f.type !== 'minimite' && f.type !== 'zeppelin') this.meetFoe(f.type);
+    const h = s.displayHeight;
+    switch (f.type) {
+      case 'gloop': {
+        // trundles back and forth; every few seconds stops and sprays a puddle in front of it
+        f.cd -= edt;
+        if (f.state === 'spray') {
+          if (f.cd <= 0) { f.state = 'idle'; f.cd = 2.6 + Math.random() * 1.6; }
+        } else {
+          s.x += f.dir * 32 * edt;
+          if (s.x < f.min) { s.x = f.min; f.dir = 1; }
+          if (s.x > f.max) { s.x = f.max; f.dir = -1; }
+          if (f.cd <= 0 && onScreen) {
+            f.state = 'spray';
+            f.cd = 0.6;
+            this.addGlue(s.x + f.dir * (s.displayWidth * 0.55), f.top);
+          }
+        }
+        s.setFlipX(f.dir < 0); // drawn facing right, nozzle forward
+        s.y = f.top - h / 2 + (this.reduced ? 0 : Math.abs(Math.sin(f.t * 9)) * -1.2);
+        break;
+      }
+      case 'zeppelin': {
+        // crosses from right to left over the screen, bombs dropping from its bay at even steps
+        s.x -= 125 * edt;
+        s.y = it.baseY + (this.reduced ? 0 : Math.sin(f.t * 1.6) * 5);
+        f.cd -= edt;
+        if (f.cd <= 0 && s.x < cam.scrollX + W - 40 && s.x > cam.scrollX + 40 && !this.over) {
+          f.cd = 0.42;
+          const img = this.add.image(s.x - 6, s.y + h * 0.4, 'foe-bomb').setScale(0.5).setDepth(9);
+          this.zbombs.push({ img, vx: -40, vy: 30 });
+        }
+        if (s.x < cam.scrollX - 140) it.taken = true;
+        return; // nothing touches it up there
+      }
+      case 'mite':
+      case 'minimite': {
+        // drifts towards Iggy, bobbing; the little ones are quicker
+        const mini = f.type === 'minimite';
+        const dx = px - s.x, dy = py - s.y;
+        if (mini || Math.abs(dx) < 420) {
+          const sp = mini ? 85 : 42;
+          f.vx += (Math.sign(dx) * sp - f.vx) * Math.min(1, edt * 2);
+          f.vy += (Math.sign(dy) * sp * 0.5 - f.vy) * Math.min(1, edt * 2);
+          s.x += f.vx * edt;
+          s.y += f.vy * edt + (this.reduced ? 0 : Math.sin(f.t * 4 + it.phase) * 0.4);
+        }
+        if (!this.reduced) s.rotation += edt * (mini ? 3 : 0.8);
+        if (this.touching(s, 0.32)) {
+          if (this.smashing() || this.stompedOn(s)) {
+            if (!this.smashing()) body.setVelocityY(-400);
+            this.defeatFoe(it, 'stomp');
+          } else {
+            it.taken = true;
+            this.burst(s.x, s.y, [0x8cff6a, 0x2c4a3c], 10, 150);
+            this.jam(mini ? 2 : 4);
+          }
+        }
+        if (mini && f.t > 9) it.taken = true; // little ones burn out
+        break;
+      }
+      case 'copycat': {
+        if (f.state === 'idle') {
+          if (px > s.x + 30) {
+            f.state = 'chase';
+            f.wake = this.t;
+            f.t = 0;
+            this.sfx.warn();
+            s.setTint(0xffd0d0);
+          }
+        } else if (f.state === 'chase') {
+          // walks Iggy's own path, one second behind him, from the moment it woke
+          const want = this.t - 1;
+          if (want > f.wake!) {
+            const tr = this.trailBuf;
+            let j = tr.findIndex((e) => e.t >= want);
+            if (j < 0) j = tr.length - 1;
+            const e = tr[j];
+            if (e) {
+              s.setFlipX(e.x < s.x);
+              s.x = e.x;
+              s.y = e.y - h / 2;
+            }
+          }
+          s.setTint(Math.floor(this.t * 6) % 2 && !this.reduced ? 0xffb0b0 : 0xffffff);
+          if (this.touching(s, 0.3)) {
+            if (this.smashing()) this.defeatFoe(it, 'stomp');
+            else this.hit('enemy');
+          }
+          if (f.t > 6) {
+            // the battery runs flat and it falls apart
+            f.state = 'down';
+            f.t = 0;
+            s.clearTint().setTexture('foe-copycat-down');
+            const roof = this.buildings.find((bb) => s.x >= bb.x && s.x <= bb.x + bb.w);
+            s.y = (roof ? roof.top : s.y + h / 2) - s.displayHeight / 2;
+            this.sfx.crumble();
+            this.debris(s.x, s.y, 'bolt', 3, 0.8);
+            if (onScreen) this.announce('The Copycat Unit ran out of battery and fell apart.');
+          }
+        } else if (f.state === 'down' && f.t > 1.4) {
+          s.setAlpha(Math.max(0, s.alpha - edt * 1.5));
+          if (s.alpha <= 0) it.taken = true;
+        }
+        return;
+      }
+      case 'magnet': {
+        // off, a flickering warning, then on: pulls Iggy towards it (and the gap in front of it)
+        const cyc = (f.t + it.phase) % 5.1;
+        const on = cyc > 3.1, warn = cyc > 2.6 && !on;
+        s.setTint(on ? (this.reduced || Math.floor(this.t * 10) % 2 ? 0xffc890 : 0xffffff) : warn && Math.floor(this.t * 8) % 2 ? 0xffe0c0 : 0xffffff);
+        if (on && !this.over && this.power.magnet <= 0 && px < s.x && s.x - px < 330 && Math.abs(py - s.y) < 160 && !this.hang) {
+          body.x += 150 * edt * (1 - (s.x - px) / 450);
+          this.fxT -= edt;
+          if (this.fxT <= 0) { this.fxT = 0.25; this.debris(s.x - s.displayWidth * 0.4, s.y, 'spark', this.reduced ? 1 : 2, 0.5); }
+        }
+        if (this.touching(s, 0.3)) {
+          if (this.smashing() || this.stompedOn(s)) {
+            if (!this.smashing()) body.setVelocityY(-430);
+            this.defeatFoe(it, 'stomp');
+          } else this.hit('enemy');
+        }
+        return;
+      }
+      case 'pogo': {
+        // bounces in high arcs along the roof; only the squashed spring at the bottom of a bounce can be stomped
+        const ph = (f.t / 1.15 + it.phase) % 1;
+        const up = Math.sin(Math.PI * ph);
+        s.x += f.dir * 55 * edt;
+        if (s.x < f.min) { s.x = f.min; f.dir = 1; }
+        if (s.x > f.max) { s.x = f.max; f.dir = -1; }
+        const low = up < 0.12;
+        s.setScale(0.5, this.reduced ? 0.5 : 0.5 * (low ? 0.86 : 1 + up * 0.05));
+        s.y = f.top - s.displayHeight / 2 - up * 95;
+        s.setFlipX(px < s.x);
+        if (low && ph < 0.06 && onScreen && !this.reduced) this.dust(s.x, f.top, 2, 14, 6, 0.7);
+        if (this.touching(s, 0.3)) {
+          if (this.smashing() || (low && this.stompedOn(s))) {
+            if (!this.smashing()) body.setVelocityY(-450);
+            this.defeatFoe(it, 'stomp');
+          } else this.hit('enemy');
+        }
+        return;
+      }
+      case 'rat': {
+        const hanging = this.hang && this.hang.b === f.b && this.hang.side > 0 && this.hang.climb < 0;
+        if (hanging) {
+          // they run for the fingers on the edge
+          this.meetFoe('rat');
+          s.x = Math.max(f.min, s.x - 90 * edt);
+          f.dir = -1;
+          if (s.x <= f.min + 2) {
+            f.cd -= edt;
+            if (f.state !== 'bite') { f.state = 'bite'; f.cd = 0.5; this.sfx.warn(); }
+            if (f.cd <= 0) {
+              this.releaseHang();
+              this.hangLock = 0.6;
+              body.setVelocity(-60, 60);
+              this.stumble = 0.6;
+              this.sfx.hurt();
+              f.state = 'idle';
+              this.announce('A Rivet Rat bit Iggy’s fingers and he let go.');
+            }
+          }
+        } else {
+          f.state = 'idle';
+          f.cd -= edt;
+          if (f.cd <= 0) { f.cd = 0.6 + Math.random() * 1.2; f.dir = Math.random() < 0.5 ? -1 : 1; }
+          s.x += f.dir * 45 * edt;
+          if (s.x < f.min) { s.x = f.min; f.dir = 1; }
+          if (s.x > f.max) { s.x = f.max; f.dir = -1; }
+        }
+        s.setFlipX(f.dir > 0); // drawn facing left
+        s.y = f.top - h / 2 + (this.reduced ? 0 : Math.abs(Math.sin(f.t * 16 + it.phase)) * -1.5);
+        // harmless on the roof: stomp or shoot them for points
+        if (this.touching(s, 0.4) && (this.smashing() || this.stompedOn(s))) {
+          if (!this.smashing()) body.setVelocityY(-380);
+          this.defeatFoe(it, 'stomp');
+        }
+        return;
+      }
+      case 'magpie': {
+        if (f.state === 'wait') {
+          s.y = it.baseY + (this.reduced ? 0 : Math.sin(f.t * 3) * 4);
+          if (s.x - px < 460) f.state = 'hunt';
+        } else if (f.state === 'hunt') {
+          // swoops on the nearest breadboard ahead of Iggy
+          if (!f.target || f.target.taken) {
+            f.target = this.items.find((o) => o.kind === 'bb' && !o.taken && o.sprite.visible && o.sprite.x > px + 70 && o.sprite.x < s.x + 260 && o.sprite.x > s.x - 380);
+            if (!f.target) { f.state = 'leave'; break; }
+          }
+          const t = f.target.sprite, dx = t.x - s.x, dy = t.y - s.y, d = Math.hypot(dx, dy) || 1;
+          s.x += (dx / d) * 250 * edt;
+          s.y += (dy / d) * 250 * edt;
+          s.setFlipX(dx > 0); // drawn facing left
+          if (d < 14) {
+            f.target.taken = true;
+            t.setVisible(false);
+            f.carried = (f.carried ?? 0) + 1;
+            if (!f.target.bonus) f.carriedReal = (f.carriedReal ?? 0) + 1;
+            this.sfx.warn();
+            f.target = undefined;
+            if (f.carried >= 3) f.state = 'leave';
+          }
+        } else if (f.state === 'leave') {
+          s.x += 150 * edt;
+          s.y -= 110 * edt;
+          s.setFlipX(true);
+          if (s.y < -60) {
+            it.taken = true;
+            if ((f.carriedReal ?? 0) > 0 && !this.bbMissed) {
+              this.bbMissed = true;
+              this.announce('The Magpie Drone got away with your breadboards. No perfect run this time.');
+              this.emitHud(true);
+            }
+          }
+        }
+        if (this.touching(s, 0.3) && (this.smashing() || this.stompedOn(s))) {
+          if (!this.smashing()) body.setVelocityY(-400);
+          this.defeatFoe(it, 'stomp');
+        }
+        return;
+      }
+    }
+    // the gloop's own contact
+    if (f.type === 'gloop' && this.touching(s, 0.36)) {
+      if (this.smashing() || this.stompedOn(s)) {
+        if (!this.smashing()) body.setVelocityY(-430);
+        this.defeatFoe(it, 'stomp');
+        this.addGlue(s.x, f.top); // the drum bursts where it stood
+      } else this.hit('enemy');
+    }
+  }
+
+  private addGlue(x: number, top: number) {
+    const roof = this.buildings.find((bb) => x >= bb.x && x <= bb.x + bb.w);
+    if (!roof || Math.abs(roof.top - top) > 2) return; // glue over a gap just drips away
+    const w = 48;
+    const gfx = this.add.graphics().setDepth(5);
+    gfx.fillStyle(0xb8761e, 0.95).fillEllipse(x, top - 1, w, 9);
+    gfx.fillStyle(0xf0b040, 0.95).fillEllipse(x - 4, top - 2, w * 0.7, 5);
+    gfx.fillStyle(0xfff0b0, 0.8).fillEllipse(x - 8, top - 3, 10, 2);
+    this.glue.push({ gfx, x, top, w, life: 7 });
+    this.sfx.crumble();
+  }
+
+  /** A conveyor belt along the top of a gantry: chevrons show the way it runs; standing on it carries Iggy along. */
+  private addConveyor(b: Building, dir: number) {
+    b.conveyor = dir;
+    const g = this.add.graphics({ x: b.x, y: b.top }).setDepth(5);
+    g.fillStyle(0x1a1412, 1).fillRect(4, -2, b.w - 8, 6);
+    for (let x = 14; x < b.w - 14; x += 26) {
+      g.fillStyle(0xd9a62a, 0.95);
+      if (dir > 0) g.fillTriangle(x, -1, x, 3, x + 6, 1);
+      else g.fillTriangle(x + 6, -1, x + 6, 3, x, 1);
+    }
+    b.gfx.once('destroy', () => g.destroy());
+  }
+
+  /** Glue puddles, zeppelin bombs and flyovers, the trail a Copycat follows, and the glue and jam timers. */
+  private updateFoeEffects(dt: number, edt: number) {
+    const body = this.body;
+    this.trailBuf.push({ t: this.t, x: body.center.x, y: body.bottom });
+    while (this.trailBuf.length && this.trailBuf[0].t < this.t - 1.6) this.trailBuf.shift();
+    const ground = body.touching.down || body.blocked.down;
+    // conveyor belts carry him along while he stands on one
+    if (ground && !this.hang) {
+      const belt = this.buildings.find((bb) => bb.conveyor && body.center.x >= bb.x && body.center.x <= bb.x + bb.w && Math.abs(body.bottom - bb.top) < 4);
+      if (belt) {
+        body.x += belt.conveyor! * 85 * edt;
+        if (!this.foeSeen.has('belt' as FoeType)) {
+          this.foeSeen.add('belt' as FoeType);
+          this.announce(`A conveyor belt, running ${belt.conveyor! > 0 ? 'forwards' : 'backwards'}. It carries Iggy along while he stands on it.`);
+        }
+      }
+    }
+    this.glue = this.glue.filter((g) => {
+      g.life -= edt;
+      g.gfx.setAlpha(Math.min(1, g.life));
+      if (ground && Math.abs(body.center.x - g.x) < g.w / 2 + 6 && Math.abs(body.bottom - g.top) < 4 && this.power.star <= 0) {
+        const first = this.glueT <= 0;
+        this.slowT = Math.max(this.slowT, this.live().longGrace ? 1.2 : 2);
+        this.glueT = this.slowT;
+        if (first) {
+          this.sfx.land();
+          this.announce('Stuck in glue! Slowed down for a moment.');
+          this.emitHud(true);
+        }
+      }
+      if (g.life <= 0) g.gfx.destroy();
+      return g.life > 0;
+    });
+    this.glueT = Math.max(0, this.glueT - dt);
+    if (this.jamT > 0) {
+      this.jamT = Math.max(0, this.jamT - dt);
+      if (this.jamT === 0) { this.announce('Unjammed.'); this.emitHud(true); }
+    }
+    // a little glue or static around him while it lasts
+    this.fxT -= dt;
+    if (this.fxT <= 0 && (this.glueT > 0 || this.jamT > 0)) {
+      this.fxT = this.reduced ? 0.6 : 0.18;
+      if (this.glueT > 0) this.burst(body.center.x, body.bottom - 2, [0xe0a030, 0xb8761e], 2, 30);
+      if (this.jamT > 0) this.burst(body.center.x, body.center.y - 8, [0x8cff6a, 0xffffff], 2, 50);
+    }
+    // zeppelin bombs: fall, and burst on the first roof below
+    this.zbombs = this.zbombs.filter((z) => {
+      z.vy += 520 * edt;
+      z.img.x += z.vx * edt;
+      z.img.y += z.vy * edt;
+      if (!this.reduced) z.img.rotation += edt * 2;
+      const roof = this.buildings.find((bb) => z.img.x >= bb.x && z.img.x <= bb.x + bb.w && z.img.y >= bb.top - 6);
+      if (roof || z.img.y > H + 40) {
+        if (roof) this.blast(z.img.x, roof.top, 40);
+        z.img.destroy();
+        return false;
+      }
+      return true;
+    });
+    // the zeppelin flies over now and then (not in the boss arena)
+    if (ZEPPELIN_STYLES.includes(this.level.style) && this.arenaX === null && !this.over && this.maxX > 900) {
+      this.zepT -= edt;
+      if (this.zepT <= 0) {
+        this.zepT = 17 + Math.random() * 7 - this.difficulty() * 4;
+        const cam = this.cameras.main;
+        const sprite = this.add.image(cam.scrollX + W + 110, 82, 'foe-zeppelin').setScale(0.5).setDepth(8);
+        const f: Foe = { type: 'zeppelin', state: 'fly', t: 0, dir: -1, min: 0, max: 0, top: 0, cd: 0.6, vx: -125, vy: 0 };
+        this.items.push({ kind: 'foe', foe: f, sprite, baseY: 82, phase: 0, hp: FOE_INFO.zeppelin.hp });
+        this.sfx.jet();
+        if (!this.foeSeen.has('zeppelin')) this.meetFoe('zeppelin');
+        else this.announce('Zeppelin overhead! Bombs dropping.');
+      }
     }
   }
 
@@ -1548,12 +2492,13 @@ export class PlayScene extends Phaser.Scene {
           return false;
         }
       }
-      const hitIt = this.items.find((it) => !it.taken && !sh.hit?.has(it) && (it.kind === 'pylon' || it.kind === 'wall' || it.kind === 'patrol' || it.kind === 'flyer' || it.kind === 'mine') && Math.abs(s.x - it.sprite.x) < (it.kind === 'patrol' ? 16 : it.kind === 'flyer' ? 22 : it.kind === 'mine' ? 20 : 18) && Math.abs(s.y - it.sprite.y) < (it.kind === 'mine' ? 34 : it.kind === 'wall' ? 34 : it.kind === 'patrol' ? it.sprite.height / 2 + 4 : it.kind === 'flyer' ? 20 : 24));
+      const hitIt = this.items.find((it) => !it.taken && !sh.hit?.has(it) && (it.kind === 'pylon' || it.kind === 'wall' || it.kind === 'patrol' || it.kind === 'flyer' || it.kind === 'mine' || (it.kind === 'foe' && it.foe!.state !== 'down')) && (it.kind === 'foe' ? Math.abs(s.x - it.sprite.x) < it.sprite.displayWidth * 0.42 && Math.abs(s.y - it.sprite.y) < it.sprite.displayHeight * 0.48 : Math.abs(s.x - it.sprite.x) < (it.kind === 'patrol' ? 16 : it.kind === 'flyer' ? 22 : it.kind === 'mine' ? 20 : 18) && Math.abs(s.y - it.sprite.y) < (it.kind === 'mine' ? 34 : it.kind === 'wall' ? 34 : it.kind === 'patrol' ? it.sprite.height / 2 + 4 : it.kind === 'flyer' ? 20 : 24)));
       const hitBuilding = this.buildings.some((b) => s.x >= b.x && s.x <= b.x + b.w && s.y > b.top + 2);
       const off = s.x < cam.scrollX - 60 || s.x > cam.scrollX + W + 120 || s.y < -60 || s.y > H + 60;
       if (hitIt || hitBuilding) {
         const dmg = sh.big ? 3 : 1;
         if (sh.kind === 'rocket') this.explode(s.x, s.y, sh.big ? 150 : 85);
+        else if (hitIt && hitIt.kind === 'foe') this.damageFoe(hitIt, dmg);
         else if (hitIt) hitIt.kind === 'mine' ? this.detonateMine(hitIt, false) : hitIt.kind === 'pylon' ? this.destroyPylon(hitIt) : hitIt.kind === 'patrol' || hitIt.kind === 'flyer' ? this.damagePatrol(hitIt, dmg) : this.damageWall(hitIt, dmg);
         else this.debris(s.x, s.y, 'spark', 2, 0.4);
       }
@@ -1622,9 +2567,10 @@ export class PlayScene extends Phaser.Scene {
     const bs = this.boss;
     if (bs && bs.state !== 'dead' && Math.hypot(bs.sprite.x - x, bs.sprite.y - bs.sprite.displayHeight / 2 - y) < radius + 55) this.damageBoss(radius > 100 ? 6 : 3);
     for (const it of this.items) {
-      if (it.taken || (it.kind !== 'pylon' && it.kind !== 'wall' && it.kind !== 'patrol' && it.kind !== 'flyer' && it.kind !== 'mine')) continue;
+      if (it.taken || (it.kind !== 'pylon' && it.kind !== 'wall' && it.kind !== 'patrol' && it.kind !== 'flyer' && it.kind !== 'mine' && it.kind !== 'foe')) continue;
       if (Math.hypot(it.sprite.x - x, it.sprite.y - y) < radius) {
-        if (it.kind === 'mine') this.detonateMine(it, false);
+        if (it.kind === 'foe') { if (it.foe!.state !== 'down') this.defeatFoe(it, 'shot'); }
+        else if (it.kind === 'mine') this.detonateMine(it, false);
         else if (it.kind === 'pylon') this.destroyPylon(it);
         else if (it.kind === 'patrol' || it.kind === 'flyer') this.defeatPatrol(it, 'shot');
         else this.breakWall(it, true);
@@ -1740,6 +2686,7 @@ export class PlayScene extends Phaser.Scene {
       }
       // a hit knocks the suit down one level instead of costing a life; only the plain starting suit has nothing left to lose
       if (this.suitIdx > 0) {
+        this.releaseHang();
         this.suitIdx--;
         this.rings = SUITS[this.suitIdx].need; // the suit comes from the ring count, so drop to exactly that suit's threshold
         this.sfx.hurt();
@@ -1780,6 +2727,7 @@ export class PlayScene extends Phaser.Scene {
 
   /** After losing a life Iggy restarts at the last checkpoint (the arena entrance during a boss fight), not where he died. */
   private respawn(): string {
+    this.releaseHang();
     this.dashT = 0;
     this.pounding = false;
     this.body.setAllowGravity(true);
@@ -1796,10 +2744,14 @@ export class PlayScene extends Phaser.Scene {
     if (!inArena) this.cameras.main.scrollX = Math.max(-20, spot.x - 330);
     // clear anything nasty standing right where he lands
     this.items.forEach((it) => {
-      if ((it.kind === 'pylon' || it.kind === 'patrol' || it.kind === 'wall' || it.kind === 'flyer' || it.kind === 'mine') && Math.abs(it.sprite.x - spot.x) < 110) it.taken = true;
+      if ((it.kind === 'pylon' || it.kind === 'patrol' || it.kind === 'wall' || it.kind === 'flyer' || it.kind === 'mine' || (it.kind === 'foe' && it.foe!.type !== 'magpie')) && Math.abs(it.sprite.x - spot.x) < 110) it.taken = true;
     });
     this.bullets.forEach((b) => { b.img.destroy(); b.trail.destroy(); });
     this.bullets = [];
+    this.zbombs.forEach((z) => z.img.destroy());
+    this.zbombs = [];
+    this.glueT = 0;
+    this.jamT = 0;
     this.shells.forEach((sh) => sh.gfx.destroy());
     this.shells = [];
     this.shellCD = Math.max(this.shellCD, 2.5);
@@ -1838,7 +2790,7 @@ export class PlayScene extends Phaser.Scene {
       best = score;
       try { localStorage.setItem(bestKey, String(best)); } catch { /* ignore */ }
     }
-    const state: GameOverState = { level: this.level.id, score, breadboards: this.breadboards, distance: Math.floor(this.maxX / 10), suit: SUITS[this.suitIdx].name, best, newBest, perfect: won && this.isPerfect(), untouched: won && !this.bossHurtIggy, mode: this.mode, time: Math.round(this.runTime * 1000), trace: won && this.mode === 'time' ? this.trace : undefined };
+    const state: GameOverState = { level: this.level.id, score, breadboards: this.breadboards, distance: Math.floor(this.maxX / 10), suit: SUITS[this.suitIdx].name, rings: this.rings, best, newBest, perfect: won && this.isPerfect(), untouched: won && !this.bossHurtIggy, mode: this.mode, time: Math.round(this.runTime * 1000), trace: won && this.mode === 'time' ? this.trace : undefined };
     this.game.events.emit(won ? 'complete' : 'gameover', state);
   }
 
@@ -1867,9 +2819,119 @@ export class PlayScene extends Phaser.Scene {
     for (const it of [...this.items]) {
       if (it.taken || Math.abs(it.sprite.x - cx) > POUND_RADIUS || Math.abs(it.sprite.y - by) > 70) continue;
       if (it.kind === 'patrol') this.defeatPatrol(it, 'stomp');
+      else if (it.kind === 'foe' && it.foe!.state !== 'down' && it.foe!.type !== 'zeppelin') this.defeatFoe(it, 'stomp');
       else if (it.kind === 'wall') this.breakWall(it, true);
       else if (it.kind === 'pylon') this.destroyPylon(it);
     }
+  }
+
+  /**
+   * Ledge hang. Falling (or near the top of a jump) beside a roof edge with his hands level with it, Iggy grabs on and hangs.
+   * Jump, or holding toward the wall for a moment, climbs up; Duck lets go; Jump while holding away kicks off the wall.
+   * Holding Duck as he passes an edge means he doesn't grab it.
+   */
+  private ledge(dt: number, ground: boolean, left: boolean, right: boolean, duck: boolean) {
+    const body = this.body;
+    this.hangLock = Math.max(0, this.hangLock - dt);
+    if (!this.cliffHinted) {
+      const c = this.buildings.find((b) => b.cliff && b.x > body.right && b.x - body.right < 360);
+      if (c) {
+        this.cliffHinted = true;
+        this.announce('A tall cliff ahead. Jump at the wall to catch the edge, then climb up.');
+      }
+    }
+    if (!this.hang) {
+      if (ground || duck || this.hangLock > 0 || this.pounding || this.dashT > 0 || body.velocity.y < -120) return;
+      const hands = body.bottom - HANG_DROP;
+      for (const b of this.buildings) {
+        if (hands > b.top + 10 || hands < b.top - 24) continue; // hands not level with this roof
+        const side = body.right >= b.x - 6 && body.right <= b.x + 4 ? 1 : body.left >= b.x + b.w - 4 && body.left <= b.x + b.w + 6 ? -1 : 0;
+        if (!side) continue;
+        const toward = side > 0 ? right || body.velocity.x > 30 || body.touching.right : left || body.velocity.x < -30 || body.touching.left;
+        if (!toward) continue;
+        this.grab(b, side);
+        break;
+      }
+      return;
+    }
+    const h = this.hang;
+    if (h.climb < 0) {
+      const toward = h.side > 0 ? right && !left : left && !right, away = h.side > 0 ? left && !right : right && !left;
+      h.hold = toward ? h.hold + dt : 0;
+      if (this.jumpBuffer > 0 && away) {
+        // kick off the wall, like a wall jump
+        this.releaseHang();
+        const v = this.power.spring > 0 ? SPRING_JUMP : JUMP;
+        body.setVelocity(-h.side * RUN * 1.05, -v * 0.95);
+        this.facing = -h.side;
+        this.wallLock = 0.2;
+        this.sfx.jump(this.looseNow());
+        this.debris(body.center.x + h.side * 11, body.top + 6, 'spark', this.reduced ? 1 : 4, 0.6);
+      } else if (this.jumpBuffer > 0 || h.hold >= HANG_AUTO) {
+        h.climb = 0;
+        body.checkCollision.none = true; // he passes over the corner of the roof
+        this.sfx.climb(this.looseNow());
+      } else if (duck) {
+        this.releaseHang();
+        this.hangLock = 0.35;
+      }
+      this.jumpBuffer = 0;
+      if (this.hang) this.placeHang();
+      return;
+    }
+    h.climb += dt / CLIMB_TIME;
+    this.jumpBuffer = 0;
+    if (h.climb >= 1) {
+      this.placeHang();
+      this.releaseHang();
+      this.dust(body.center.x, body.bottom, 3, 18, 6, 0.8);
+      this.sfx.step(this.looseNow(), false);
+      return;
+    }
+    this.placeHang();
+  }
+
+  private grab(b: Building, side: number) {
+    const body = this.body;
+    this.hang = { b, side, climb: -1, hold: 0 };
+    body.setAllowGravity(false);
+    this.facing = side;
+    this.spinT = 0;
+    this.airJumps = 1;
+    this.coyote = 0;
+    this.wallCoyote = 0;
+    this.placeHang();
+    const wx = side > 0 ? b.x : b.x + b.w;
+    this.sfx.grab(this.looseNow());
+    this.debris(wx, b.top, 'spark', this.reduced ? 1 : 3, 0.4);
+    if (!this.hangHinted) {
+      this.hangHinted = true;
+      this.announce('Iggy is hanging from the edge. Press Jump, or hold toward the wall, to climb up. Press Duck to let go.');
+    }
+  }
+
+  /** Puts Iggy where the hang (or the climb, part way through) says he should be. */
+  private placeHang() {
+    const h = this.hang;
+    if (!h) return;
+    const body = this.body, b = h.b, wx = h.side > 0 ? b.x : b.x + b.w;
+    const ease = (u: number) => u * u * (3 - 2 * u);
+    let cx = wx - h.side * HANG_OFF, bottom = b.top + HANG_DROP;
+    if (h.climb >= 0) {
+      const u = Math.min(1, h.climb / 0.55), v = Math.max(0, (h.climb - 0.55) / 0.45);
+      // haul up until his feet are level with the roof, then step forward onto it
+      bottom = b.top + HANG_DROP * (1 - ease(u)) - Math.sin(Math.PI * v) * 4;
+      cx = wx - h.side * HANG_OFF * (1 - 0.4 * ease(u)) + h.side * (HANG_OFF * 0.6 + 20) * ease(v);
+    }
+    body.reset(cx, bottom - body.height / 2);
+  }
+
+  /** Stop hanging or climbing and hand Iggy back to gravity. */
+  private releaseHang() {
+    if (!this.hang) return;
+    this.hang = null;
+    this.body.setAllowGravity(true);
+    this.body.checkCollision.none = false;
   }
 
   /** Dash, ground pound and glide. They use the controls Iggy already has: Shoot with no gun, Duck in the air, and holding Jump. */
@@ -1879,7 +2941,8 @@ export class PlayScene extends Phaser.Scene {
     this.firePrev = fireDown;
     this.duckPrev = duckDown;
     this.dashCD = Math.max(0, this.dashCD - dt);
-    if (suit >= 2 && firePressed && !this.gun() && this.dashCD <= 0 && this.dashT <= 0 && !this.pounding && !this.ducked) {
+    const jammed = this.jamT > 0; // a Glitch Mite has jammed the suit's tricks
+    if (suit >= 2 && !jammed && firePressed && !this.gun() && this.dashCD <= 0 && this.dashT <= 0 && !this.pounding && !this.ducked) {
       this.dashT = DASH_TIME;
       this.dashCD = DASH_COOLDOWN;
       this.sfx.dash();
@@ -1896,7 +2959,7 @@ export class PlayScene extends Phaser.Scene {
       }
       return;
     }
-    if (suit >= 3 && !ground && duckPressed && !this.pounding) {
+    if (suit >= 3 && !jammed && !ground && duckPressed && !this.pounding) {
       this.pounding = true;
       this.spinT = 0;
       this.sfx.poundStart();
@@ -1909,7 +2972,7 @@ export class PlayScene extends Phaser.Scene {
       }
       return;
     }
-    if (suit >= 4 && !ground && jumpDown && this.airJumps === 0 && body.velocity.y > GLIDE_FALL) body.setVelocityY(GLIDE_FALL);
+    if (suit >= 4 && !jammed && !ground && jumpDown && this.airJumps === 0 && body.velocity.y > GLIDE_FALL) body.setVelocityY(GLIDE_FALL);
   }
 
   /** how worn Iggy's joints are right now: oil takes the rattle out of them */
@@ -1959,7 +3022,7 @@ export class PlayScene extends Phaser.Scene {
       goal: BOSS_SCORE,
       mode: this.mode,
       time: Math.floor(this.runTime),
-      boss: this.boss && this.boss.state !== 'dead' ? { name: this.boss.def.name, hp: Math.max(0, this.boss.hp), max: this.boss.max } : null,
+      boss: this.boss && this.boss.state !== 'dead' ? { name: this.boss.def.name, hp: Math.max(0, this.boss.hp), max: this.boss.max, note: this.rc ? this.rcNote() : undefined } : null,
       score: this.score(),
       breadboards: this.breadboards,
       lives: this.lives,
@@ -1976,7 +3039,8 @@ export class PlayScene extends Phaser.Scene {
             label: k === 'gun' ? `${GUN_NAMES[this.gunLevel]} (level ${this.gunLevel} of ${GUN_MAX})` : POWER[k].label,
             detail: k === 'gun' ? `${Math.ceil(this.power.gun)} shots` : POWER[k].secs === null ? '' : `${Math.ceil(this.power[k])}s`,
           })),
-        ...(this.slowT > 0 ? [{ id: 'slow', label: 'Slowed', detail: `${Math.ceil(this.slowT)}s` }] : []),
+        ...(this.slowT > 0 ? [{ id: 'slow', label: this.glueT > 0 ? 'Stuck in glue' : 'Slowed', detail: `${Math.ceil(this.slowT)}s` }] : []),
+        ...(this.jamT > 0 ? [{ id: 'jam', label: 'Jammed (no gun or tricks)', detail: `${Math.ceil(this.jamT)}s` }] : []),
       ],
     };
     const key = JSON.stringify(state);
@@ -2070,6 +3134,9 @@ export class PlayScene extends Phaser.Scene {
         body.setVelocityX(body.velocity.x + (target - body.velocity.x) * k);
       }
 
+      // ledge hang: catch the lip of a roof, hang, then climb up or let go
+      this.ledge(dt, ground, left, right, this.held('duck') || this.touch.duck || pad.duck);
+
       // wall jump: kick off the side of a building (works in the gaps between them)
       if (this.jumpBuffer > 0 && this.coyote <= 0 && this.wallCoyote > 0) {
         const v = this.power.spring > 0 ? SPRING_JUMP : JUMP;
@@ -2114,7 +3181,7 @@ export class PlayScene extends Phaser.Scene {
         this.landSquash = Math.min(1, this.prevVy / 700);
         this.sfx.land();
       }
-      this.abilities(dt, ground, jumpDown, this.held('fire') || this.touch.fire || pad.fire, this.held('duck') || this.touch.duck || pad.duck);
+      if (!this.hang) this.abilities(dt, ground, jumpDown, this.held('fire') || this.touch.fire || pad.fire, this.held('duck') || this.touch.duck || pad.duck);
       if (ground) this.stompChain = 0;
       this.landedNow = ground && !this.wasGround;
       this.wasGround = ground;
@@ -2230,6 +3297,8 @@ export class PlayScene extends Phaser.Scene {
           this.updateHazard(it, edt);
         } else if (it.kind === 'flyer' && it.flyer) {
           this.updateFlyer(it, edt);
+        } else if (it.kind === 'foe' && it.foe) {
+          this.updateFoe(it, edt);
         } else if (it.kind === 'wall') {
           if (Math.abs(px - s.x) < 24 && body.bottom > s.y - 32 && body.top < s.y + 32) {
             if (this.smashing()) this.breakWall(it, true);
@@ -2269,8 +3338,10 @@ export class PlayScene extends Phaser.Scene {
 
       this.updatePlatforms(dt);
       this.updateBoss(dt, edt);
+      this.boss?.spine?.sync(this.live().enemySpeed / 100);
       this.updateShells(edt);
       this.updateBullets(edt);
+      this.updateFoeEffects(dt, edt);
 
       // speed trail behind Iggy while overclocked or invincible
       this.trailT -= dt;
@@ -2304,7 +3375,7 @@ export class PlayScene extends Phaser.Scene {
     // -- shooting
     this.fireCD = Math.max(0, this.fireCD - dt);
     this.fireAnim = Math.max(0, this.fireAnim - dt * 6);
-    const held = !this.over && !!this.gun() && (this.held('fire') || this.touch.fire || this.padState().fire);
+    const held = !this.over && !!this.gun() && this.jamT <= 0 && (this.held('fire') || this.touch.fire || this.padState().fire);
     if (held) {
       const before = this.charge;
       this.charge = Math.min(CHARGE_FULL, this.charge + dt);
@@ -2315,7 +3386,7 @@ export class PlayScene extends Phaser.Scene {
     } else if (this.charge > 0) {
       const big = this.charge >= CHARGE_MIN;
       this.charge = 0;
-      if (!this.over && this.gun() && (big || this.fireCD <= 0)) this.shoot(big);
+      if (!this.over && this.gun() && this.jamT <= 0 && (big || this.fireCD <= 0)) this.shoot(big);
     }
     this.updateChargeFx();
     this.updateShots(dt);
@@ -2332,6 +3403,10 @@ export class PlayScene extends Phaser.Scene {
     if (this.camLock !== null && this.arenaX !== null && body.left < this.arenaX + 6 && body.bottom > this.arenaTop - 4) {
       body.x = this.arenaX + 6; // a wall at the arena's edge: no wandering back into the gap
       if (body.velocity.x < 0) body.setVelocityX(0);
+    }
+    if (this.rc && this.boss?.state !== 'dead' && body.right > this.rc.x - 70 && !this.over) {
+      body.x = this.rc.x - 70 - body.width; // the machine itself is a wall
+      if (body.velocity.x > 0) body.setVelocityX(0);
     }
     if (this.camLock !== null && body.right > cam.scrollX + W - 8) {
       body.x = cam.scrollX + W - 8 - body.width;
@@ -2391,7 +3466,24 @@ export class PlayScene extends Phaser.Scene {
       gun: this.gun(),
       fire: this.fireAnim,
       duck: this.duckAmt,
+      hang: this.hang ? 1 : 0,
+      climb: this.hang ? Math.max(0, this.hang.climb) : 0,
     });
+    // the art test: the Spine Iggy stands in for the drawing, except for what it has no animation (or effect) for yet
+    const ig = this.iggySpine;
+    if (ig) {
+      const useSpine = this.live().spineIggy && ig.has(this.suitIdx) && !this.pounding && this.dashT <= 0;
+      this.robot.setVisible(!useSpine);
+      this.iggyFx.clear();
+      if (useSpine) {
+        this.iggyFx.setPosition(this.robot.x, this.robot.y).setScale(1.15).setAlpha(this.robot.alpha);
+        drawPowerFx(this.iggyFx, { t: this.t, star: this.power.star, shield: this.power.shield > 0, reduced: this.reduced });
+        ig.show({
+          suit: this.suitIdx, gun: this.gun(), x: this.robot.x, y: this.robot.y, scaleX: this.robot.scaleX, scaleY: this.robot.scaleY, spin, alpha: this.robot.alpha,
+          onGround: grounded, vx: body.velocity.x, vy: body.velocity.y, duck: this.duckAmt, hanging: !!this.hang, climb: this.hang?.climb ?? -1,
+        });
+      } else ig.hide();
+    }
 
     // -- HUD (throttled)
     this.hudTimer -= dt;

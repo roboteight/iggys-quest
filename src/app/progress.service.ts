@@ -21,6 +21,8 @@ export interface Progress {
   achievements: string[];
   /** top scores per level id, best first */
   scores: Record<string, ScoreEntry[]>;
+  /** story mode: the most rings Iggy has finished each level with, so his suit carries on into the next level */
+  suits: Record<string, number>;
 }
 
 const KEY = 'iggys-quest.progress';
@@ -29,9 +31,9 @@ export const MAX_SCORES = 5;
 function load(): Progress {
   try {
     const p = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    return { completed: Array.isArray(p.completed) ? p.completed : [], perfect: Array.isArray(p.perfect) ? p.perfect : [], secrets: Array.isArray(p.secrets) ? p.secrets : [], achievements: Array.isArray(p.achievements) ? p.achievements : [], scores: p.scores && typeof p.scores === 'object' ? p.scores : {} };
+    return { completed: Array.isArray(p.completed) ? p.completed : [], perfect: Array.isArray(p.perfect) ? p.perfect : [], secrets: Array.isArray(p.secrets) ? p.secrets : [], achievements: Array.isArray(p.achievements) ? p.achievements : [], scores: p.scores && typeof p.scores === 'object' ? p.scores : {}, suits: p.suits && typeof p.suits === 'object' ? p.suits : {} };
   } catch {
-    return { completed: [], perfect: [], secrets: [], achievements: [], scores: {} };
+    return { completed: [], perfect: [], secrets: [], achievements: [], scores: {}, suits: {} };
   }
 }
 
@@ -54,6 +56,19 @@ export class ProgressService {
   unlocked(levelId: string): boolean {
     const i = LEVELS.findIndex((l) => l.id === levelId);
     return i <= 0 || this.progress().completed.includes(LEVELS[i - 1].id);
+  }
+
+  /** Story mode: the rings Iggy starts a level with, the most he has finished the level before it with (none for level 1). */
+  startRings(levelId: string): number {
+    const i = LEVELS.findIndex((l) => l.id === levelId);
+    const prev = i > 0 ? LEVELS[i - 1].id : null;
+    const n = prev ? this.progress().suits[prev] : 0;
+    return typeof n === 'number' && n > 0 ? Math.floor(n) : 0;
+  }
+
+  /** Story mode: remember the rings he finished a level with (keeping his best), for the start of the next level. */
+  keepSuit(levelId: string, rings: number) {
+    if (rings > (this.progress().suits[levelId] ?? 0)) this.progress.update((p) => ({ ...p, suits: { ...p.suits, [levelId]: rings } }));
   }
 
   cleared(levelId: string): boolean {
@@ -131,6 +146,6 @@ export class ProgressService {
   }
 
   reset() {
-    this.progress.set({ completed: [], perfect: [], secrets: [], achievements: [], scores: {} });
+    this.progress.set({ completed: [], perfect: [], secrets: [], achievements: [], scores: {}, suits: {} });
   }
 }

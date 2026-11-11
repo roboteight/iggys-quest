@@ -7,7 +7,7 @@ import { H, W, flat, gfx, lerpColor, rng } from './art';
  * a precipitation tile for a style; `drawLevelBuilding` draws one rooftop.
  */
 
-export type ExtraStyle = 'wastes' | 'drowned' | 'void' | 'spores' | 'war';
+export type ExtraStyle = 'wastes' | 'drowned' | 'void' | 'spores' | 'war' | 'plant';
 
 export interface StyleAssets {
   sky: string;
@@ -57,6 +57,16 @@ function makeSkyTex(scene: Phaser.Scene, key: string, style: ExtraStyle) {
       const x = r() * W, y = 60 + r() * 170;
       for (let k = 0; k < 4; k++) g.fillStyle(0x5a2418, 0.12).fillEllipse(x, y + k * 2, 220 - k * 30, 10 + k * 3);
     }
+  } else if (style === 'plant') {
+    // inside the plant: black iron dark above, a furnace-red glow from the slag below, smoke rolling under the roof
+    gradient(g, [[0, 0x070404], [0.45, 0x1c0c08], [0.78, 0x5a1c0c], [1, 0xc24a18]]);
+    for (let i = 0; i < 5; i++) halo(g, 80 + r() * 800, 420 + r() * 60, 10, 120, 0xff6a2a, 0.06);
+    for (let i = 0; i < 10; i++) {
+      const x = r() * W, y = 30 + r() * 180;
+      for (let k = 0; k < 5; k++) g.fillStyle(0x0a0606, 0.2).fillEllipse(x + k * 16, y + k * 3, 320 - k * 46, 30 - k * 4);
+    }
+    // roof girders across the top
+    for (let x = 0; x < W; x += 120) g.fillStyle(0x0d0807, 1).fillRect(x, 0, 10, 60).fillRect(x - 60, 52, 130, 8);
   } else if (style === 'war') {
     // a smoke-choked sunset: a dull sun behind black smoke, flashes of distant gunfire on the horizon
     gradient(g, [[0, 0x120808], [0.4, 0x3d1a10], [0.75, 0xa8532a], [1, 0xe39a4e]]);
@@ -371,6 +381,53 @@ const warNear: Draw = (g, r, c, base) => {
   }
 };
 
+// ====================================================================== plant layers
+const plantFar: Draw = (g, r, c, base) => {
+  // smokestacks and cooling towers, their tops glowing, smoke climbing
+  for (let x = 0; x < TW - 80; x += 90 + r() * 120) {
+    const w = 26 + r() * 40, h = 180 + r() * 220, tower = r() < 0.3;
+    wrap(x, tower ? w * 2.2 : w, (x0) => {
+      if (tower) g.fillStyle(c, 1).fillPoints(flat([x0, base, x0 + w * 0.3, base - h * 0.5, x0 + w * 0.1, base - h * 0.7, x0 + w * 2.1, base - h * 0.7, x0 + w * 1.9, base - h * 0.5, x0 + w * 2.2, base]), true);
+      else {
+        g.fillStyle(c, 1).fillRect(x0, base - h, w, h);
+        g.fillStyle(0xff7a2a, 0.35).fillRect(x0 + 2, base - h, w - 4, 4);
+        for (let k = 0; k < 6; k++) g.fillStyle(0x140a08, 0.2 - k * 0.025).fillEllipse(x0 + w / 2 + k * 8, base - h - 16 - k * 28, 26 + k * 14, 32 + k * 8);
+      }
+    });
+  }
+};
+const plantMid: Draw = (g, r, c, base) => {
+  // gantry trusses, conveyor runs and hanging chains with hooks
+  for (let x = 0; x < TW - 160; x += 170 + r() * 130) {
+    const w = 120 + r() * 110, h = 110 + r() * 140;
+    wrap(x, w, (x0) => {
+      g.fillStyle(c, 1).fillRect(x0, base - h, 6, h).fillRect(x0 + w - 6, base - h, 6, h).fillRect(x0 - 4, base - h, w + 8, 10);
+      g.lineStyle(3, c, 1);
+      for (let y = base - h + 10; y < base - 20; y += 34) g.lineBetween(x0 + 6, y, x0 + w - 6, y + 34).lineBetween(x0 + w - 6, y, x0 + 6, y + 34);
+      const cx = x0 + w * (0.3 + r() * 0.4), cl = 30 + r() * 60;
+      g.lineStyle(2, c, 1).lineBetween(cx, base - h + 10, cx, base - h + 10 + cl);
+      g.fillStyle(c, 1).fillTriangle(cx - 6, base - h + 10 + cl, cx + 6, base - h + 10 + cl, cx, base - h + 22 + cl);
+    });
+  }
+};
+const plantNear: Draw = (g, r, c, base) => {
+  // pipe runs, scrap heaps and a crusher frame
+  for (let x = 20; x < TW - 120; x += 120 + r() * 140) {
+    const k = r();
+    wrap(x, 90, (x0) => {
+      if (k < 0.4) { // scrap heap
+        g.fillStyle(c, 1).fillPoints(flat([x0, base, x0 + 14, base - 30, x0 + 30, base - 22, x0 + 46, base - 44, x0 + 64, base - 26, x0 + 86, base]), true);
+        g.lineStyle(3, c, 1).lineBetween(x0 + 40, base - 40, x0 + 52, base - 66);
+      } else if (k < 0.7) { // crusher frame
+        g.fillStyle(c, 1).fillRect(x0, base - 120, 8, 120).fillRect(x0 + 70, base - 120, 8, 120).fillRect(x0 - 4, base - 128, 86, 14).fillRect(x0 + 14, base - 92, 50, 30);
+      } else { // pipes with valves
+        g.lineStyle(9, c, 1).lineBetween(x0, base - 30, x0 + 90, base - 30).lineBetween(x0 + 70, base - 30, x0 + 70, base - 90);
+        g.fillStyle(c, 1).fillCircle(x0 + 70, base - 94, 9).fillRect(x0 + 62, base - 100, 16, 4);
+      }
+    });
+  }
+};
+
 // ====================================================================== fog + precipitation
 function makeFogTex(scene: Phaser.Scene, key: string, color: number, alpha: number, seed: number) {
   const g = gfx(scene);
@@ -396,7 +453,7 @@ function makePrecipTex(scene: Phaser.Scene, key: string, style: ExtraStyle) {
       const x = r() * 256, y = r() * 256, l = 10 + r() * 22;
       g.lineBetween(x, y, x - l, y + 0.5);
     }
-  } else if (style === 'war') {
+  } else if (style === 'war' || style === 'plant') {
     // drifting ash and a few glowing embers
     for (let i = 0; i < 46; i++) {
       const x = 4 + r() * 248, y = 4 + r() * 248;
@@ -448,6 +505,12 @@ export function ensureStyle(scene: Phaser.Scene, style: ExtraStyle): StyleAssets
       makeLayerTex(scene, p + 'far', 38, 0x3a1a12, 0.9, 0xd9803a, warFar);
       makeLayerTex(scene, p + 'mid', 39, 0x261109, 0.6, 0xb8652c, warMid);
       makeLayerTex(scene, p + 'near', 41, 0x140805, 0.3, 0x8a4a22, warNear);
+      break;
+    case 'plant':
+      makeFogTex(scene, keys.fog, 0xff6a2a, 0.05, 43);
+      makeLayerTex(scene, p + 'far', 44, 0x200c08, 0.9, 0xc84a1a, plantFar);
+      makeLayerTex(scene, p + 'mid', 45, 0x150806, 0.6, 0xa83c16, plantMid);
+      makeLayerTex(scene, p + 'near', 46, 0x0b0504, 0.3, 0x802c10, plantNear);
       break;
     case 'spores':
       makeFogTex(scene, keys.fog, 0x7dffc0, 0.022, 34);
@@ -573,6 +636,25 @@ export function drawLevelBuilding(scene: Phaser.Scene, style: ExtraStyle, x: num
         else g.lineBetween(wx + 3, wy + 19, wx + 9, wy + 5).lineBetween(wx + 9, wy + 5, wx + 15, wy + 19);
       }
     }
+  } else if (style === 'plant') {
+    // an iron gantry: riveted deck plate with a hazard-striped edge, X-braced trusses below, a pipe and a furnace port
+    const iron = lerpColor(0x2a2422, 0x342c28, r());
+    g.fillStyle(0x120c0a, 1).fillRect(0, 0, w, bodyH);
+    g.lineStyle(6, iron, 1);
+    for (let y = 22; y < bodyH; y += 70) for (let bx = 0; bx < w; bx += 70) g.lineBetween(bx, y, Math.min(w, bx + 70), y + 70).lineBetween(Math.min(w, bx + 70), y, bx, y + 70);
+    g.fillStyle(iron, 1).fillRect(0, 14, 10, bodyH).fillRect(w - 10, 14, 10, bodyH);
+    if (w > 200) {
+      const px = 30 + r() * (w - 80);
+      g.fillStyle(0x4f7f74, 1).fillRect(px, 14, 12, bodyH); // a verdigris pipe
+      g.fillStyle(0x6fa89a, 0.7).fillRect(px + 2, 14, 3, bodyH);
+      const fx = Math.max(20, Math.min(w - 60, w - px - 20));
+      g.fillStyle(0x2a1a14, 1).fillCircle(fx + 20, 70, 18);
+      g.fillStyle(0xff7a2a, 0.9).fillCircle(fx + 20, 70, 12).fillStyle(0xffd27a, 0.9).fillCircle(fx + 20, 70, 5); // furnace port
+    }
+    g.fillStyle(0x3d3430, 1).fillRect(-4, 0, w + 8, 14);
+    for (let rx = 8; rx < w; rx += 22) g.fillStyle(0x6a5a52, 1).fillCircle(rx, 7, 1.6);
+    for (let sx = -4; sx < w + 4; sx += 20) g.fillStyle(0xd9a62a, 1).fillTriangle(sx, 14, sx + 10, 14, sx + 4, 20).fillStyle(0x120c0a, 1).fillTriangle(sx + 10, 14, sx + 20, 14, sx + 14, 20);
+    edge(0xe0b070);
   } else if (style === 'war') {
     // behind the player: posts with barbed wire, a sandbag stack, a broken wall, a wrecked cart wheel
     const post = 0x2a1a12;

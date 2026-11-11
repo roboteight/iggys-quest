@@ -1,6 +1,6 @@
 import type { ThemeName } from './music';
 
-export type LevelStyle = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores' | 'war';
+export type LevelStyle = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores' | 'war' | 'plant';
 
 /** One entry per level. The scene, art and music all read from here. */
 export interface LevelDef {
@@ -35,13 +35,15 @@ export interface BossDef {
 }
 
 export const BOSSES: Record<LevelStyle, BossDef> = {
-  city: { name: 'Enforcer Nine', blurb: 'A hunched, bird-legged peacekeeper with cannons for arms.', hp: 24, speed: 50, attacks: ['volley', 'volley', 'stomp'], muzzle: [-58, -96] },
+  city: { name: 'Enforcer Nine', blurb: 'A hunched, bird-legged peacekeeper with cannons for arms.', hp: 24, speed: 50, attacks: ['volley', 'volley', 'stomp'], muzzle: [-90, -120] },
   hollow: { name: 'Grandfather Gloom', blurb: 'A crooked clockwork giant on striped stilts that lobs exploding music-box gifts.', hp: 26, speed: 40, attacks: ['mortar', 'mortar', 'stomp'], muzzle: [-38, -164] },
   wastes: { name: 'Dust Scorpion', blurb: 'A four-legged walker with a cannon on its tail.', hp: 28, speed: 60, attacks: ['spread', 'volley', 'stomp'], muzzle: [34, -128] },
   drowned: { name: 'Deep Diver', blurb: 'A diving-suit mech with a glass dome and heavy claws.', hp: 30, speed: 35, attacks: ['volley', 'mortar', 'stomp'], muzzle: [-70, -92] },
   void: { name: 'Neon Warden', blurb: 'A hovering sentinel on a ring of light.', hp: 30, speed: 70, attacks: ['spread', 'volley', 'spread', 'stomp'], muzzle: [-72, -86] },
   war: { name: 'Iron Marshal', blurb: 'A rolling siege tank with a long gun, the one that has been shelling the trenches.', hp: 36, speed: 38, attacks: ['mortar', 'volley', 'spread', 'stomp'], muzzle: [-78, -88] },
   spores: { name: 'Spore Mother', blurb: 'A tripod walker under a giant mushroom cap.', hp: 34, speed: 30, attacks: ['mortar', 'spread', 'stomp'], muzzle: [-58, -108] },
+  // the final boss runs its own fight (play.scene.ts, the Reclaimer section); these attacks are only a fallback
+  plant: { name: 'The Reclaimer', blurb: 'The scrap plant that eats old robots and melts them down. The machine that took Iggy apart.', hp: 60, speed: 0, attacks: ['mortar', 'volley'], muzzle: [-120, -220] },
 };
 
 export const LEVELS: LevelDef[] = [
@@ -92,7 +94,14 @@ export const LEVELS: LevelDef[] = [
     blurb: 'Barbed wire, rubble and shell craters under a smoking sky.',
     style: 'war', music: 'war', precip: { vx: 30, vy: -90 }, lightning: true, bg: '#1a0f0d',
     intro: 'The trenches are all mud, wire and smoke. Somewhere past the ridge the Iron Marshal, a siege tank with a very long gun, has been shelling this ground for years, and it has not run out of shells yet. Listen for the whistle, find the marker and get out of the way.',
-    outro: 'The Iron Marshal rolls to a stop and its long gun droops. The smoke thins, the last shell lands somewhere harmless, and for the first time in years the trenches are quiet. Iggy\'s gears are humming. All his parts work, the road home is clear, and nothing rattles.',
+    outro: 'The Iron Marshal rolls to a stop and its long gun droops. The smoke thins and the trenches go quiet. Then, on the horizon, a column of furnace smoke climbs over a plant the size of a city, and Iggy\'s gears go cold. He remembers that place. He remembers waking up in pieces.',
+  },
+  {
+    id: 'plant', number: 8, name: 'The Reclamation Plant',
+    blurb: 'Iron gantries over slag pits, conveyors and crushers, and the machine at the heart of it all.',
+    style: 'plant', music: 'plant', precip: { vx: 20, vy: -60 }, lightning: false, bg: '#0b0605',
+    intro: 'The Reclamation Plant never stopped working. Conveyors still run, crushers still drop, and slag still glows in the pits below the gantries. Every robot on the road home was built from parts this place spat out. Somewhere inside is the machine that took Iggy apart, and it wants its parts back.',
+    outro: 'The Reclaimer\'s furnace sputters and goes out. Its eyes go dark one by one, and for the first time in years nothing in the plant is moving. Iggy walks out through the far gate into the morning. The road home is clear, and nothing rattles.',
   },
 ];
 

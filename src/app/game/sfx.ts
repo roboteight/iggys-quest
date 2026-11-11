@@ -91,6 +91,22 @@ export class Sfx {
     }
   }
 
+  /** Ledge grab: two hands clank onto the edge of the roof, and something loose rattles. */
+  grab(loose = 1) {
+    this.tone(160, 95, 0.07, 'triangle', 0.7);
+    this.clink(340, 0.12, 0.7);
+    this.clink(410, 0.1, 0.55, 0.035);
+    this.tick(2800, 0.03, 0.6);
+    if (loose > 0.3) this.tick(5200, 0.02, 0.4, 0.07);
+  }
+
+  /** Climbing up: a strained servo whine and boots scraping the wall. */
+  climb(loose = 1) {
+    this.tone(180, 420, 0.32, 'sawtooth', 0.22);
+    for (let i = 0; i < 3; i++) this.tick(1400 + i * 300, 0.06, 0.45, 0.04 + i * 0.09);
+    this.clink(260, 0.1, 0.4 + loose * 0.3, 0.3);
+  }
+
   /** Double jump: a springy "boing" with a lighter scatter of bits. */
   air(loose = 1) {
     this.tone(220, 700, 0.14, 'triangle', 0.9);
@@ -125,7 +141,46 @@ export class Sfx {
   /** a lobbed bomb: a hollow thump and a falling whistle */
   bossMortar() { this.tone(120, 50, 0.18, 'triangle', 1); this.tone(1100, 350, 0.5, 'sine', 0.35, 0.06); }
   bossStomp() { this.tone(70, 25, 0.7, 'sawtooth', 1.3); this.tone(45, 30, 0.9, 'sine', 1.2); this.tick(500, 0.4, 1.2); this.clink(110, 0.4, 0.8, 0.02); }
-  bossHit() { this.clink(320, 0.22, 0.9); this.tick(2600, 0.05, 0.7); this.tone(160, 90, 0.1, 'triangle', 0.8); }
+  /** A burst of high-passed noise: the sharp "crack" at the instant something hard hits something hard. */
+  private crack(dur: number, gain: number, delay = 0) {
+    const ctx = this.ensure();
+    if (!ctx) return;
+    const t0 = ctx.currentTime + delay;
+    const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.2);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 1800;
+    const amp = ctx.createGain();
+    amp.gain.value = 0.55 * (this.volume / 100) * gain;
+    src.connect(hp).connect(amp).connect(ctx.destination);
+    src.start(t0);
+  }
+
+  /**
+   * A bullet hitting the boss. Layers: a sharp crack, a low thump, a metallic clang that rings out, and bits of debris rattling.
+   * `combo` (0..6) raises the pitch for each hit landed in quick succession, so a stream of bullets builds. `heavy` is a charged shot.
+   */
+  bossHit(combo = 0, heavy = false) {
+    const k = Math.pow(2, Math.min(6, combo) / 12);
+    const r = 0.95 + Math.random() * 0.1;
+    this.crack(0.035, 1.5);
+    this.tone(240 * r * k, 52, 0.16, 'sine', 2.4); // the punch
+    this.tone(140 * r, 40, 0.22, 'triangle', 1.8); // the body
+    this.tone(70, 32, 0.28, 'sine', 2); // sub weight you feel more than hear
+    this.clink(430 * k * r, 0.4, 0.8, 0.004);
+    this.clink(860 * k * r * 1.01, 0.22, 0.35, 0.012);
+    for (let i = 0; i < 3; i++) this.tick(3000 + Math.random() * 3000, 0.03, 0.45, 0.05 + i * 0.05 + Math.random() * 0.04);
+    if (heavy) {
+      this.tone(95, 28, 0.45, 'sawtooth', 1);
+      this.tick(500, 0.28, 1.1);
+      this.clink(210 * r, 0.55, 0.9, 0.01);
+    }
+  }
   /** a big mech arriving: two low brass-like notes */
   bossAppear() { this.tone(98, 96, 0.9, 'sawtooth', 0.8); this.tone(147, 146, 0.9, 'sawtooth', 0.5, 0.25); this.tick(400, 0.5, 0.6); }
   bossDown() {

@@ -47,6 +47,12 @@ import { ACTIONS, Action, RESERVED_KEYS, SettingsService, keyLabel, keySpoken } 
     }
 
     <fieldset>
+      <legend>Art test</legend>
+      <label><input type="checkbox" [checked]="s().spineIggy" (change)="svc.update({ spineIggy: $any($event.target).checked })" /> Use the new Iggy</label>
+      <p class="hint">A test of Iggy redrawn from his concept art. For moves the new Iggy can’t do yet (dashing and ground pounding), the old Iggy appears. Takes effect straight away.</p>
+    </fieldset>
+
+    <fieldset>
       <legend>Assist options</legend>
       <p class="hint">Make the game gentler. Your score is not changed, and every level can still be cleared and perfected.</p>
       <label for="lives">Starting lives
