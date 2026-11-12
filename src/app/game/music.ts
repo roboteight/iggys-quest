@@ -7,6 +7,7 @@
  *  - drowned: dreamy C-minor sine lead, 88 BPM
  *  - void: F-minor synthwave, 128 BPM
  *  - spores: marimba-like triangle lead in C/D/Em, 100 BPM
+ *  - ice / dunes / wind / locks / sky: variations on the drowned, wastes, void, drowned and city themes (see VARIANTS)
  *  - plant: a slow, heavy C-minor industrial pulse, 92 BPM (its boss track 138 BPM)
  */
 
@@ -42,9 +43,10 @@ interface Theme {
   hat: (s: number) => number; // gain, 0 = none
 }
 
-export type ThemeName = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores' | 'war' | 'plant';
+type NewTheme = 'ice' | 'dunes' | 'wind' | 'locks' | 'sky';
+export type ThemeName = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores' | 'war' | 'ice' | 'dunes' | 'wind' | 'locks' | 'sky' | 'plant';
 
-const THEMES: Record<ThemeName, Theme> = {
+const BASE_THEMES: Record<Exclude<ThemeName, NewTheme>, Theme> = {
   // the Reclamation Plant: a slow, heavy C-minor pulse, low square lead over clanking machinery
   plant: {
     bpm: 92,
@@ -300,7 +302,7 @@ const THEMES: Record<ThemeName, Theme> = {
  *  - void:    F-minor synth chase with a sixteenth-note arpeggio, 152 BPM
  *  - spores:  frantic marimba runs in C/D/Em/G, 136 BPM
  */
-const BOSS_THEMES: Record<ThemeName, Theme> = {
+const BASE_BOSS_THEMES: Record<Exclude<ThemeName, NewTheme>, Theme> = {
   // the Reclaimer: the plant's pulse doubled into a grinding chase
   plant: {
     bpm: 138,
@@ -544,6 +546,26 @@ const BOSS_THEMES: Record<ThemeName, Theme> = {
     bassLen: 1.6,
   },
 };
+
+/** The level 8 to 12 themes: each is an existing theme played a different way (tempo, lead sound, key). */
+const transpose = (t: Theme, semis: number): Theme => ({
+  ...t,
+  chords: t.chords.map((c) => ({ root: c.root + semis, arp: c.arp.map((n) => n + semis) })),
+  lead: t.lead.map((bar) => bar.map((tok) => (tok === '.' || tok === '_' ? tok : (() => { const m = midi(tok) + semis; const n = Object.keys(NAMES).find((k) => NAMES[k] === ((m % 12) + 12) % 12)!; return `${n}${Math.floor(m / 12) - 1}`; })()))),
+});
+const VARIANTS: Record<NewTheme, [Exclude<ThemeName, NewTheme>, Partial<Theme>, number]> = {
+  ice: ['drowned', { bpm: 96, leadWave: 'triangle', leadGain: 0.15 }, 2], // glassy and sparse
+  dunes: ['wastes', { bpm: 104, leadWave: 'triangle', leadGain: 0.15 }, -2], // a hypnotic phrygian drift
+  wind: ['void', { bpm: 140, leadWave: 'square', leadGain: 0.12 }, 2], // fast and breathless
+  locks: ['drowned', { bpm: 78, leadWave: 'sine', leadGain: 0.2 }, -3], // slow and muffled
+  sky: ['city', { bpm: 132, leadWave: 'triangle', leadGain: 0.15 }, 5], // big and open
+};
+const THEMES = { ...BASE_THEMES } as Record<ThemeName, Theme>;
+const BOSS_THEMES = { ...BASE_BOSS_THEMES } as Record<ThemeName, Theme>;
+for (const [name, [from, tweak, semis]] of Object.entries(VARIANTS) as [NewTheme, [Exclude<ThemeName, NewTheme>, Partial<Theme>, number]][]) {
+  THEMES[name] = { ...transpose(BASE_THEMES[from], semis), ...tweak };
+  BOSS_THEMES[name] = { ...transpose(BASE_BOSS_THEMES[from], semis), bpm: BASE_BOSS_THEMES[from].bpm + 6 };
+}
 
 export class Music {
   private ctx?: AudioContext;

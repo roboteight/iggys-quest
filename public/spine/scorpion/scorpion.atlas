@@ -1,0 +1,15 @@
+scorpion.png
+size:428,171
+filter:Linear,Linear
+pma:true
+scale:0.4
+clawFar
+bounds:322,2,75,90
+rotate:90
+clawNear
+bounds:230,54,115,90
+rotate:90
+rest
+bounds:2,11,226,158
+tail
+bounds:322,79,104,90

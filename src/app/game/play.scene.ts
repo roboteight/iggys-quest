@@ -10,7 +10,7 @@ import { makeBossShots } from './boss-shots';
 import { makeEnemyRigTextures } from './enemy-rigs';
 import { makeBossRigTextures } from './boss-rigs';
 import { makeEnforcerRigTextures, preloadEnforcerRig } from './enforcer-rig';
-import { EnforcerSpine, preloadEnforcerSpine } from './enforcer-spine';
+import { BossSpine, preloadBossSpine } from './boss-spine';
 import { IggySpine, preloadIggySpine } from './iggy-spine';
 import { ReclaimerRig, RECLAIMER_SCALE, preloadReclaimer } from './reclaimer';
 import { makeForeTexture } from './art-fore';
@@ -73,8 +73,8 @@ const POWER: Record<PowerId, { label: string; secs: number | null; tex: string; 
 };
 
 interface Shot { s: Phaser.GameObjects.Image; vx: number; vy: number; kind: 'bolt' | 'rocket'; trail: number; big?: boolean; bossHit?: boolean; hit?: Set<Item> }
-interface Building { x: number; top: number; w: number; cliff?: boolean; conveyor?: number; gfx: Phaser.GameObjects.Graphics; zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }
-interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer' | 'secret' | 'hazard' | 'switch' | 'mine' | 'foe'; foe?: Foe; mT?: number; hint?: boolean; bonus?: boolean; pressed?: boolean; hz?: Haz; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number; cd?: number; aim?: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
+interface Building { x: number; top: number; w: number; cliff?: boolean; conveyor?: number; wind?: boolean; dune?: boolean; sharedGfx?: boolean; gfx: Phaser.GameObjects.Graphics; zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }
+interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer' | 'secret' | 'hazard' | 'switch' | 'mine' | 'foe'; foe?: Foe; mT?: number; flap?: number; hint?: boolean; bonus?: boolean; pressed?: boolean; hz?: Haz; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number; cd?: number; aim?: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
 
 /**
  * The newer enemies, drawn from their concept sheets (public/foes, cut by tools/foes-cut.py) and moved in code:
@@ -104,10 +104,32 @@ const FOE_TEX: Record<FoeType, string> = { gloop: 'gloop', zeppelin: 'zeppelin',
 /** which of the newer enemies walk the roofs of each level look (the zeppelin and the rats are placed separately) */
 const FOES_BY_STYLE: Record<string, FoeType[]> = {
   city: ['gloop', 'magpie'], hollow: ['copycat', 'pogo'], wastes: ['magnet', 'pogo'], drowned: ['gloop', 'magpie'], void: ['mite', 'copycat'], spores: ['mite', 'pogo'], war: ['magnet'],
+  ice: ['pogo', 'magpie', 'gloop'], dunes: ['magnet', 'pogo', 'gloop'], wind: ['mite', 'pogo'], locks: ['gloop', 'mite'], sky: ['magpie', 'mite'],
   plant: ['gloop', 'mite', 'copycat', 'magnet', 'pogo', 'magpie'], // the last level: everything at once
 };
 /** levels where the Rivet Zeppelin flies over */
-const ZEPPELIN_STYLES = ['drowned', 'war', 'wastes', 'plant'];
+const ZEPPELIN_STYLES = ['drowned', 'war', 'wastes', 'plant', 'sky', 'wind'];
+/**
+ * A secret tunnel under a long roof (every level but the first, which has its sky road). A cracked hatch in the roof gives way
+ * when Iggy crouches or ground-pounds on it; walking over it, nothing happens. Inside: power-ups and bonus breadboards, and a
+ * hatch at the far end he can jump up through (it only opens from below).
+ */
+interface Tunnel {
+  hx: number; ex: number; top: number; floor: number; open: boolean; seen: boolean; hinted: boolean;
+  inside: Phaser.GameObjects.Graphics; cover: Phaser.GameObjects.Graphics; items: Item[];
+  parts: { zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }[];
+}
+/** the tunnel's sizes: its roof's thickness, how deep its floor is under the roof's top, and the hatches' width */
+const TUNNEL_ROOF = 20, TUNNEL_DEPTH = 100, HATCH_W = 60; // (a full jump clears 128px, so he climbs out with room to spare)
+/** A flooded gap between two lock walls: Iggy sinks in, walks the floor and can jump out (Sunken Locks). */
+interface Pool { x0: number; x1: number; surface: number; floor: number; gfx: Phaser.GameObjects.Graphics; zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }
+/** Wind (Turbine Gorge): pushback in px/s, braced (ducking) and per suit (the heavier suits resist it). */
+const WIND_PUSH = 160, WIND_SUIT = [1, 0.9, 0.8, 0.7, 0.65];
+/** Glass Dunes: how long a sandstorm blows (s) */
+const STORM_LEN = 2.5;
+/** Dunes (Glass Dunes): the ground is narrow columns following the dune's curve. */
+const DUNE_COL = 8;
+const flatPts = (a: number[]) => { const out: Phaser.Math.Vector2[] = []; for (let i = 0; i < a.length; i += 2) out.push(new Phaser.Math.Vector2(a[i], a[i + 1])); return out; };
 interface Glue { gfx: Phaser.GameObjects.Graphics; x: number; top: number; w: number; life: number }
 interface ZBomb { img: Phaser.GameObjects.Image; vx: number; vy: number }
 
@@ -138,7 +160,7 @@ interface Haz {
 interface Bullet { img: Phaser.GameObjects.Rectangle; trail: Phaser.GameObjects.Rectangle; vx: number; y: number }
 interface Shell { x: number; top: number; state: 'warn' | 'boom'; t: number; gfx: Phaser.GameObjects.Graphics; boomed: boolean }
 interface Plat {
-  kind: 'moving' | 'crumble' | 'secret'; img: Phaser.Physics.Arcade.Image; collider: Phaser.Physics.Arcade.Collider; baseX: number; baseY: number; amp: number; phase: number;
+  kind: 'moving' | 'crumble' | 'secret' | 'pier'; sinker?: boolean; img: Phaser.Physics.Arcade.Image; collider: Phaser.Physics.Arcade.Collider; baseX: number; baseY: number; amp: number; phase: number;
   stood: boolean; timer: number; state: 'idle' | 'shaking' | 'falling';
 }
 type FlyerStyle = 'drowned' | 'void' | 'spores';
@@ -149,12 +171,18 @@ interface Flyer {
 }
 interface BossState {
   def: BossDef; sprite: Phaser.GameObjects.Image; hp: number; max: number;
-  state: 'intro' | 'walk' | 'telegraph' | 'stagger' | 'dead';
+  state: 'intro' | 'walk' | 'telegraph' | 'stagger' | 'charge' | 'dead';
   timer: number; cd: number; attack: BossAttack; stomped: boolean; touchCD: number; said: number;
-  /** Enforcer Nine's Spine skeleton, drawn in place of `sprite` (which then only carries his state) */
-  spine?: EnforcerSpine;
+  /** the lunge in progress: where it stops and how fast it goes */
+  dashTo?: number; dashV?: number;
+  /** its energy shield, if it has one: hits left, whether it's up, and seconds until it comes back */
+  shield?: { hp: number; max: number; up: boolean; t: number; warned: boolean };
+  /** the boss's Spine skeleton (if it has one), drawn in place of `sprite`, which then only carries its state */
+  spine?: BossSpine;
 }
 interface BossShot { img: Phaser.GameObjects.Image; vx: number; vy: number; g: number; mortar: boolean }
+/** a broken boss shield stays down this long (s); it flickers for the last second before it comes back */
+const SHIELD_DOWN = 6;
 interface BossWave { img: Phaser.GameObjects.Image; vx: number }
 interface Flag { x: number; top: number; sprite: Phaser.GameObjects.Image; on: boolean }
 
@@ -212,12 +240,15 @@ export class PlayScene extends Phaser.Scene {
   private items: Item[] = [];
   private plats: Plat[] = [];
   private flags: Flag[] = [];
+  private tunnels: Tunnel[] = [];
+  private nextTunnelX = 0;
   private nextFlagX = 1800;
   private arenaX: number | null = null;
   private arenaTop = 400;
   private camLock: number | null = null;
   private boss?: BossState;
   private bossShots: BossShot[] = [];
+  private bossFx?: Phaser.GameObjects.Graphics;
   private bossWaves: BossWave[] = [];
   private bossAmmoT = 8;
   private nextX = 0;
@@ -254,6 +285,22 @@ export class PlayScene extends Phaser.Scene {
   /** once the hidden path is revealed: the stretch of the level it covers, where breadboards become optional bonus */
   private layerSpan: [number, number] | null = null;
   private landedNow = false;
+  // levels 8 to 12
+  private pools: Pool[] = [];
+  private inWater = false;
+  private sliding = false;
+  /** on ice: how fast his feet go (he scrambles faster than he moves while a direction is held, and glides when it isn't) */
+  private footSpeed = 0;
+  private scrambling = false;
+  /** Glass Dunes sandstorms: seconds until the next one, and seconds left of the one blowing now */
+  private stormCD = 14;
+  private stormT = 0;
+  private stormTint?: Phaser.GameObjects.Rectangle;
+  /** Glass Dunes: the sand drags at his boots. 0 = just set off (slow), 1 = got going (full speed); stopping loses it. */
+  private sandGo = 0;
+  /** on the ground this frame (on the dunes, also when stuck to the sand going downhill: see stickToDune) */
+  private grounded = true;
+  private said = new Set<string>();
   /** the final boss, while its fight is on */
   private rc?: Rc;
   // the newer enemies' effects
@@ -321,6 +368,7 @@ export class PlayScene extends Phaser.Scene {
   private ringTimer = 0;
   private airJumps = 1; // extra jumps left in the air (double jump)
   private spinT = 0; // seconds left of the double-jump flip
+  private tuckT = 0; // seconds left of the double-jump tuck (the Spine Iggy curls up; kept even when the flip is off)
   private partTimer = 2;
   private tripTimer = 6;
   private facing = 1;
@@ -341,12 +389,12 @@ export class PlayScene extends Phaser.Scene {
     preloadIggySpine(this);
     if (levelById(this.registry.get('level')).style === 'plant') preloadReclaimer(this);
     for (const k of new Set(Object.values(FOE_TEX))) this.load.image(`foe-${k}`, `foes/${k}.png`);
+    for (const k of [...Array.from({ length: 6 }, (_, i) => `f${i}`), 'glide']) this.load.image(`foe-magpie-${k}`, `foes/magpie-${k}.png`); // its wingbeat (tools/magpie-cut.py)
     this.load.image('foe-bomb', 'foes/bomb.png');
     this.load.image('foe-copycat-down', 'foes/copycat-down.png');
-    if (levelById(this.registry.get('level')).style === 'city') {
-      preloadEnforcerRig(this);
-      preloadEnforcerSpine(this);
-    }
+    const style = levelById(this.registry.get('level')).style;
+    if (style === 'city') preloadEnforcerRig(this);
+    preloadBossSpine(this, style);
   }
 
   /** The pictures for this level's boss and enemies. */
@@ -374,6 +422,16 @@ export class PlayScene extends Phaser.Scene {
     this.shellCD = 3.5;
     this.shellWarned = false;
     this.switchPlaced = false;
+    this.pools.forEach((p) => { p.gfx.destroy(); p.collider.destroy(); p.zone.destroy(); });
+    this.pools = [];
+    this.inWater = false;
+    this.sliding = false;
+    this.stormCD = 14;
+    this.stormT = 0;
+    this.stormTint = undefined;
+    this.sandGo = 0;
+    this.grounded = true;
+    this.said = new Set();
     this.glue.forEach((g) => g.gfx.destroy());
     this.glue = [];
     this.zbombs.forEach((z) => z.img.destroy());
@@ -389,6 +447,8 @@ export class PlayScene extends Phaser.Scene {
     this.cliffHinted = false;
     this.cliffSeen = false;
     this.layerSpan = null;
+    this.tunnels = [];
+    this.nextTunnelX = 2400 + this.rand() * 1600;
     this.landedNow = false;
     this.hc = this.settings.highContrast;
     this.level = levelById(this.registry.get('level') as string | undefined);
@@ -485,6 +545,7 @@ export class PlayScene extends Phaser.Scene {
     this.landSquash = 0;
     this.airJumps = 1;
     this.spinT = 0;
+    this.tuckT = 0;
     this.shots = [];
     this.fireCD = 0;
     this.fireAnim = 0;
@@ -503,6 +564,8 @@ export class PlayScene extends Phaser.Scene {
 
     this.physics.world.gravity.y = GRAVITY;
     this.physics.world.setBounds(-100000, -2000, 10000000, 5000);
+    // the dunes are made of narrow columns: let Iggy step up the small rise from one to the next instead of bumping into it
+    this.physics.world.OVERLAP_BIAS = this.level.style === 'dunes' ? 12 : 4;
 
     this.player = this.add.zone(110, 340, 22, 46);
     this.physics.add.existing(this.player);
@@ -604,7 +667,8 @@ export class PlayScene extends Phaser.Scene {
     const gfx = st === 'hollow' ? drawHollowBuilding(this, x, top, w, this.hc)
       : st === 'city' ? drawBuilding(this, x, top, w, this.hc)
       : drawLevelBuilding(this, st as ExtraStyle, x, top, w, this.hc);
-    const zone = this.add.zone(x + w / 2, top + 300, w, 600);
+    // the sky docks float: their decks are thin, with nothing underneath
+    const zone = st === 'sky' ? this.add.zone(x + w / 2, top + 15, w, 30) : this.add.zone(x + w / 2, top + 300, w, 600);
     this.physics.add.existing(zone, true);
     const collider = this.physics.add.collider(this.player, zone);
     const b: Building = { x, top, w, gfx, zone, collider };
@@ -617,34 +681,45 @@ export class PlayScene extends Phaser.Scene {
     const lim = this.cameras.main.scrollX + W + 900;
     while (this.nextX < lim) {
       const d = this.difficulty();
-      const war = this.level.style === 'war'; // the trenches are one long stretch of low ground with only small craters to jump
+      const st = this.level.style;
+      // the dunes, broken up now and then by a slab of fused glass: solid footing, where the sand doesn't drag at him
+      if (st === 'dunes' && this.buildings.length > 0 && (this.buildings[this.buildings.length - 1].dune !== true || this.rand() > 0.3)) { this.generateDune(); continue; }
+      const war = st === 'war'; // the trenches are one long stretch of low ground with only small craters to jump
       const rise = war ? this.between(-16, 16) : this.between(-140, 70); // positive = lower
-      let top = war ? Phaser.Math.Clamp(this.lastTop + rise, 405, 440) : Phaser.Math.Clamp(this.lastTop + rise, 290, 450);
+      let top = war ? Phaser.Math.Clamp(this.lastTop + rise, 405, 440) : st === 'locks' ? Phaser.Math.Clamp(this.lastTop + rise / 3, 370, 430) : Phaser.Math.Clamp(this.lastTop + rise, 290, 450);
       const stepUp = Math.max(0, this.lastTop - top);
       if (stepUp > 75) top = this.lastTop - 75;
       const maxGap = 120 + d * 60 - stepUp * 0.9;
-      let gap = war ? this.between(46, 92) : this.between(60, Math.max(70, Math.floor(maxGap)));
+      let gap = war ? this.between(46, 92) : st === 'locks' ? this.between(90, 190) : this.between(60, Math.max(70, Math.floor(maxGap)));
       let w = war ? this.between(250, 520 - Math.floor(d * 110)) : this.between(170, 440 - Math.floor(d * 120));
       // now and then a cliff: a sheer wall too tall to jump onto. Iggy catches the edge, hangs, and climbs up.
       // the first one comes early so players meet it; it needs a low roof before it so the top stays on screen
-      const cliff = !war && this.buildings.length > 1 && this.lastTop >= 380 && (this.cliffSeen ? this.rand() < 0.12 + d * 0.1 : this.nextX > 1400);
+      const cliff = !war && st !== 'locks' && st !== 'sky' && this.buildings.length > 1 && this.lastTop >= 380 && (this.cliffSeen ? this.rand() < 0.12 + d * 0.1 : this.nextX > 1400);
       if (cliff) {
         this.cliffSeen = true;
         top = Math.max(225, this.lastTop - this.between(145, 175));
         gap = this.between(40, 70);
         w = this.between(260, 420);
       }
+      // a secret tunnel: a long roof, low enough that the tunnel's floor stays on screen
+      const tunnel = !cliff && this.level.id !== 'rooftops' && st !== 'sky' && st !== 'locks' && this.nextX > this.nextTunnelX;
+      if (tunnel) { w = this.between(640, 760); top = Math.min(top, 390); gap = Math.min(gap, 110); }
       const x = this.nextX + gap;
       const prev = this.buildings[this.buildings.length - 1];
       const b = this.addBuilding(x, top, w);
       b.cliff = cliff || undefined;
+      if (st === 'locks' && prev) this.addPool(prev, b);
+      if (st === 'wind' && this.maxX > 300 && this.rand() < 0.55) this.addWind(b);
       // the plant: some gantries are conveyor belts, carrying Iggy one way or the other
       if (this.level.style === 'plant' && !cliff && w > 200 && this.rand() < 0.35) this.addConveyor(b, this.rand() < 0.5 ? -1 : 1);
-      this.populate(b, prev, gap);
+      if (tunnel) {
+        this.addTunnel(b);
+        this.nextTunnelX = x + 5000 + this.rand() * 2500;
+      } else this.populate(b, prev, gap);
       if (prev) this.addPlatform(prev, b, gap);
       if (b.x >= this.nextFlagX && b.w >= 240) {
         this.addFlag(b);
-        this.nextFlagX = b.x + 1800 + this.rand() * 600;
+        this.nextFlagX = b.x + (st === 'sky' ? 1100 + this.rand() * 300 : 1800 + this.rand() * 600); // the sky: a missed jump is a long fall
       }
       this.nextX = x + w;
       this.lastTop = top;
@@ -799,16 +874,119 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private addPlatform(prev: Building, b: Building, gap: number) {
-    if (gap < 120 || this.maxX < 400 || this.rand() > 0.3) return;
+    const sky = this.level.style === 'sky'; // the sky docks have far more drifting platforms
+    if (gap < (sky ? 100 : 120) || this.maxX < 400 || this.rand() > (sky ? 0.65 : 0.3)) return;
     const moving = gap >= 150 && this.rand() < 0.5;
-    const x = prev.x + prev.w + gap / 2;
-    const y = Math.min(480, prev.top + 20);
+    this.addFloater(prev.x + prev.w + gap / 2, Math.min(480, prev.top + 20), moving, moving ? Math.min(45, (gap - 90) / 2) : 0);
+    void b;
+  }
+
+  /** Hollows out a secret tunnel under building b (see Tunnel), replacing its solid block with the pieces around the tunnel. */
+  private addTunnel(b: Building) {
+    const top = b.top, floor = top + TUNNEL_DEPTH;
+    const hx = b.x + 110, ex = b.x + b.w - 170;
+    const parts: Tunnel['parts'] = [];
+    const t: Tunnel = { hx, ex, top, floor, open: false, seen: false, hinted: false, inside: this.add.graphics().setDepth(b.gfx.depth + 0.1), cover: this.add.graphics().setDepth(b.gfx.depth + 0.2), items: [], parts }; // (over the building's drawing)
+    const fromAbove = (z: Phaser.GameObjects.Zone) => {
+      const zb = z.body as Phaser.Physics.Arcade.StaticBody;
+      return this.body.velocity.y >= 0 && this.body.prev.y + this.body.height <= zb.top + 6;
+    };
+    const solid = (x0: number, x1: number, y0: number, y1: number, process?: (z: Phaser.GameObjects.Zone) => boolean) => {
+      const zone = this.add.zone((x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0);
+      this.physics.add.existing(zone, true);
+      const collider = this.physics.add.collider(this.player, zone, undefined, process ? () => process(zone) : undefined);
+      parts.push({ zone, collider });
+    };
+    // the building's own block goes; the walls either side of the tunnel, its roof and its floor take its place
+    b.collider.destroy();
+    b.zone.destroy();
+    solid(b.x, hx, top, top + 600);
+    solid(hx, hx + HATCH_W, top, top + TUNNEL_ROOF, (z) => {
+      if (t.open) return false;
+      if (this.pounding && fromAbove(z)) { this.openTunnel(t); return false; } // a ground pound smashes straight through
+      return true;
+    });
+    solid(hx + HATCH_W, ex, top, top + TUNNEL_ROOF);
+    solid(ex, ex + HATCH_W, top, top + TUNNEL_ROOF, fromAbove); // the way out: solid underfoot, open from below
+    solid(ex + HATCH_W, b.x + b.w, top, top + 600);
+    solid(hx, ex + HATCH_W, floor, floor + 600);
+    const last = parts[parts.length - 1];
+    b.zone = last.zone; // (the building keeps one piece so its other code has a zone; the tunnel cleans all of them up)
+    b.collider = last.collider;
+    parts.pop();
+    // the inside, hidden until he finds it: a dark brick-lined tunnel with lamps, and the way out marked with a light
+    const g = t.inside.setAlpha(0);
+    g.fillStyle(0x15121a, 1).fillRect(hx, top + TUNNEL_ROOF, ex + HATCH_W - hx, floor - top - TUNNEL_ROOF);
+    for (let y = top + TUNNEL_ROOF + 14; y < floor; y += 18) g.fillStyle(0x221c26, 1).fillRect(hx, y, ex + HATCH_W - hx, 2);
+    for (let x = hx + 70; x < ex; x += 130) { g.fillStyle(0xffd66b, 0.18).fillCircle(x, top + TUNNEL_ROOF + 14, 26); g.fillStyle(0xffe9a8, 1).fillCircle(x, top + TUNNEL_ROOF + 8, 4); }
+    g.fillStyle(0x6bffb0, 0.25).fillRect(ex, top + TUNNEL_ROOF, HATCH_W, floor - top - TUNNEL_ROOF);
+    g.fillStyle(0x3a3040, 1).fillRect(hx, floor - 4, ex + HATCH_W - hx, 4);
+    // the hatch on the roof: a slightly different panel with cracks (the exit hatch looks the same from above)
+    for (const x of [hx, ex]) {
+      t.cover.fillStyle(0x000000, 0.18).fillRect(x + 4, top + 2, HATCH_W - 8, 10);
+      t.cover.lineStyle(1.5, 0x000000, 0.45).lineBetween(x + 10, top + 3, x + 24, top + 11).lineBetween(x + 24, top + 11, x + 40, top + 4).lineBetween(x + 40, top + 4, x + 50, top + 10);
+    }
+    // the loot: two power-ups and a row of bonus breadboards (missing them never costs a perfect run)
+    const ids: PowerId[] = ['star', 'turbo', 'shield', 'spring', 'gun', 'oil', 'magnet'];
+    const add = (kind: 'bb' | 'pu', x: number, y: number, power?: PowerId) => {
+      this.addItem(kind, x, y, power);
+      const it = this.items[this.items.length - 1];
+      if (kind === 'bb') { it.bonus = true; this.bbSpawned--; it.sprite.setTint(0xffe27a); }
+      it.sprite.setVisible(false);
+      t.items.push(it);
+    };
+    const mid = (hx + ex + HATCH_W) / 2;
+    for (let x = hx + HATCH_W + 40; x < ex - 30; x += 42) if (Math.abs(x - mid) > 40) add('bb', x, floor - 30);
+    add('pu', mid, floor - 40, ids[Math.floor(this.rand() * ids.length)]);
+    add('pu', ex - 40, floor - 40, ids[Math.floor(this.rand() * ids.length)]);
+    // a few breadboards along the roof, so the stretch above looks like any other
+    for (let x = b.x + 40; x < b.x + b.w - 40; x += 170) if (x < hx - 20 || x > hx + HATCH_W + 20) this.addItem('bb', x, top - 34);
+    this.tunnels.push(t);
+  }
+
+  private openTunnel(t: Tunnel) {
+    if (t.open) return;
+    t.open = true;
+    this.revealTunnel(t);
+    t.cover.fillStyle(0x15121a, 1).fillRect(t.hx, t.top, HATCH_W, TUNNEL_ROOF); // a hole where the hatch was
+    this.sfx.bricks();
+    this.debris(t.hx + HATCH_W / 2, t.top + 4, 'brick', this.reduced ? 2 : 8, 0.9);
+    this.banner('Secret tunnel!');
+    this.announce('The cracked hatch gives way and Iggy drops into a secret tunnel, with power-ups and bonus breadboards. Jump up through the hatch at the far end to climb out.');
+  }
+
+  private revealTunnel(t: Tunnel) {
+    if (t.seen) return;
+    t.seen = true;
+    this.sfx.secret();
+    t.inside.setAlpha(1);
+    t.items.forEach((it) => it.sprite.setVisible(!it.taken));
+  }
+
+  /** Crouching on a tunnel's hatch breaks it; the first time he stands on one, he hears it's hollow. */
+  private updateTunnels() {
+    const body = this.body, x = body.center.x;
+    for (const t of this.tunnels) {
+      if (t.open) continue;
+      const onHatch = this.grounded && x > t.hx + 4 && x < t.hx + HATCH_W - 4 && Math.abs(body.bottom - t.top) < 4;
+      if (!onHatch) continue;
+      if (!t.hinted) {
+        t.hinted = true;
+        this.sfx.secretNear();
+        this.announce('The floor sounds hollow here.');
+      }
+      if (this.ducked) this.openTunnel(t);
+    }
+  }
+
+  /** A one-way floating platform at (x, y): one sliding `amp` px either side, or one that crumbles a moment after Iggy lands. */
+  private addFloater(x: number, y: number, moving: boolean, amp: number) {
     const img = this.physics.add.image(x, y, moving ? 'plat-moving' : 'plat-crumble').setDepth(7);
     const body = img.body as Phaser.Physics.Arcade.Body;
     body.setAllowGravity(false).setImmovable(true);
     body.setSize(84, 12).setOffset(0, 2);
     let collider!: Phaser.Physics.Arcade.Collider;
-    const plat: Plat = { collider: undefined as unknown as Phaser.Physics.Arcade.Collider, kind: moving ? 'moving' : 'crumble', img, baseX: x, baseY: y, amp: moving ? Math.min(45, (gap - 90) / 2) : 0, phase: this.rand() * 6, stood: false, timer: 0, state: 'idle' };
+    const plat: Plat = { collider: undefined as unknown as Phaser.Physics.Arcade.Collider, kind: moving ? 'moving' : 'crumble', img, baseX: x, baseY: y, amp, phase: this.rand() * 6, stood: false, timer: 0, state: 'idle' };
     // one-way: only solid while Iggy is falling onto it from above
     collider = this.physics.add.collider(this.player, img, undefined, () => {
       if (plat.state === 'falling') return false;
@@ -818,7 +996,6 @@ export class PlayScene extends Phaser.Scene {
     });
     plat.collider = collider;
     this.plats.push(plat);
-    void b;
   }
 
   // ------------------------------------------------------------------ boss
@@ -826,7 +1003,8 @@ export class PlayScene extends Phaser.Scene {
     const top = Phaser.Math.Clamp(400, this.lastTop - 60, this.lastTop + 60);
     this.arenaTop = top;
     this.arenaX = this.nextX + 110;
-    this.addBuilding(this.arenaX, top, 1300);
+    if (this.level.style === 'locks') this.openLockArena(top);
+    else this.addBuilding(this.arenaX, top, 1300);
     this.banner('Something big is ahead...');
     this.announce('A boss arena lies ahead. Keep going right.');
   }
@@ -836,9 +1014,17 @@ export class PlayScene extends Phaser.Scene {
     const def = BOSSES[this.level.style];
     const sprite = this.add.image(this.camLock! + W - 150, this.arenaTop, `boss-${this.level.style}-a`).setOrigin(0.5, this.level.style === 'city' ? 0.95 : 1).setDepth(8); // Enforcer Nine sits a little lower so its feet meet the roof
     this.boss = { def, sprite, hp: def.hp, max: def.hp, state: 'intro', timer: 2.2, cd: 1.5, attack: 'volley', stomped: false, touchCD: 0, said: 0 };
-    if (this.level.style === 'city') this.boss.spine = EnforcerSpine.attach(this, sprite);
+    this.boss.spine = BossSpine.attach(this, sprite, this.level.style);
+    if (def.shield) this.boss.shield = { hp: def.shield, max: def.shield, up: true, t: 0, warned: false };
+    this.bossFx = this.add.graphics().setDepth(8.5);
+    if (this.level.style === 'locks') {
+      // there's nothing to stomp from out on the piers: Iggy gets a blaster and plenty of shots
+      this.gunLevel = Math.max(1, this.gunLevel);
+      this.power.gun = Math.max(this.power.gun, 50);
+      this.announce('A blaster with 50 shots. Shoot the Kraken from the piers, and keep moving: some piers sink.');
+    }
     this.banner(`Boss: ${def.name}`);
-    this.announce(`Boss fight: ${def.name}. ${def.blurb} Shoot it, or stomp on its head when it kneels.`);
+    this.announce(`Boss fight: ${def.name}. ${def.blurb} Shoot it, or stomp on its head when it kneels.${def.shield ? ` It has an energy shield: ${def.shield} hits break it, or a head stomp smashes it. It comes back a few seconds later.` : ''}`);
     this.sfx.bossAppear();
     this.music?.setIntensity(1);
     this.music?.stinger();
@@ -848,6 +1034,8 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private bossBox(b: BossState) {
+    const own = b.spine?.hitBox(); // a boss whose rig is much bigger than its stand-in picture (the Brass Kraken)
+    if (own) return own;
     const s = b.sprite;
     const hw = Phaser.Math.Clamp(s.displayWidth * 0.32, 52, 92); // the body, not the outstretched arms
     return { x0: s.x - hw, x1: s.x + hw, y0: s.y - s.displayHeight + 8, y1: s.y };
@@ -878,6 +1066,17 @@ export class PlayScene extends Phaser.Scene {
       this.rcSay('fizzle', 'The slag shield melts your shots. Wait for it to overheat.');
       return;
     }
+    if (b.shield?.up) {
+      // the shield takes the hit
+      b.shield.hp -= n;
+      this.sfx.zap();
+      const r = this.bossBox(b);
+      this.debris((r.x0 + r.x1) / 2 + Phaser.Math.Between(-40, 40), (r.y0 + r.y1) / 2, 'spark', this.reduced ? 1 : 3, 0.6);
+      if (b.shield.hp <= 0) this.breakShield(b);
+      else this.sayOnce('bshield', `The shield takes the hit. ${b.shield.hp} more ${b.shield.hp === 1 ? 'hit' : 'hits'} to break it.`);
+      this.emitHud(true);
+      return;
+    }
     b.hp -= n;
     b.spine?.flash(this);
     if (rc?.rig) { rc.rig.spine.setTint(0xffc0a0); this.time.delayedCall(70, () => rc.rig?.spine.active && rc.rig.spine.setTint(0xffffff)); }
@@ -900,6 +1099,7 @@ export class PlayScene extends Phaser.Scene {
 
   private defeatBoss(b: BossState) {
     b.state = 'dead';
+    this.bossFx?.clear();
     this.bonus += 1000;
     this.invuln = 10;
     this.bossShots.forEach((s) => s.img.destroy());
@@ -993,7 +1193,8 @@ export class PlayScene extends Phaser.Scene {
         if (b.timer <= 0) b.state = 'walk';
       } else if (b.state === 'walk') {
         const dx = px - s.x;
-        const want = Math.abs(dx) > 360 ? face : Math.abs(dx) < 250 ? -face : 0;
+        const box = this.bossBox(b), far = Math.max(0, (box.x1 - box.x0) / 2 - 150); // a boss wider than 300px keeps that much further back
+        const want = Math.abs(dx) > 360 + far ? face : Math.abs(dx) < 250 + far ? -face : 0;
         s.x = Phaser.Math.Clamp(s.x + want * b.def.speed * (enraged ? 1.4 : 1) * edt, lo, hi);
         s.y = this.arenaTop + (!this.reduced && want !== 0 ? Math.abs(Math.sin(this.t * 6)) * -3 : 0);
         // the sprite steps (or hovers, or rumbles) while it moves, and breathes between steps
@@ -1004,13 +1205,26 @@ export class PlayScene extends Phaser.Scene {
         if (b.cd <= 0) {
           b.attack = b.def.attacks[Math.floor(Math.random() * b.def.attacks.length)];
           b.state = 'telegraph';
-          b.timer = b.attack === 'stomp' ? 0.9 : 0.6;
+          // later bosses wind up a little quicker (never under half a second for the shots, so there's time to react)
+          const tier = this.bossTier();
+          b.timer = b.attack === 'stomp' ? 0.9 : b.attack === 'charge' ? 0.85 - 0.15 * tier : 0.6 - 0.1 * tier;
           s.setTexture(`boss-${this.level.style}-b`);
-          this.sfx.bossCharge(b.attack === 'stomp');
+          this.sfx.bossCharge(b.attack === 'stomp' || b.attack === 'charge');
+          if (b.attack === 'charge') this.sayOnce('ram', `${b.def.name} is rearing back to ram you. Back away!`);
           if (b.attack === 'stomp') s.y = this.arenaTop - 14;
         }
       } else if (b.state === 'telegraph') {
         if (b.timer <= 0) this.bossAttack(b, enraged);
+      } else if (b.state === 'charge') {
+        // the lunge: fast, straight at where Iggy was, then it backs off as usual
+        const to = b.dashTo ?? s.x, step = (b.dashV ?? 400) * edt;
+        s.x = Math.abs(to - s.x) <= step ? to : s.x + Math.sign(to - s.x) * step;
+        if (!this.reduced && Math.random() < edt * 30) this.dust(s.x - Math.sign(to - s.x) * 40, this.arenaTop, 1, 16, 8, 1);
+        if (s.x === to) {
+          b.state = 'walk';
+          s.setTexture(`boss-${this.level.style}-a`);
+          if (!this.reduced) this.cameras.main.shake(120, 0.006);
+        }
       } else if (b.state === 'stagger') {
         if (b.timer <= 0) {
           b.state = 'walk';
@@ -1019,6 +1233,7 @@ export class PlayScene extends Phaser.Scene {
           s.y = this.arenaTop;
         }
       }
+      this.updateBossShield(b, edt);
       // touching the mech
       const r = this.bossBox(b);
       if (b.state !== 'intro' && body.right > r.x0 + 6 && body.left < r.x1 - 6 && body.bottom > r.y0 && body.top < r.y1) {
@@ -1027,6 +1242,7 @@ export class PlayScene extends Phaser.Scene {
           body.setVelocityY(-480);
           this.airJumps = 1;
           this.banner('Head stomp!');
+          if (b.shield?.up) this.breakShield(b); // a stomp smashes straight through the shield
           this.damageBoss(5);
         } else if (this.power.star > 0) {
           if (b.touchCD <= 0) {
@@ -1084,9 +1300,11 @@ export class PlayScene extends Phaser.Scene {
     if (this.items.filter((i) => i.kind === 'pu' && !i.taken).length >= 4) return;
     const pool: PowerId[] = ['gun', 'gun', 'shield', 'star', 'spring', 'turbo', 'magnet', 'oil'];
     if (this.power.gun < 15) pool.push('gun', 'gun', 'gun'); // short on ammo: guns are far more likely
+    if (this.level.style === 'locks') pool.push('gun', 'gun', 'gun', 'gun'); // the Kraken can only be shot
     if (this.lives <= 2) pool.push('shield', 'shield', 'star');
     const id = pool[Math.floor(Math.random() * pool.length)];
-    const x = camX + 160 + Math.random() * (W - 320);
+    // (in the Kraken's lock, over the wall and the piers, not over the Kraken)
+    const x = camX + 160 + Math.random() * (this.level.style === 'locks' ? 470 : W - 320);
     this.dropItem(x, this.arenaTop - 75, id);
     if (!quiet) this.announce(`${id === 'gun' ? 'A blaster crate' : 'A ' + POWER[id].label.toLowerCase() + ' power-up'} is falling into the arena.`);
   }
@@ -1098,19 +1316,39 @@ export class PlayScene extends Phaser.Scene {
     const px = this.body.center.x, py = this.body.center.y;
     s.setTexture(`boss-${this.level.style}-a`);
     b.state = 'walk';
-    b.cd = enraged ? 1.1 : 1.8;
+    // each boss is harder than the last: quicker between attacks, faster shots, more of them
+    const tier = this.bossTier(), more = Math.round(tier * 2), fast = 1 + 0.35 * tier;
+    b.cd = (enraged ? 1.1 : 1.8) * (1 - 0.35 * tier);
     if (b.attack === 'volley') {
-      const n = enraged ? 3 : 2;
-      for (let i = 0; i < n; i++) this.time.delayedCall(i * 260, () => b.state !== 'dead' && s.active && this.fireBossShot(mx, my, this.body.center.x, this.body.center.y, 270));
+      const n = (enraged ? 3 : 2) + more;
+      for (let i = 0; i < n; i++) this.time.delayedCall(i * (260 - 60 * tier), () => b.state !== 'dead' && s.active && this.fireBossShot(mx, my, this.body.center.x, this.body.center.y, 270 * fast));
       this.sfx.bossFire();
     } else if (b.attack === 'spread') {
       const a0 = Math.atan2(py - my, px - mx);
-      for (const d of enraged ? [-0.35, -0.17, 0, 0.17, 0.35] : [-0.28, 0, 0.28]) this.fireBossShot(mx, my, mx + Math.cos(a0 + d) * 200, my + Math.sin(a0 + d) * 200, 250);
+      const n = (enraged ? 5 : 3) + more, width = 0.28 * (n - 1);
+      for (let i = 0; i < n; i++) { const d = -width / 2 + (width * i) / (n - 1); this.fireBossShot(mx, my, mx + Math.cos(a0 + d) * 200, my + Math.sin(a0 + d) * 200, 250 * fast); }
       this.sfx.bossFire();
     } else if (b.attack === 'mortar') {
-      const n = enraged ? 3 : 2;
+      const n = (enraged ? 3 : 2) + Math.round(tier);
       for (let i = 0; i < n; i++) this.lobBossShot(mx, my, px + (i - (n - 1) / 2) * 110 + this.facing * 30 * i);
       this.sfx.bossMortar();
+    } else if (b.attack === 'ring') {
+      // shots in every direction from its middle, with a turn so the gaps land somewhere new each time
+      const n = (enraged ? 12 : 10) + Math.round(tier * 4), turn = Math.random() * Math.PI;
+      for (let i = 0; i < n; i++) { const a = turn + (Math.PI * 2 * i) / n; this.fireBossShot(mx, my, mx + Math.cos(a) * 100, my + Math.sin(a) * 100, 165 * fast); }
+      this.sfx.bossFire();
+      this.sayOnce('ring', 'A ring of shots! Find a gap between them, or jump.');
+    } else if (b.attack === 'rain') {
+      this.bossRain(b, (enraged ? 5 : 4) + Math.round(tier * 2));
+    } else if (b.attack === 'charge') {
+      const lo = this.camLock! + 140, hi = this.camLock! + W - 90;
+      const dir = px > s.x ? 1 : -1;
+      b.dashTo = Phaser.Math.Clamp(s.x + dir * (220 + 80 * tier), lo, hi);
+      b.dashV = 420 + 220 * tier;
+      b.state = 'charge';
+      s.setTexture(`boss-${this.level.style}-b`);
+      this.sfx.bossStomp();
+      b.cd = Math.max(b.cd, 1.2);
     } else {
       s.y = this.arenaTop;
       this.sfx.bossStomp();
@@ -1126,6 +1364,81 @@ export class PlayScene extends Phaser.Scene {
       s.setScale(1.06, 0.55);
       this.announce('The mech slammed down and is kneeling. Stomp its head.');
     }
+  }
+
+  /** How far through the game this boss is: 0 for the first, 1 for the last (the Sky Docks); its attacks scale with it. */
+  private bossTier() {
+    return Phaser.Math.Clamp((this.level.number - 1) / 11, 0, 1);
+  }
+
+  /** Shells falling from the sky onto spots marked on the ground a moment before (a gap is always left near Iggy). */
+  private bossRain(b: BossState, n: number) {
+    const x0 = this.camLock! + 50, x1 = this.camLock! + W - 50, px = this.body.center.x;
+    const safe = px + (Math.random() < 0.5 ? -1 : 1) * 70; // the gap to step into
+    const xs: number[] = [];
+    for (let tries = 0; xs.length < n && tries < 200; tries++) {
+      const x = x0 + Math.random() * (x1 - x0);
+      if (Math.abs(x - safe) > 60 && xs.every((o) => Math.abs(o - x) > 64)) xs.push(x);
+    }
+    if (!xs.some((x) => Math.abs(x - px) < 30)) xs[0] = px; // one always comes down right where he stands
+    xs.forEach((x, i) => {
+      const mark = this.add.ellipse(x, this.arenaTop - 3, 56, 14, 0xff2a1a, 0.85).setDepth(8).setStrokeStyle(this.hc ? 3 : 2, this.hc ? 0xffffff : 0xffe08a, 1);
+      if (!this.reduced) this.tweens.add({ targets: mark, alpha: 0.35, duration: 160, yoyo: true, repeat: -1 });
+      this.time.delayedCall(450 + i * 110, () => {
+        if (b.state === 'dead') { mark.destroy(); return; }
+        const img = this.add.image(x, -30, 'boss-orb').setDepth(9).setScale(1.3);
+        this.bossShots.push({ img, vx: 0, vy: 120, g: 900, mortar: true });
+      });
+      this.time.delayedCall(1500 + i * 110, () => mark.destroy());
+    });
+    this.sfx.bossMortar();
+    this.sayOnce('rain', 'Shells are falling from the sky! Stay off the red marks on the ground.');
+  }
+
+  /** A broken shield stays down a few seconds, flickers as a warning, then comes back at full strength. */
+  private updateBossShield(b: BossState, edt: number) {
+    const sh = b.shield, g = this.bossFx;
+    g?.clear();
+    if (!sh || !g || b.state === 'dead') return;
+    if (!sh.up) {
+      sh.t -= edt;
+      if (sh.t <= 1 && !sh.warned) {
+        sh.warned = true;
+        this.sfx.warn();
+        this.announce('The shield is coming back!');
+      }
+      if (sh.t <= 0) {
+        sh.up = true;
+        sh.hp = sh.max;
+        this.sfx.zap();
+        this.announce(`The shield is back up. ${sh.max} hits to break it.`);
+        this.emitHud(true);
+      }
+    }
+    const flicker = !sh.up && sh.t <= 1 && (this.reduced ? true : Math.floor(this.t * 14) % 2 === 0);
+    if (!sh.up && !flicker) return;
+    const r = this.bossBox(b), cx = (r.x0 + r.x1) / 2, cy = (r.y0 + r.y1) / 2;
+    const w = r.x1 - r.x0 + 50, h = r.y1 - r.y0 + 40;
+    const strength = sh.up ? 0.35 + 0.65 * (sh.hp / sh.max) : 0.3; // it fades as it's chipped away
+    const pulse = this.reduced ? 0 : Math.sin(this.t * 4) * 0.04;
+    g.fillStyle(0x5ad8ff, (0.12 + pulse) * strength).fillEllipse(cx, cy, w, h);
+    g.lineStyle(this.hc ? 4 : 3, this.hc ? 0xffffff : 0x9aeaff, 0.85 * strength).strokeEllipse(cx, cy, w, h);
+  }
+
+  private breakShield(b: BossState) {
+    const sh = b.shield;
+    if (!sh?.up) return;
+    sh.up = false;
+    sh.hp = 0;
+    sh.t = SHIELD_DOWN;
+    sh.warned = false;
+    const r = this.bossBox(b), cx = (r.x0 + r.x1) / 2, cy = (r.y0 + r.y1) / 2;
+    this.sfx.boom();
+    this.burst(cx, cy, [0x5ad8ff, 0xffffff, 0x9aeaff], 30, 320);
+    this.debris(cx, cy, 'spark', this.reduced ? 3 : 12, 1.2);
+    this.banner('Shield down!');
+    this.announce(`Shield down! ${b.def.name} can be hurt for a few seconds.`);
+    this.emitHud(true);
   }
 
   private addFlag(b: Building) {
@@ -1152,6 +1465,24 @@ export class PlayScene extends Phaser.Scene {
   private updatePlatforms(dt: number) {
     for (const p of this.plats) {
       const body = p.img.body as Phaser.Physics.Arcade.Body;
+      if (p.kind === 'pier') {
+        // bobbing on the water; a sinker goes under while stood on (after a moment), then floats back up
+        if (p.sinker) {
+          // standing on it, by position (the bob opens a hair's gap most frames, so the collision alone misses it)
+          const pb = p.img.body as Phaser.Physics.Arcade.Body, me = this.body;
+          const on = p.stood || (me.right > pb.left + 4 && me.left < pb.right - 4 && Math.abs(me.bottom - pb.top) < 6 && me.velocity.y >= -20);
+          if (on) {
+            p.timer = Math.min(3, p.timer + dt);
+            if (p.timer > 0.35) this.sayOnce('sinker', 'That pier is sinking! Jump to another one to stay out of the water.');
+          } else p.timer = Math.max(0, p.timer - dt * 0.8);
+        }
+        const sunk = p.sinker ? Math.max(0, p.timer - 0.35) * 36 : 0;
+        const bob = this.reduced ? 0 : Math.sin(this.t * 1.8 + p.phase) * 2.5;
+        p.img.y = p.baseY + bob + sunk;
+        p.img.setAlpha(sunk > 30 ? 0.6 : 1);
+        p.stood = false;
+        continue;
+      }
       if (p.kind === 'moving') {
         const w = 1.6;
         body.setVelocityX(Math.cos(this.t * w + p.phase) * p.amp * w);
@@ -1178,6 +1509,7 @@ export class PlayScene extends Phaser.Scene {
       }
       p.stood = false;
     }
+    this.updateTunnels();
     for (const f of this.flags) {
       if (!f.on && Math.abs(this.body.center.x - f.x) < 26 && Math.abs(this.body.bottom - f.top) < 70) this.reachFlag(f);
     }
@@ -1537,6 +1869,23 @@ export class PlayScene extends Phaser.Scene {
     return this.items[this.items.length - 1];
   }
 
+  /**
+   * The Magpie Drone's wings and attitude from how it is moving (vx, vy in px/s): it beats its wings hovering and climbing, holds
+   * them out to glide when it swoops down, and tilts its body into the direction it flies (drawn facing left, flipped to go right).
+   */
+  private flapMagpie(it: Item, vx: number, vy: number, edt: number) {
+    const s = it.sprite;
+    if (!this.textures.exists('foe-magpie-f0')) return;
+    const swoop = vy > 120 && Math.abs(vx) + vy > 180; // diving on a breadboard
+    it.flap = (it.flap ?? this.rand() * 6) + edt * (swoop ? 0 : vy < -60 ? 16 : 11); // quicker beats to climb away
+    s.setTexture(swoop ? 'foe-magpie-glide' : `foe-magpie-f${Math.floor(it.flap) % 6}`);
+    if (this.reduced) { s.setRotation(0); return; }
+    // nose down into a dive, up into a climb; facing left flips which way that turns
+    const dir = s.flipX ? 1 : -1, speed = Math.hypot(vx, vy);
+    const want = speed > 20 ? Phaser.Math.Clamp(Math.atan2(vy, Math.abs(vx) + 60) * 0.6, -0.45, 0.5) * dir : 0;
+    s.setRotation(s.rotation + (want - s.rotation) * Math.min(1, edt * 8));
+  }
+
   /** The first time a kind of enemy shows up, say what it does. */
   private meetFoe(type: FoeType) {
     if (this.foeSeen.has(type) || !FOE_INFO[type].meet) return;
@@ -1637,6 +1986,7 @@ export class PlayScene extends Phaser.Scene {
           s.x += f.dir * 32 * edt;
           if (s.x < f.min) { s.x = f.min; f.dir = 1; }
           if (s.x > f.max) { s.x = f.max; f.dir = -1; }
+          f.top = this.duneTopAt(s.x) ?? f.top; // on the dunes it rides the slopes
           if (f.cd <= 0 && onScreen) {
             f.state = 'spray';
             f.cd = 0.6;
@@ -1756,6 +2106,7 @@ export class PlayScene extends Phaser.Scene {
         s.x += f.dir * 55 * edt;
         if (s.x < f.min) { s.x = f.min; f.dir = 1; }
         if (s.x > f.max) { s.x = f.max; f.dir = -1; }
+        f.top = this.duneTopAt(s.x) ?? f.top; // on the dunes it bounces along the slopes
         const low = up < 0.12;
         s.setScale(0.5, this.reduced ? 0.5 : 0.5 * (low ? 0.86 : 1 + up * 0.05));
         s.y = f.top - s.displayHeight / 2 - up * 95;
@@ -1807,6 +2158,7 @@ export class PlayScene extends Phaser.Scene {
         return;
       }
       case 'magpie': {
+        const mx = s.x, my = s.y;
         if (f.state === 'wait') {
           s.y = it.baseY + (this.reduced ? 0 : Math.sin(f.t * 3) * 4);
           if (s.x - px < 460) f.state = 'hunt';
@@ -1842,6 +2194,7 @@ export class PlayScene extends Phaser.Scene {
             }
           }
         }
+        this.flapMagpie(it, edt > 0 ? (s.x - mx) / edt : 0, edt > 0 ? (s.y - my) / edt : 0, edt);
         if (this.touching(s, 0.3) && (this.smashing() || this.stompedOn(s))) {
           if (!this.smashing()) body.setVelocityY(-400);
           this.defeatFoe(it, 'stomp');
@@ -1869,6 +2222,195 @@ export class PlayScene extends Phaser.Scene {
     gfx.fillStyle(0xfff0b0, 0.8).fillEllipse(x - 8, top - 3, 10, 2);
     this.glue.push({ gfx, x, top, w, life: 7 });
     this.sfx.crumble();
+  }
+
+  // ------------------------------------------------------------------ levels 8 to 12
+  /** The Brass Kraken's lock: a wall to start on, then open water with floating piers (some sink) and the Kraken in the water. */
+  private openLockArena(top: number) {
+    const x = this.arenaX!;
+    const wall = this.addBuilding(x, top, 280);
+    const far = this.addBuilding(x + 1300, top, 200); // the lock's far wall, off the right edge: it holds the water in
+    this.addPool(wall, far);
+    const surface = top + 34;
+    [[340, false], [450, true], [545, false], [625, true]].forEach(([dx, sinker], i) => this.addPier(x + (dx as number), surface - 6, sinker as boolean, i));
+  }
+
+  /** A floating pier: one-way like the other platforms. A sinker goes under while Iggy stands on it, and bobs back up after. */
+  private addPier(x: number, y: number, sinker: boolean, i: number) {
+    const img = this.physics.add.image(x, y, sinker ? 'plat-pier-sink' : 'plat-pier').setDepth(7);
+    const body = img.body as Phaser.Physics.Arcade.Body;
+    body.setAllowGravity(false).setImmovable(true);
+    body.setSize(84, 12).setOffset(0, 0);
+    const plat: Plat = { collider: undefined as unknown as Phaser.Physics.Arcade.Collider, kind: 'pier', sinker, img, baseX: x, baseY: y, amp: 0, phase: i * 1.7, stood: false, timer: 0, state: 'idle' };
+    plat.collider = this.physics.add.collider(this.player, img, undefined, () => {
+      if (plat.state === 'falling') return false;
+      const ok = this.body.velocity.y >= 0 && this.body.prev.y + this.body.height <= body.top + 6;
+      if (ok) plat.stood = true;
+      return ok;
+    });
+    this.plats.push(plat);
+  }
+
+  /** Say something once per run. */
+  private sayOnce(key: string, text: string) {
+    if (this.said.has(key)) return;
+    this.said.add(key);
+    this.announce(text);
+  }
+
+  /** Sunken Locks: water fills the gap between two lock walls, with a floor to walk on. */
+  private addPool(prev: Building, b: Building) {
+    const x0 = prev.x + prev.w, x1 = b.x;
+    if (x1 - x0 < 30) return;
+    const surface = Math.max(prev.top, b.top) + 34, floor = H - 34;
+    const gfx = this.add.graphics().setDepth(11);
+    gfx.fillStyle(0x0d3a30, 1).fillRect(x0, floor, x1 - x0, H - floor); // the lock floor
+    gfx.fillStyle(0x1f6a58, 0.5).fillRect(x0, surface, x1 - x0, floor - surface);
+    gfx.fillStyle(0x8affd0, 0.6).fillRect(x0, surface, x1 - x0, 3);
+    for (let x = x0 + 8; x < x1 - 8; x += 26) gfx.fillStyle(0xd8fff0, 0.5).fillRect(x, surface + 1, 10, 1.5);
+    const zone = this.add.zone((x0 + x1) / 2, floor + 15, x1 - x0, 30);
+    this.physics.add.existing(zone, true);
+    const collider = this.physics.add.collider(this.player, zone);
+    this.pools.push({ x0, x1, surface, floor, gfx, zone, collider });
+  }
+
+  /** The water (if any) at a point: the pool whose surface is above it. */
+  private waterAt(x: number, y: number) {
+    return this.pools.find((p) => x > p.x0 && x < p.x1 && y > p.surface);
+  }
+
+  /** Turbine Gorge: a stretch of wind blowing back along this roof (and the gap before it). */
+  private addWind(b: Building) {
+    b.wind = true;
+    const g = this.add.graphics({ x: b.x, y: b.top }).setDepth(4);
+    // wind-socks at each end show the way it blows
+    for (const sx of [10, b.w - 14]) {
+      g.fillStyle(0x2a3a35, 1).fillRect(sx, -60, 4, 60);
+      g.fillStyle(0xff8a3a, 0.95).fillTriangle(sx + 2, -60, sx + 2, -44, sx - 36, -52);
+      g.fillStyle(0xffffff, 0.9).fillRect(sx - 16, -56, 6, 8);
+    }
+    b.gfx.once('destroy', () => g.destroy());
+  }
+
+  private windAt(x: number) {
+    return this.buildings.find((b) => b.wind && x > b.x - 70 && x < b.x + b.w);
+  }
+
+  /** Glass Dunes: a run of dunes built from narrow columns, then a short gap (a pit). */
+  private generateDune() {
+    const gap = this.between(60, 100);
+    const x0 = this.nextX + gap, w = this.between(70, 110) * DUNE_COL;
+    const lambda = this.rand() < 0.5 ? w : w / 2; // one big dune or two smaller ones
+    const amp = Math.min(this.between(50, 110), Math.floor(lambda * 0.22)), base = Phaser.Math.Clamp(this.lastTop + this.between(-20, 30), 400, 450);
+    const prev = this.buildings[this.buildings.length - 1];
+    const gfx = this.add.graphics({ x: x0, y: 0 }).setDepth(0);
+    const tops: number[] = [];
+    for (let i = 0; i * DUNE_COL < w; i++) tops.push(Math.round(base - amp * (0.5 - 0.5 * Math.cos((2 * Math.PI * (i + 0.5) * DUNE_COL) / lambda))));
+    // the drawing: a smooth sandy curve with darker strata and glass glints
+    const pts: number[] = [0, H + 20];
+    tops.forEach((t, i) => pts.push(i * DUNE_COL, t, (i + 1) * DUNE_COL, t));
+    pts.push(w, H + 20);
+    gfx.fillStyle(0xc89a5a, 1).fillPoints(flatPts(pts), true);
+    for (let k = 1; k < 5; k++) {
+      const band: number[] = [];
+      tops.forEach((t, i) => band.push(i * DUNE_COL + DUNE_COL / 2, t + k * 22));
+      gfx.lineStyle(5, k % 2 ? 0xb08048 : 0xd8aa68, 0.8).strokePoints(flatPts(band));
+    }
+    const ridge: number[] = [];
+    tops.forEach((t, i) => ridge.push(i * DUNE_COL + DUNE_COL / 2, t + 1));
+    gfx.lineStyle(4, 0xf8e0a8, 1).strokePoints(flatPts(ridge));
+    for (let i = 0; i < w / 60; i++) { const ci = Math.floor(this.rand() * tops.length); gfx.fillStyle(0xbfe8ff, 0.85).fillTriangle(ci * DUNE_COL, tops[ci] + 16, ci * DUNE_COL + 5, tops[ci] + 4, ci * DUNE_COL + 10, tops[ci] + 16); }
+    // the columns
+    let last: Building | undefined;
+    tops.forEach((t, i) => {
+      const x = x0 + i * DUNE_COL;
+      const zone = this.add.zone(x + DUNE_COL / 2, t + 300, DUNE_COL, 600);
+      this.physics.add.existing(zone, true);
+      const collider = this.physics.add.collider(this.player, zone);
+      last = { x, top: t, w: DUNE_COL, gfx, zone, collider, dune: true, sharedGfx: true };
+      this.buildings.push(last);
+      // breadboards over the crests, and the odd checkpoint
+      if (i % 9 === 4 && this.rand() < 0.35) this.addItem('bb', x, t - 34);
+    });
+    if (last) last.sharedGfx = false; // the last column owns the drawing
+    if (prev) this.addPlatform(prev, this.buildings[this.buildings.length - tops.length], gap);
+    if (x0 >= this.nextFlagX) {
+      const flat = this.buildings[this.buildings.length - tops.length];
+      this.addFlag(flat);
+      this.nextFlagX = x0 + 1800 + this.rand() * 600;
+    }
+    const cols = this.buildings.slice(-tops.length);
+    // floating platforms over the dune, with breadboards on them; sometimes a second, higher one with a power-up
+    if (this.maxX > 300 && this.rand() < 0.6) {
+      const i = this.between(14, tops.length - 14), px = x0 + i * DUNE_COL, py = Math.max(200, tops[i] - this.between(95, 125));
+      const moving = this.rand() < 0.5;
+      this.addFloater(px, py, moving, moving ? 40 : 0);
+      for (const dx of [-26, 0, 26]) this.addItem('bb', px + dx, py - 30);
+      if (this.rand() < 0.35) {
+        const qx = px + (i < tops.length / 2 ? 1 : -1) * 150, qy = py - this.between(80, 100);
+        this.addFloater(qx, qy, false, 0);
+        if (this.rand() < 0.5) this.addItem('pu', qx, qy - 45, (['spring', 'shield', 'gun', 'oil'] as PowerId[])[Math.floor(this.rand() * 4)]);
+        else this.addItem('bb', qx, qy - 30);
+      }
+    }
+    // enemies: the walkers range over the whole dune, following its slopes (see duneTopAt)
+    const span = { ...cols[Math.floor(tops.length / 2)], x: x0, w, top: tops[Math.floor(tops.length / 2)] };
+    const d = this.difficulty();
+    if (this.maxX > 500 && this.rand() < 0.25) this.addFoe('magnet', cols[cols.length - 1 - Math.floor(tops.length / 2)]);
+    else if (this.maxX > 350 && this.rand() < 0.45 + d * 0.25) this.addPatrol(span);
+    if (this.maxX > 350 && this.rand() < 0.3 + d * 0.2) this.addFoe(this.rand() < 0.6 ? 'pogo' : 'gloop', span);
+    if (this.maxX > 600 && this.rand() < 0.15 + d * 0.15) this.addFoe(this.rand() < 0.6 ? 'mite' : 'magpie', span);
+    this.nextX = x0 + w;
+    this.lastTop = tops[tops.length - 1];
+  }
+
+  /** The top of the dune column under x, or undefined off the dunes (in a pit, or on another level). */
+  private duneTopAt(x: number) {
+    if (this.level.style !== 'dunes') return undefined;
+    return this.buildings.find((b) => b.dune && x >= b.x && x < b.x + b.w)?.top;
+  }
+
+  /** Standing on the sand itself (not on a floating platform or a glass slab above or beside it). */
+  private onDuneSand() {
+    const top = this.duneTopAt(this.body.center.x);
+    return top !== undefined && Math.abs(top - this.body.bottom) <= 20; // (the steepest dunes step about 10px a column; platforms float 90px+ up)
+  }
+
+  /** The dune's surface under x, smoothed: a straight line between the middles of neighbouring columns. */
+  private duneSurface(x: number) {
+    const top = this.duneTopAt(x);
+    if (top === undefined) return undefined;
+    const col = this.buildings.find((b) => b.dune && x >= b.x && x < b.x + b.w)!;
+    const mid = col.x + DUNE_COL / 2, side = x < mid ? -1 : 1;
+    const next = this.duneTopAt(mid + side * DUNE_COL);
+    if (next === undefined) return top;
+    return Phaser.Math.Linear(top, next, Math.abs(x - mid) / DUNE_COL);
+  }
+
+  /**
+   * Walking downhill, each column is a few px lower than the last, so he'd drop off every one of them and be in the air half the
+   * time (his legs flick into the fall pose and back). While he's on the sand and not jumping or sliding, keep his feet on it.
+   */
+  private stickToDune() {
+    const body = this.body;
+    if (this.level.style !== 'dunes' || this.hang || this.sliding || !this.wasGround || body.velocity.y < 0) return false;
+    const top = this.duneTopAt(body.center.x);
+    if (top === undefined) return false;
+    const gap = top - body.bottom;
+    if (gap < -1 || gap > 14) return false;
+    this.player.y += gap;
+    body.y += gap;
+    body.updateCenter();
+    body.setVelocityY(0);
+    return true;
+  }
+
+  /** The dune height just ahead of or behind Iggy (positive = the ground drops away in that direction). */
+  private duneSlope(dir: number) {
+    const body = this.body;
+    const here = this.buildings.find((b) => b.dune && body.center.x >= b.x && body.center.x < b.x + b.w);
+    const ahead = this.buildings.find((b) => b.dune && body.center.x + dir * DUNE_COL * 2 >= b.x && body.center.x + dir * DUNE_COL * 2 < b.x + b.w);
+    return here && ahead ? ahead.top - here.top : 0;
   }
 
   /** A conveyor belt along the top of a gantry: chevrons show the way it runs; standing on it carries Iggy along. */
@@ -2293,10 +2835,21 @@ export class PlayScene extends Phaser.Scene {
     this.buildings = this.buildings.filter((b) => {
       if (b.x + b.w < left) {
         b.collider.destroy();
-        b.gfx.destroy();
+        if (!b.sharedGfx) b.gfx.destroy(); // a dune's columns share one drawing, owned by its last column
         b.zone.destroy();
         return false;
       }
+      return true;
+    });
+    this.tunnels = this.tunnels.filter((t) => {
+      if (t.ex + HATCH_W + 200 >= left) return true;
+      t.parts.forEach((q) => { q.collider.destroy(); q.zone.destroy(); });
+      t.inside.destroy();
+      t.cover.destroy();
+      return false;
+    });
+    this.pools = this.pools.filter((p) => {
+      if (p.x1 < left) { p.gfx.destroy(); p.collider.destroy(); p.zone.destroy(); return false; }
       return true;
     });
     this.plats = this.plats.filter((p) => {
@@ -2476,6 +3029,12 @@ export class PlayScene extends Phaser.Scene {
       const s = sh.s;
       s.x += sh.vx * dt;
       s.y += sh.vy * dt;
+      if (this.pools.length && this.waterAt(s.x, s.y)) {
+        // shots fizzle out under water
+        this.dust(s.x, s.y, 2, 8, -10, 0.6);
+        s.destroy();
+        return false;
+      }
       if (sh.kind === 'rocket' && !this.reduced) {
         sh.trail -= dt;
         if (sh.trail <= 0) {
@@ -2805,7 +3364,7 @@ export class PlayScene extends Phaser.Scene {
 
   /** Touching things smashes them while invincible, dashing or ground-pounding. */
   private smashing() {
-    return this.power.star > 0 || this.dashT > 0 || this.pounding;
+    return this.power.star > 0 || this.dashT > 0 || this.pounding || this.sliding;
   }
 
   private poundLand() {
@@ -2897,6 +3456,7 @@ export class PlayScene extends Phaser.Scene {
     body.setAllowGravity(false);
     this.facing = side;
     this.spinT = 0;
+    this.tuckT = 0;
     this.airJumps = 1;
     this.coyote = 0;
     this.wallCoyote = 0;
@@ -2962,6 +3522,7 @@ export class PlayScene extends Phaser.Scene {
     if (suit >= 3 && !jammed && !ground && duckPressed && !this.pounding) {
       this.pounding = true;
       this.spinT = 0;
+      this.tuckT = 0;
       this.sfx.poundStart();
     }
     if (this.pounding) {
@@ -3022,7 +3583,7 @@ export class PlayScene extends Phaser.Scene {
       goal: BOSS_SCORE,
       mode: this.mode,
       time: Math.floor(this.runTime),
-      boss: this.boss && this.boss.state !== 'dead' ? { name: this.boss.def.name, hp: Math.max(0, this.boss.hp), max: this.boss.max, note: this.rc ? this.rcNote() : undefined } : null,
+      boss: this.boss && this.boss.state !== 'dead' ? { name: this.boss.def.name, hp: Math.max(0, this.boss.hp), max: this.boss.max, note: this.rc ? this.rcNote() : this.boss.shield ? (this.boss.shield.up ? `Shield: ${this.boss.shield.hp} of ${this.boss.shield.max} hits left` : 'Shield down: hit it now') : undefined } : null,
       score: this.score(),
       breadboards: this.breadboards,
       lives: this.lives,
@@ -3070,7 +3631,7 @@ export class PlayScene extends Phaser.Scene {
     const dt = Math.min(delta, 50) / 1000;
     const edt = dt * (this.live().enemySpeed / 100); // assist: enemies and bosses can run slower than the world
     this.t += dt;
-    if (this.body.touching.down || this.body.blocked.down) this.runPhase += (dt * Math.PI * 2 * Math.abs(this.body.velocity.x)) / 70; // one full stride every 70px
+    if (this.body.touching.down || this.body.blocked.down) this.runPhase += (dt * Math.PI * 2 * this.footSpeed) / 70; // one full stride every 70px (on ice, his feet outrun him)
     if (!this.over) {
       this.runTime += dt;
       this.traceT += dt;
@@ -3104,12 +3665,35 @@ export class PlayScene extends Phaser.Scene {
     this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
 
     if (!this.over) {
-      const ground = body.touching.down || body.blocked.down;
+      const ground = body.touching.down || body.blocked.down || this.stickToDune();
+      this.grounded = ground;
       this.coyote = ground ? 0.1 : Math.max(0, this.coyote - dt);
       if (ground) this.airJumps = 1;
 
       const ramp = this.mode === 'endless' ? 1 + Math.min(0.5, Math.max(0, this.maxX) / 80000) : 1; // endless: the pace creeps up
-      const speed = RUN * ramp * (this.power.turbo > 0 ? 1.35 : 1) * (this.power.oil > 0 ? 1.15 : 1) * (this.slowT > 0 ? 0.45 : 1);
+      // water (Sunken Locks): he sinks, walks the bottom slowly and jumps floatily
+      const wet = this.waterAt(body.center.x, body.center.y);
+      if (!!wet !== this.inWater) {
+        this.inWater = !!wet;
+        body.setGravityY(this.inWater ? -GRAVITY * 0.6 : 0);
+        if (this.inWater) { this.sfx.land(); this.dust(body.center.x, wet!.surface, 4, 30, 10, 1.2); }
+        this.sayOnce('water', 'In the water Iggy sinks and walks along the bottom. He moves slowly, his jumps are floaty, and his shots fizzle under water. Jump to climb out.');
+      }
+      if (this.inWater) {
+        if (body.velocity.y > 200) body.setVelocityY(200);
+        if (!this.reduced && Math.random() < dt * 4) this.dust(body.center.x, body.top, 1, 4, -20, 0.5); // bubbles
+      }
+      // dunes: slower uphill, quicker downhill
+      const slope = this.level.style === 'dunes' && ground ? this.duneSlope(this.facing) : 0;
+      const hill = slope < -3 ? (this.live().longGrace ? 0.85 : 0.72) : slope > 3 ? 1.22 : 1;
+      // dunes: setting off, the sand holds him back; keep moving and he gets up to full speed (in about a second)
+      const onSand = ground && this.onDuneSand();
+      const moving = (left !== right) && Math.abs(body.velocity.x) > 30;
+      if (onSand) this.sandGo = moving ? Math.min(1, this.sandGo + dt * (this.live().longGrace ? 1.6 : 0.9)) : Math.max(0, this.sandGo - dt * 3);
+      else if (ground) this.sandGo = 1;
+      const sand = onSand && !this.sliding ? 0.45 + 0.55 * this.sandGo : 1;
+      if (onSand && left !== right && this.maxX > 80) this.sayOnce('sand', 'The sand drags at Iggy\'s boots. He sets off slowly, but keeps his speed as long as he keeps moving.');
+      const speed = RUN * ramp * (this.power.turbo > 0 ? 1.35 : 1) * (this.power.oil > 0 ? 1.15 : 1) * (this.slowT > 0 ? 0.45 : 1) * (this.inWater ? (this.live().longGrace ? 0.75 : 0.55) : 1) * hill * sand;
       // duck: crouch on the ground (can still turn round and shoot, but can't run); the hitbox gets shorter
       this.setDucked(ground && (this.held('duck') || this.touch.duck || pad.duck));
       let target = left === right ? 0 : left ? -speed : speed;
@@ -3129,9 +3713,46 @@ export class PlayScene extends Phaser.Scene {
         this.wallCoyote = Math.max(0, this.wallCoyote - dt);
       }
       this.wallLock = Math.max(0, this.wallLock - dt);
-      if (this.wallLock <= 0) {
-        const k = Math.min(1, dt * (ground ? 14 : 7));
+      // dunes: duck on a downslope to slide (it smashes small enemies, and a crest launches him)
+      const duckHeld = this.held('duck') || this.touch.duck || pad.duck;
+      const wasSliding = this.sliding;
+      // (going downhill fast he leaves the ground for a moment at each little step: the slide carries on through those)
+      this.sliding = this.level.style === 'dunes' && duckHeld && (ground ? this.duneSlope(this.facing) > 2 || (wasSliding && Math.abs(body.velocity.x) > 140) : wasSliding && body.velocity.y > -200);
+      if (this.sliding && !wasSliding) this.sayOnce('slide', 'Sliding! Iggy builds speed downhill and smashes small enemies in his way. Jump off a crest to fly.');
+      // ice: little grip on the ground, so he slides; ducking digs his boot spikes in
+      const ice = this.level.style === 'ice' && ground;
+      const grip = ice ? (this.ducked ? 0.45 : this.live().longGrace ? 0.2 : 0.07) : 1;
+      if (this.sliding) {
+        if (ground || body.velocity.y > 0) body.setVelocityX(Phaser.Math.Clamp(body.velocity.x + this.facing * 800 * dt, -480, 480));
+      } else if (this.wallLock <= 0) {
+        const k = Math.min(1, dt * (ground ? 14 : 7) * grip);
         body.setVelocityX(body.velocity.x + (target - body.velocity.x) * k);
+      }
+      // on ice his feet scramble: running hard while a direction is held, still while he glides
+      this.scrambling = ice && target !== 0 && !this.ducked;
+      this.footSpeed = ice ? (this.scrambling ? Math.max(RUN * 1.5, Math.abs(body.velocity.x) * 1.8) : 0) : Math.abs(body.velocity.x);
+      if (ice && this.maxX > 50) this.sayOnce('ice', 'The ground is icy: Iggy slides when he tries to stop. Duck to dig in his boot spikes and stop quickly.');
+      // wind: blows him back where the wind-socks fly; ducking braces him, heavier suits stand up to it better
+      // dunes: now and then a short sandstorm blows in against him (not in the boss arena); crouching holds him still
+      if (this.level.style === 'dunes' && this.arenaX === null && !this.over) {
+        if (this.stormT > 0) {
+          this.stormT -= dt;
+          if (this.stormT <= 0) { this.stormCD = 18 + Math.random() * 10; this.announce('The sandstorm passes.'); }
+        } else if ((this.stormCD -= dt) <= 0) {
+          this.stormT = STORM_LEN;
+          this.sfx.jet();
+          this.announce('Sandstorm! The wind blows Iggy back for a moment. Duck to brace and he holds his ground.');
+        }
+        this.stormTint ??= this.add.rectangle(0, 0, W, H, 0xd8a860, 0).setOrigin(0).setScrollFactor(0).setDepth(19);
+        this.stormTint.setAlpha(this.stormT > 0 ? Math.min(0.22, this.stormT * 0.2, (STORM_LEN - this.stormT) * 0.2) : 0);
+      }
+      const storm = this.level.style === 'dunes' && this.stormT > 0 && !this.hang;
+      const gust = storm || (this.level.style === 'wind' && !this.hang ? this.windAt(body.center.x) : undefined);
+      if (gust && !this.over) {
+        const push = (storm ? 130 : WIND_PUSH) * (this.ducked ? (storm ? 0 : 0.5) : 1) * WIND_SUIT[this.suitIdx] * (this.live().longGrace ? 0.6 : 1) * (1 + 0.3 * Math.max(0, Math.sin(this.t * 1.3)));
+        body.x -= push * dt;
+        if (!this.reduced && Math.random() < dt * 14) this.dust(body.center.x + Phaser.Math.Between(-20, 40), body.center.y + Phaser.Math.Between(-30, 20), 1, 6, 2, 0.5);
+        if (!storm) this.sayOnce('wind', 'Wind! It pushes Iggy back wherever the wind-socks fly. Duck to brace against it.');
       }
 
       // ledge hang: catch the lip of a roof, hang, then climb up or let go
@@ -3153,7 +3774,7 @@ export class PlayScene extends Phaser.Scene {
 
       // jump
       if (this.jumpBuffer > 0 && this.coyote > 0) {
-        const v = this.power.spring > 0 ? SPRING_JUMP : JUMP;
+        const v = this.power.spring > 0 ? SPRING_JUMP : JUMP; // (full power in water too: the low gravity there keeps it floaty)
         body.setVelocityY(-v);
         this.jumpBuffer = 0;
         this.coyote = 0;
@@ -3168,6 +3789,7 @@ export class PlayScene extends Phaser.Scene {
         this.airJumps--;
         this.jumpBuffer = 0;
         this.spinT = this.reduced ? 0 : 0.5;
+        this.tuckT = 0.42;
         this.sfx.air(this.looseNow());
         // a puff of steam and sparks from his feet, and a ring of dust
         this.dust(body.center.x, body.bottom, 7, 34, 8, 0.9);
@@ -3252,6 +3874,8 @@ export class PlayScene extends Phaser.Scene {
           if (!((w.aim ?? 0) > 0)) s.x += w.dir * w.speed * edt;
           if (s.x < w.min) { s.x = w.min; w.dir = 1; }
           if (s.x > w.max) { s.x = w.max; w.dir = -1; }
+          const dune = this.duneTopAt(s.x);
+          if (dune !== undefined) s.y = dune - s.height / 2; // on the dunes it walks up and down the slopes
           w.frame += edt * 8;
           const wf = w.kind === 'skeleton' && (w.aim ?? 0) > 0 ? (w.aim! < 0.12 ? 'skeleton-fire' : 'skeleton-aim') : `${w.kind}-w${Math.floor(w.frame) % 6}`;
           s.setTexture(this.textures.exists(wf) ? wf : `${w.kind}-${Math.floor(w.frame) % 2 ? 'b' : 'a'}`).setFlipX(w.dir < 0);
@@ -3310,7 +3934,7 @@ export class PlayScene extends Phaser.Scene {
             s.y = Math.min(it.baseY, s.y + 170 * dt);
             if (s.y >= it.baseY) it.falling = false;
           } else if (!this.reduced) s.y = it.baseY + Math.sin(this.t * 3 + it.phase) * 4;
-          if (it.kind === 'bb' && this.power.magnet > 0) {
+          if (it.kind === 'bb' && this.power.magnet > 0 && s.visible) {
             const dx = px - s.x, dy = py - s.y, dist = Math.hypot(dx, dy);
             if (dist < 230 && dist > 1) {
               const pull = Math.min(dist, 520 * dt);
@@ -3437,14 +4061,17 @@ export class PlayScene extends Phaser.Scene {
     // -- draw Iggy
     this.landSquash = Math.max(0, this.landSquash - dt * 4);
     this.stumble = Math.max(0, this.stumble - dt * 1.6);
-    this.robot.setPosition(body.center.x, body.bottom + 1);
+    // on the dunes his feet follow the smoothed slope, not the 8px steps of the columns underneath
+    const surf = this.grounded && !this.hang && this.onDuneSand() ? this.duneSurface(body.center.x) : undefined;
+    this.robot.setPosition(body.center.x, (surf ?? body.bottom) + 1);
     // cartoon squash & stretch: stretch while rising/falling fast, squash on landing
-    const grounded = body.touching.down || body.blocked.down;
+    const grounded = this.grounded;
     const stretch = this.reduced || grounded ? 0 : Phaser.Math.Clamp(Math.abs(body.velocity.y) / 1800, 0, 0.18);
     const squash = this.reduced ? 0 : this.landSquash * 0.28;
     this.duckAmt += ((this.ducked ? 1 : 0) - this.duckAmt) * Math.min(1, dt * (this.reduced ? 60 : 20));
     this.robot.setScale(this.facing * 1.15 * (1 - stretch * 0.6 + squash), 1.15 * (1 + stretch - squash) * (1 - 0.1 * this.duckAmt));
     this.spinT = Math.max(0, this.spinT - dt);
+    this.tuckT = Math.max(0, this.tuckT - dt);
     const sp = this.spinT > 0 ? 1 - this.spinT / 0.5 : 1;
     const spin = this.spinT > 0 ? Math.PI * 2 * (1 - Math.pow(1 - sp, 2)) : 0;
     // invulnerable = flicker (or steady dim when motion is reduced)
@@ -3452,9 +4079,9 @@ export class PlayScene extends Phaser.Scene {
     drawRobot(this.robot, SUITS[this.suitIdx], {
       t: this.t,
       phase: this.runPhase,
-      vx: body.velocity.x,
+      vx: this.level.style === 'ice' && grounded ? this.facing * this.footSpeed : body.velocity.x, // (on ice his legs scramble)
       vy: body.velocity.y,
-      onGround: body.touching.down || body.blocked.down,
+      onGround: grounded,
       stumble: this.stumble,
       landSquash: this.landSquash,
       spin,
@@ -3472,15 +4099,15 @@ export class PlayScene extends Phaser.Scene {
     // the art test: the Spine Iggy stands in for the drawing, except for what it has no animation (or effect) for yet
     const ig = this.iggySpine;
     if (ig) {
-      const useSpine = this.live().spineIggy && ig.has(this.suitIdx) && !this.pounding && this.dashT <= 0;
+      const useSpine = this.live().spineIggy && ig.has(this.suitIdx);
       this.robot.setVisible(!useSpine);
       this.iggyFx.clear();
       if (useSpine) {
         this.iggyFx.setPosition(this.robot.x, this.robot.y).setScale(1.15).setAlpha(this.robot.alpha);
         drawPowerFx(this.iggyFx, { t: this.t, star: this.power.star, shield: this.power.shield > 0, reduced: this.reduced });
         ig.show({
-          suit: this.suitIdx, gun: this.gun(), x: this.robot.x, y: this.robot.y, scaleX: this.robot.scaleX, scaleY: this.robot.scaleY, spin, alpha: this.robot.alpha,
-          onGround: grounded, vx: body.velocity.x, vy: body.velocity.y, duck: this.duckAmt, hanging: !!this.hang, climb: this.hang?.climb ?? -1,
+          suit: this.suitIdx, gun: this.gun(), fire: this.fireAnim, x: this.robot.x, y: this.robot.y, scaleX: this.robot.scaleX, scaleY: this.robot.scaleY, spin, alpha: this.robot.alpha,
+          onGround: grounded, vx: body.velocity.x, footSpeed: this.footSpeed, scramble: this.scrambling, vy: body.velocity.y, duck: this.duckAmt, hanging: !!this.hang, climb: this.hang?.climb ?? -1, tuck: this.tuckT > 0 && !grounded, dash: this.dashT > 0, pound: this.pounding,
         });
       } else ig.hide();
     }

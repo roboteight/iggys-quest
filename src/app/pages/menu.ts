@@ -8,7 +8,7 @@ import { dailyBoard, dailyLevel, todayKey } from '../daily';
 
 /** One accent colour per level look, used for the stripe on each level card. */
 const ACCENT: Record<string, string> = {
-  city: '#8fa1c4', hollow: '#b7a1e8', wastes: '#e08a45', drowned: '#4fd1a1', void: '#ff4fd8', spores: '#7dffc0', war: '#e0813a', plant: '#ff6a2a',
+  city: '#8fa1c4', hollow: '#b7a1e8', wastes: '#e08a45', drowned: '#4fd1a1', void: '#ff4fd8', spores: '#7dffc0', war: '#e0813a', ice: '#9fd8ff', dunes: '#e8c070', wind: '#86cdbb', locks: '#4fb39a', sky: '#8fc4ff', plant: '#ff6a2a',
 };
 
 /** A concept-art sheet in /public/art. The sheets carry their own hand-lettered labels, so the text next to them says the same in words. */
@@ -27,7 +27,7 @@ interface SuitSheet extends Omit<Sheet, 'text'> {
 
 /** Which sheet belongs to which boss, by level look. */
 const BOSS_SHEET: Record<string, string> = {
-  city: 'enforcer-nine', hollow: 'grandfather-gloom', wastes: 'dust-scorpion', drowned: 'deep-diver', void: 'neon-warden', spores: 'spore-mother', war: 'iron-marshal', plant: 'the-reclaimer',
+  city: 'enforcer-nine', hollow: 'grandfather-gloom', wastes: 'dust-scorpion', drowned: 'deep-diver', void: 'neon-warden', spores: 'spore-mother', war: 'iron-marshal', ice: 'icebreaker', dunes: 'dune-dredger', wind: 'gale-warden', locks: 'brass-kraken', sky: 'iron-albatross', plant: 'the-reclaimer',
 };
 
 /** Specific descriptions for sheets that have been looked at closely; the others fall back to the boss's one-line blurb. */
@@ -181,13 +181,13 @@ const BOSS_ALT: Record<string, string> = {
         <div class="copy">
           <p class="eyebrow">A side-scrolling robot platformer</p>
           <h1 id="title" tabindex="-1" appFocusOnLoad>Iggy’s Quest</h1>
-          <p class="tag">Help Iggy, an old and very clumsy robot, run home across eight strange worlds. Jump through rings to upgrade his suit, dodge the shells and beat every boss mech on the way.</p>
+          <p class="tag">Help Iggy, an old and very clumsy robot, run home across thirteen strange worlds. Jump through rings to upgrade his suit, dodge the shells and beat every boss mech on the way.</p>
           <div class="cta">
             <a class="btn primary big" [routerLink]="['/play', next().id]">{{ started() ? 'Continue: ' + next().name : 'Play now' }}</a>
             <a class="btn big" routerLink="/daily">Daily challenge</a>
           </div>
           <ul class="facts" aria-label="Highlights">
-            <li>8 worlds</li><li>16 kinds of enemy</li><li>8 boss mechs</li><li>5 suits</li><li>4 guns</li><li>Keyboard, gamepad and touch</li><li>Works offline</li>
+            <li>13 worlds</li><li>16 kinds of enemy</li><li>13 boss mechs</li><li>5 suits</li><li>4 guns</li><li>Keyboard, gamepad and touch</li><li>Works offline</li>
           </ul>
         </div>
         <figure class="plate" (mouseenter)="hold = true" (mouseleave)="hold = false" (focusin)="hold = true" (focusout)="hold = false">
@@ -494,7 +494,7 @@ export class MenuPage implements OnInit, OnDestroy {
   }));
 
   protected readonly features: { icon: string; title: string; text: string }[] = [
-    { icon: '8', title: 'Eight strange worlds', text: 'From rain-soaked rooftops to a drowned city, a neon void, a smoking trench line and the furnace at the end of the road.' },
+    { icon: '13', title: 'Thirteen strange worlds', text: 'Rooftops and trenches, ice, glass dunes, a wind-torn gorge, flooded locks, docks in the sky, and the furnace at the end of the road.' },
     { icon: '★', title: 'A boss mech at every end', text: 'Each one attacks differently and has its own music. Power-ups drop from the sky.' },
     { icon: '↑', title: 'Upgrade the suit', text: 'Jump through rings to earn five suits, then dash, ground-pound and glide.' },
     { icon: '?', title: 'Secrets everywhere', text: 'Hidden paths, golden breadboards and perfect-run fireworks for the thorough.' },

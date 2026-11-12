@@ -49,7 +49,7 @@ import { ACTIONS, Action, RESERVED_KEYS, SettingsService, keyLabel, keySpoken } 
     <fieldset>
       <legend>Art test</legend>
       <label><input type="checkbox" [checked]="s().spineIggy" (change)="svc.update({ spineIggy: $any($event.target).checked })" /> Use the new Iggy</label>
-      <p class="hint">A test of Iggy redrawn from his concept art. For moves the new Iggy can’t do yet (dashing and ground pounding), the old Iggy appears. Takes effect straight away.</p>
+      <p class="hint">Iggy redrawn from his concept art. Turn it off to see the original drawn robot. Takes effect straight away.</p>
     </fieldset>
 
     <fieldset>

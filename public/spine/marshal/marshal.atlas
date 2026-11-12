@@ -1,0 +1,14 @@
+marshal.png
+size:352,245
+filter:Linear,Linear
+pma:true
+scale:0.4
+cannon
+bounds:282,127,116,33
+rotate:90
+clawArm
+bounds:282,15,68,47
+head
+bounds:282,64,61,61
+rest
+bounds:2,2,278,241

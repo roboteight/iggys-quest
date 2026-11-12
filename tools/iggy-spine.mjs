@@ -115,6 +115,33 @@ const fall = (u) => {
     upperArmL: { r: 75 + 6 * Math.sin(a) }, foreArmL: { r: 20 }, upperArmR: { r: 60 + 6 * Math.sin(a + 1.5) }, foreArmR: { r: 25 },
   };
 };
+/** the double jump: knees pulled up to his chest, arms wrapped round them, head down (it plays through the flip) */
+const tuck = (u) => {
+  const a = u * Math.PI * 2;
+  return {
+    hip: { r: 0, x: 0, y: 60 }, torso: { r: -16, x: 0, y: 0 }, head: { r: 14 + 2 * Math.sin(a) },
+    thighL: { r: 98 }, shinL: { r: -138 }, thighR: { r: 90 }, shinR: { r: -128 },
+    upperArmL: { r: 34 }, foreArmL: { r: 62 }, upperArmR: { r: 26 }, foreArmR: { r: 58 },
+  };
+};
+/** the dash: a low forward lunge, front leg reaching, back leg trailing, arms swept back */
+const dash = (u) => {
+  const a = u * Math.PI * 2;
+  return {
+    hip: { r: 0, x: 0, y: -24 }, torso: { r: -20, x: 0, y: 0 }, head: { r: -6 }, // (a negative turn tips his body forward)
+    thighL: { r: 30 }, shinL: { r: -22 }, thighR: { r: -28 }, shinR: { r: -46 },
+    upperArmL: { r: -62 + 4 * Math.sin(a * 2) }, foreArmL: { r: -20 }, upperArmR: { r: -70 + 4 * Math.sin(a * 2 + 1) }, foreArmR: { r: -24 },
+  };
+};
+/** the ground pound: dropping fist-first, knees up, arms thrust down below him */
+const pound = (u) => {
+  const a = u * Math.PI * 2;
+  return {
+    hip: { r: 0, x: 0, y: 30 }, torso: { r: 10, x: 0, y: 0 }, head: { r: 12 },
+    thighL: { r: 70 }, shinL: { r: -110 }, thighR: { r: 64 }, shinR: { r: -100 },
+    upperArmL: { r: 8 + 3 * Math.sin(a * 3) }, foreArmL: { r: 6 }, upperArmR: { r: 4 + 3 * Math.sin(a * 3 + 1) }, foreArmR: { r: 4 },
+  };
+};
 const duck = (u) => {
   const a = u * Math.PI * 2;
   // thigh forward and shin back so the boot stays under the hip: knee at ~70 degrees
@@ -216,7 +243,15 @@ for (const k of GUNS) {
 // the game fires from 50 px ahead of his middle at 36 px up: reach the blaster's muzzle as close to that as the arm allows
 const bl = meta['gun-blaster'];
 const MUZZLE = [50 / GAME, 36 / GAME], GUN_LEN = (bl.w - bl.grip[0]) * bl.scale;
-const aim = () => reachTo(ARMS.L, [MUZZLE[0] - GUN_LEN, MUZZLE[1] - 15], 0);
+// aiming: the near arm held straight out in front at shoulder height (a quarter turn up from hanging), the far arm braced
+// forward, the body squared up behind it
+const AIM = { upperArmL: { r: 90 }, foreArmL: { r: -2 }, upperArmR: { r: 38 }, foreArmR: { r: 46 }, torso: { r: 3, x: 0, y: 0 } };
+const aim = () => AIM;
+// a shot: the arm kicks up and back, then settles (played once over the aim)
+const shoot = (u) => {
+  const k = Math.sin(Math.PI * Math.min(1, u * 1.6)) * (1 - u);
+  return { ...AIM, upperArmL: { r: 90 + 16 * k }, foreArmL: { r: -2 + 10 * k }, torso: { r: 3 + 4 * k, x: -6 * k, y: 0 } };
+};
 
 function animation(dur, n, pose, loop = true) {
   const anim = {};
@@ -247,9 +282,13 @@ const skeleton = {
     jump: animation(0.6, 6, jump),
     fall: animation(0.6, 6, fall),
     duck: animation(1.6, 8, duck),
+    tuck: animation(0.6, 4, tuck), // the double jump
+    dash: animation(0.3, 4, dash),
+    pound: animation(0.3, 4, pound),
     hang: animation(2, 8, hang),
     climb: animation(CLIMB_TIME, 14, climb, false), // the game sets its time from the climb's progress
     aim: animation(1, 1, aim), // track 1, over the others, while he holds a gun
+    shoot: animation(0.18, 6, shoot, false), // track 1, once per shot
   },
 };
 const file = join(dir, `${cfg.name}.json`);

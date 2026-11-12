@@ -1,0 +1,580 @@
+{
+ "skeleton": {
+  "spine": "4.3.26",
+  "images": "./images/",
+  "x": -458,
+  "y": -12,
+  "width": 764,
+  "height": 589
+ },
+ "bones": [
+  {
+   "name": "root"
+  },
+  {
+   "name": "hull",
+   "parent": "root",
+   "x": 0,
+   "y": 5
+  },
+  {
+   "name": "wheel",
+   "parent": "hull",
+   "x": -338,
+   "y": 152
+  },
+  {
+   "name": "engine",
+   "parent": "hull",
+   "x": 182,
+   "y": 243
+  }
+ ],
+ "slots": [
+  {
+   "name": "wheel",
+   "bone": "wheel",
+   "attachment": "wheel"
+  },
+  {
+   "name": "rest",
+   "bone": "hull",
+   "attachment": "rest"
+  },
+  {
+   "name": "engine",
+   "bone": "engine"
+  }
+ ],
+ "skins": [
+  {
+   "name": "default",
+   "attachments": {
+    "wheel": {
+     "wheel": {
+      "x": 3,
+      "y": 3.5,
+      "width": 246,
+      "height": 267
+     }
+    },
+    "rest": {
+     "rest": {
+      "x": -19,
+      "y": 277.5,
+      "width": 650,
+      "height": 589
+     }
+    },
+    "engine": {
+     "engineHot": {
+      "x": 0.41,
+      "y": -2.46,
+      "scaleX": 0.82,
+      "scaleY": 0.82,
+      "width": 121,
+      "height": 144
+     }
+    }
+   }
+  }
+ ],
+ "animations": {
+  "idle": {
+   "bones": {
+    "hull": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.2,
+       "value": 0.28
+      },
+      {
+       "time": 0.4,
+       "value": 0.4
+      },
+      {
+       "time": 0.6,
+       "value": 0.28
+      },
+      {
+       "time": 0.8,
+       "value": 0
+      },
+      {
+       "time": 1,
+       "value": -0.28
+      },
+      {
+       "time": 1.2,
+       "value": -0.4
+      },
+      {
+       "time": 1.4,
+       "value": -0.28
+      },
+      {
+       "time": 1.6,
+       "value": 0
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.2,
+       "x": 0,
+       "y": 1.41
+      },
+      {
+       "time": 0.4,
+       "x": 0,
+       "y": 2
+      },
+      {
+       "time": 0.6,
+       "x": 0,
+       "y": 1.41
+      },
+      {
+       "time": 0.8,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1,
+       "x": 0,
+       "y": -1.41
+      },
+      {
+       "time": 1.2,
+       "x": 0,
+       "y": -2
+      },
+      {
+       "time": 1.4,
+       "x": 0,
+       "y": -1.41
+      },
+      {
+       "time": 1.6,
+       "x": 0,
+       "y": 0
+      }
+     ]
+    },
+    "wheel": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.2,
+       "value": 4.24
+      },
+      {
+       "time": 0.4,
+       "value": 6
+      },
+      {
+       "time": 0.6,
+       "value": 4.24
+      },
+      {
+       "time": 0.8,
+       "value": 0
+      },
+      {
+       "time": 1,
+       "value": -4.24
+      },
+      {
+       "time": 1.2,
+       "value": -6
+      },
+      {
+       "time": 1.4,
+       "value": -4.24
+      },
+      {
+       "time": 1.6,
+       "value": 0
+      }
+     ]
+    }
+   },
+   "slots": {
+    "engine": {
+     "attachment": [
+      {
+       "name": null
+      }
+     ]
+    }
+   }
+  },
+  "walk": {
+   "bones": {
+    "hull": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.1,
+       "value": 0.8
+      },
+      {
+       "time": 0.2,
+       "value": 0
+      },
+      {
+       "time": 0.3,
+       "value": -0.8
+      },
+      {
+       "time": 0.4,
+       "value": 0
+      },
+      {
+       "time": 0.5,
+       "value": 0.8
+      },
+      {
+       "time": 0.6,
+       "value": 0
+      },
+      {
+       "time": 0.7,
+       "value": -0.8
+      },
+      {
+       "time": 0.8,
+       "value": 0
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.1,
+       "x": 0,
+       "y": 3
+      },
+      {
+       "time": 0.2,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.3,
+       "x": 0,
+       "y": 3
+      },
+      {
+       "time": 0.4,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.5,
+       "x": 0,
+       "y": 3
+      },
+      {
+       "time": 0.6,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.7,
+       "x": 0,
+       "y": 3
+      },
+      {
+       "time": 0.8,
+       "x": 0,
+       "y": 0
+      }
+     ]
+    },
+    "wheel": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.1,
+       "value": 9.9
+      },
+      {
+       "time": 0.2,
+       "value": 14
+      },
+      {
+       "time": 0.3,
+       "value": 9.9
+      },
+      {
+       "time": 0.4,
+       "value": 0
+      },
+      {
+       "time": 0.5,
+       "value": -9.9
+      },
+      {
+       "time": 0.6,
+       "value": -14
+      },
+      {
+       "time": 0.7,
+       "value": -9.9
+      },
+      {
+       "time": 0.8,
+       "value": 0
+      }
+     ]
+    }
+   },
+   "slots": {
+    "engine": {
+     "attachment": [
+      {
+       "name": null
+      }
+     ]
+    }
+   }
+  },
+  "charge": {
+   "bones": {
+    "hull": {
+     "rotate": [
+      {
+       "value": -3
+      },
+      {
+       "time": 0.07,
+       "value": -2.31
+      },
+      {
+       "time": 0.13,
+       "value": -3.69
+      },
+      {
+       "time": 0.2,
+       "value": -3
+      },
+      {
+       "time": 0.27,
+       "value": -2.31
+      },
+      {
+       "time": 0.33,
+       "value": -3.69
+      },
+      {
+       "time": 0.4,
+       "value": -3
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 4
+      },
+      {
+       "time": 0.07,
+       "x": 0,
+       "y": 4
+      },
+      {
+       "time": 0.13,
+       "x": 0,
+       "y": 4
+      },
+      {
+       "time": 0.2,
+       "x": 0,
+       "y": 4
+      },
+      {
+       "time": 0.27,
+       "x": 0,
+       "y": 4
+      },
+      {
+       "time": 0.33,
+       "x": 0,
+       "y": 4
+      },
+      {
+       "time": 0.4,
+       "x": 0,
+       "y": 4
+      }
+     ]
+    },
+    "wheel": {
+     "rotate": [
+      {
+       "value": -20
+      },
+      {
+       "time": 0.07,
+       "value": -6.14
+      },
+      {
+       "time": 0.13,
+       "value": -33.86
+      },
+      {
+       "time": 0.2,
+       "value": -20
+      },
+      {
+       "time": 0.27,
+       "value": -6.14
+      },
+      {
+       "time": 0.33,
+       "value": -33.86
+      },
+      {
+       "time": 0.4,
+       "value": -20
+      }
+     ]
+    }
+   },
+   "slots": {
+    "engine": {
+     "attachment": [
+      {
+       "name": null
+      }
+     ]
+    }
+   }
+  },
+  "stunned": {
+   "bones": {
+    "hull": {
+     "rotate": [
+      {
+       "value": 4
+      },
+      {
+       "time": 0.17,
+       "value": 4.87
+      },
+      {
+       "time": 0.33,
+       "value": 4.87
+      },
+      {
+       "time": 0.5,
+       "value": 4
+      },
+      {
+       "time": 0.67,
+       "value": 3.13
+      },
+      {
+       "time": 0.83,
+       "value": 3.13
+      },
+      {
+       "time": 1,
+       "value": 4
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": -4
+      },
+      {
+       "time": 0.17,
+       "x": 0,
+       "y": -4
+      },
+      {
+       "time": 0.33,
+       "x": 0,
+       "y": -4
+      },
+      {
+       "time": 0.5,
+       "x": 0,
+       "y": -4
+      },
+      {
+       "time": 0.67,
+       "x": 0,
+       "y": -4
+      },
+      {
+       "time": 0.83,
+       "x": 0,
+       "y": -4
+      },
+      {
+       "time": 1,
+       "x": 0,
+       "y": -4
+      }
+     ]
+    },
+    "wheel": {
+     "rotate": [
+      {
+       "value": 12
+      },
+      {
+       "time": 0.17,
+       "value": 12
+      },
+      {
+       "time": 0.33,
+       "value": 12
+      },
+      {
+       "time": 0.5,
+       "value": 12
+      },
+      {
+       "time": 0.67,
+       "value": 12
+      },
+      {
+       "time": 0.83,
+       "value": 12
+      },
+      {
+       "time": 1,
+       "value": 12
+      }
+     ]
+    }
+   },
+   "slots": {
+    "engine": {
+     "attachment": [
+      {
+       "name": "engineHot"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

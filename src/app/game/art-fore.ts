@@ -68,6 +68,29 @@ const DRAW: Record<LevelStyle, Draw> = {
       for (let k = 0; k < 4; k++) g.lineBetween(x + 14 + k * 22, H - 38, x + 22 + k * 22, H - 22);
     }
   },
+  // icicles along the top, snow banks along the bottom
+  ice: (g, r) => {
+    for (let i = 0; i < 26; i++) { const x = r() * W, l = 14 + r() * 50; g.fillStyle(0xd8f0ff, 0.9).fillTriangle(x, 0, x + 10, 0, x + 5, l); }
+    for (let i = 0; i < 10; i++) g.fillStyle(0xeaf6ff, 1).fillEllipse(i * 100 + r() * 40, H, 150, 40 + r() * 20);
+  },
+  // glass shards and dune lips along the bottom
+  dunes: (g, r) => {
+    for (let i = 0; i < 10; i++) g.fillStyle(0x8a6a3a, 1).fillEllipse(i * 100 + r() * 40, H + 6, 180, 44 + r() * 20);
+    for (let i = 0; i < 12; i++) { const x = r() * W; g.fillStyle(0xbfe8ff, 0.8).fillTriangle(x, H - 10, x + 6, H - 30, x + 12, H - 10); }
+  },
+  // rock edges at the top and bottom
+  wind: (g, r) => {
+    for (let i = 0; i < 8; i++) { const x = i * 130 + r() * 40; g.fillStyle(0x101a17, 1).fillTriangle(x, 0, x + 90, 0, x + 40, 30 + r() * 30); g.fillTriangle(x, H, x + 100, H, x + 50, H - 24 - r() * 20); }
+  },
+  // dripping chains at the top, water along the bottom
+  locks: (g, r) => {
+    for (let i = 0; i < 6; i++) { const x = 80 + i * 160 + r() * 40, h = 40 + r() * 60; g.lineStyle(3, 0x08140f, 1).lineBetween(x, 0, x, h); g.fillStyle(0xb8f0d0, 0.7).fillCircle(x, h + 6, 2.5); }
+    g.fillStyle(0x0d2a22, 0.9).fillRect(0, H - 10, W, 10);
+  },
+  // wisps of cloud at the edges
+  sky: (g, r) => {
+    for (let i = 0; i < 9; i++) { g.fillStyle(0xffffff, 0.55).fillEllipse(i * 120 + r() * 40, H + 10, 200, 60); g.fillStyle(0xffffff, 0.35).fillEllipse(i * 120 + r() * 40, -10, 160, 40); }
+  },
   // chains and hooks hanging from the roof, a row of glowing slag spatter along the bottom
   plant: (g, r) => {
     for (let i = 0; i < 6; i++) {

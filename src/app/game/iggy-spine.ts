@@ -36,19 +36,31 @@ export interface IggyState {
   onGround: boolean;
   vx: number;
   vy: number;
+  /** how fast his feet run (usually his speed; on ice faster while he scrambles for grip, 0 while he glides) */
+  footSpeed: number;
+  /** scrambling on ice: his body wobbles too */
+  scramble: boolean;
   duck: number; // 0..1
   /** hanging from a roof edge: -1 = not hanging, 0 = just hanging, 0..1 = how far through climbing up */
   climb: number;
   hanging: boolean;
+  /** curled up in the double jump */
+  tuck: boolean;
+  /** the Steel Sentinel's dash and the Night Guardian's ground pound */
+  dash: boolean;
+  pound: boolean;
   /** the gun he holds: 0 none, 1 Blaster, 2 Twin blaster, 3 Spread gun, 4 Rocket launcher (the near arm aims it; both hands are
    *  needed to hang, so it is put away then) */
   gun: number;
+  /** 1 the moment he fires, easing back to 0 (the recoil) */
+  fire: number;
 }
 
 export class IggySpine {
   private shown = -1;
   /** the gun picture each skeleton is showing ('' = none) */
   private held = new Map<SpineGameObject, string>();
+  private lastFire = 0;
   private constructor(private readonly suits: (SpineGameObject | undefined)[]) {}
 
   /** One skeleton per suit; a suit whose files didn't load is left out (the drawn robot stands in for it). */
@@ -88,11 +100,11 @@ export class IggySpine {
       this.shown = p.suit;
     }
     const climbing = p.hanging && p.climb >= 0;
-    const anim = climbing ? 'climb' : p.hanging ? 'hang' : p.duck > 0.5 ? 'duck' : !p.onGround ? (p.vy < 0 ? 'jump' : 'fall') : Math.abs(p.vx) > 25 ? 'run' : 'idle';
+    const anim = climbing ? 'climb' : p.hanging ? 'hang' : p.dash ? 'dash' : p.pound ? 'pound' : p.tuck ? 'tuck' : p.duck > 0.5 ? 'duck' : !p.onGround ? (p.vy < 0 ? 'jump' : 'fall') : p.footSpeed > 25 ? 'run' : 'idle';
     let cur = s.animationState.getTrack(0);
     if (cur?.animation?.name !== anim) cur = s.animationState.setAnimation(0, anim, !climbing);
     // the run is one full stride a second, and the drawn Iggy takes one stride every 70 pixels: keep the feet in step with the ground
-    s.animationState.timeScale = anim === 'run' ? Math.abs(p.vx) / 70 : 1;
+    s.animationState.timeScale = anim === 'run' ? p.footSpeed / 70 : 1;
     if (climbing && cur?.animation) {
       // the climb follows the game's climb exactly (its hands stay on the roof while the game lifts him)
       cur.timeScale = 0;
@@ -106,11 +118,18 @@ export class IggySpine {
       s.skeleton.setAttachment('gun', gun || null);
       this.held.set(s, gun);
     }
+    // each shot: a quick kick of the arm, then back to aiming
+    if (gun && p.fire > 0.9 && this.lastFire <= 0.9) {
+      s.animationState.setAnimation(1, 'shoot', false);
+      s.animationState.addAnimation(1, 'aim', true, 0);
+    }
+    this.lastFire = p.fire;
     // turn around the robot's flip point, not the feet. The robot spins inside its own (flipped) drawing, so facing left
     // reverses the turn on screen; this object's rotation comes after its flip, so match that by hand
     const rot = p.spin * Math.sign(p.scaleX || 1), c = Math.cos(rot), sn = Math.sin(rot);
     s.setPosition(p.x - sn * SPIN_Y, p.y - SPIN_Y + c * SPIN_Y);
-    s.setRotation(rot);
+    // scrambling on ice: a quick wobble as his feet fight for grip
+    s.setRotation(rot + (p.scramble ? Math.sin(performance.now() / 45) * 0.07 : 0));
     s.setScale(p.scaleX * SCALE, p.scaleY * SCALE);
     s.setAlpha(p.alpha);
   }

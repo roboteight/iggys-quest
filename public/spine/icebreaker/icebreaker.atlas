@@ -1,0 +1,15 @@
+icebreaker.png
+size:369,293
+filter:Linear,Linear
+pma:true
+scale:0.5
+hatchOpen
+bounds:293,151,49,53
+prow
+bounds:293,206,85,74
+rotate:90
+rest
+bounds:2,2,289,289
+turret
+bounds:293,102,47,21
+rotate:90

@@ -1,0 +1,1289 @@
+{
+ "skeleton": {
+  "spine": "4.3.26",
+  "images": "./images/",
+  "x": -320,
+  "y": -33,
+  "width": 690,
+  "height": 811
+ },
+ "bones": [
+  {
+   "name": "root"
+  },
+  {
+   "name": "body",
+   "parent": "root",
+   "x": 0,
+   "y": 0
+  },
+  {
+   "name": "gunArm",
+   "parent": "body",
+   "x": -145,
+   "y": 538
+  },
+  {
+   "name": "clawArm",
+   "parent": "body",
+   "x": 132,
+   "y": 448
+  },
+  {
+   "name": "legL",
+   "parent": "root",
+   "x": -110,
+   "y": 268
+  },
+  {
+   "name": "legR",
+   "parent": "root",
+   "x": 122,
+   "y": 268,
+   "scaleY": 1.218
+  }
+ ],
+ "slots": [
+  {
+   "name": "clawArm",
+   "bone": "clawArm",
+   "attachment": "clawArm"
+  },
+  {
+   "name": "legR",
+   "bone": "legR",
+   "attachment": "legR"
+  },
+  {
+   "name": "rest",
+   "bone": "body",
+   "attachment": "rest"
+  },
+  {
+   "name": "legL",
+   "bone": "legL",
+   "attachment": "legL"
+  },
+  {
+   "name": "gunArm",
+   "bone": "gunArm",
+   "attachment": "gunArm"
+  }
+ ],
+ "skins": [
+  {
+   "name": "default",
+   "attachments": {
+    "clawArm": {
+     "clawArm": {
+      "x": 108.5,
+      "y": -51,
+      "width": 259,
+      "height": 164
+     }
+    },
+    "legR": {
+     "legR": {
+      "x": 8,
+      "y": -106.5,
+      "width": 188,
+      "height": 227
+     }
+    },
+    "rest": {
+     "rest": {
+      "x": 30.5,
+      "y": 372.5,
+      "width": 617,
+      "height": 811
+     }
+    },
+    "legL": {
+     "legL": {
+      "x": -24,
+      "y": -136.5,
+      "width": 192,
+      "height": 287
+     }
+    },
+    "gunArm": {
+     "gunArm": {
+      "x": 6,
+      "y": -133,
+      "width": 362,
+      "height": 288
+     }
+    }
+   }
+  }
+ ],
+ "animations": {
+  "idle": {
+   "bones": {
+    "legR": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.18,
+       "value": 0
+      },
+      {
+       "time": 0.37,
+       "value": 0
+      },
+      {
+       "time": 0.55,
+       "value": 0
+      },
+      {
+       "time": 0.73,
+       "value": 0
+      },
+      {
+       "time": 0.92,
+       "value": 0
+      },
+      {
+       "time": 1.1,
+       "value": 0
+      },
+      {
+       "time": 1.28,
+       "value": 0
+      },
+      {
+       "time": 1.47,
+       "value": 0
+      },
+      {
+       "time": 1.65,
+       "value": 0
+      },
+      {
+       "time": 1.83,
+       "value": 0
+      },
+      {
+       "time": 2.02,
+       "value": 0
+      },
+      {
+       "time": 2.2,
+       "value": 0
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.18,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.37,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.55,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.73,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.92,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1.1,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1.28,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1.47,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1.65,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1.83,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 2.02,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 2.2,
+       "x": 0,
+       "y": 0
+      }
+     ]
+    },
+    "body": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.18,
+       "value": 0.3
+      },
+      {
+       "time": 0.37,
+       "value": 0.52
+      },
+      {
+       "time": 0.55,
+       "value": 0.6
+      },
+      {
+       "time": 0.73,
+       "value": 0.52
+      },
+      {
+       "time": 0.92,
+       "value": 0.3
+      },
+      {
+       "time": 1.1,
+       "value": 0
+      },
+      {
+       "time": 1.28,
+       "value": -0.3
+      },
+      {
+       "time": 1.47,
+       "value": -0.52
+      },
+      {
+       "time": 1.65,
+       "value": -0.6
+      },
+      {
+       "time": 1.83,
+       "value": -0.52
+      },
+      {
+       "time": 2.02,
+       "value": -0.3
+      },
+      {
+       "time": 2.2,
+       "value": 0
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.18,
+       "x": 0,
+       "y": 1.5
+      },
+      {
+       "time": 0.37,
+       "x": 0,
+       "y": 2.6
+      },
+      {
+       "time": 0.55,
+       "x": 0,
+       "y": 3
+      },
+      {
+       "time": 0.73,
+       "x": 0,
+       "y": 2.6
+      },
+      {
+       "time": 0.92,
+       "x": 0,
+       "y": 1.5
+      },
+      {
+       "time": 1.1,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1.28,
+       "x": 0,
+       "y": -1.5
+      },
+      {
+       "time": 1.47,
+       "x": 0,
+       "y": -2.6
+      },
+      {
+       "time": 1.65,
+       "x": 0,
+       "y": -3
+      },
+      {
+       "time": 1.83,
+       "x": 0,
+       "y": -2.6
+      },
+      {
+       "time": 2.02,
+       "x": 0,
+       "y": -1.5
+      },
+      {
+       "time": 2.2,
+       "x": 0,
+       "y": 0
+      }
+     ]
+    },
+    "gunArm": {
+     "rotate": [
+      {
+       "value": 2.85
+      },
+      {
+       "time": 0.18,
+       "value": 2.93
+      },
+      {
+       "time": 0.37,
+       "value": 2.23
+      },
+      {
+       "time": 0.55,
+       "value": 0.93
+      },
+      {
+       "time": 0.73,
+       "value": -0.62
+      },
+      {
+       "time": 0.92,
+       "value": -2.01
+      },
+      {
+       "time": 1.1,
+       "value": -2.85
+      },
+      {
+       "time": 1.28,
+       "value": -2.93
+      },
+      {
+       "time": 1.47,
+       "value": -2.23
+      },
+      {
+       "time": 1.65,
+       "value": -0.93
+      },
+      {
+       "time": 1.83,
+       "value": 0.62
+      },
+      {
+       "time": 2.02,
+       "value": 2.01
+      },
+      {
+       "time": 2.2,
+       "value": 2.85
+      }
+     ]
+    },
+    "clawArm": {
+     "rotate": [
+      {
+       "value": -2.35
+      },
+      {
+       "time": 0.18,
+       "value": -0.42
+      },
+      {
+       "time": 0.37,
+       "value": 1.63
+      },
+      {
+       "time": 0.55,
+       "value": 3.24
+      },
+      {
+       "time": 0.73,
+       "value": 3.98
+      },
+      {
+       "time": 0.92,
+       "value": 3.65
+      },
+      {
+       "time": 1.1,
+       "value": 2.35
+      },
+      {
+       "time": 1.28,
+       "value": 0.42
+      },
+      {
+       "time": 1.47,
+       "value": -1.63
+      },
+      {
+       "time": 1.65,
+       "value": -3.24
+      },
+      {
+       "time": 1.83,
+       "value": -3.98
+      },
+      {
+       "time": 2.02,
+       "value": -3.65
+      },
+      {
+       "time": 2.2,
+       "value": -2.35
+      }
+     ]
+    }
+   }
+  },
+  "walk": {
+   "bones": {
+    "body": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.1,
+       "value": 1.3
+      },
+      {
+       "time": 0.2,
+       "value": 1.3
+      },
+      {
+       "time": 0.3,
+       "value": 0
+      },
+      {
+       "time": 0.4,
+       "value": -1.3
+      },
+      {
+       "time": 0.5,
+       "value": -1.3
+      },
+      {
+       "time": 0.6,
+       "value": 0
+      },
+      {
+       "time": 0.7,
+       "value": 1.3
+      },
+      {
+       "time": 0.8,
+       "value": 1.3
+      },
+      {
+       "time": 0.9,
+       "value": 0
+      },
+      {
+       "time": 1,
+       "value": -1.3
+      },
+      {
+       "time": 1.1,
+       "value": -1.3
+      },
+      {
+       "time": 1.2,
+       "value": 0
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.1,
+       "x": 0,
+       "y": -3
+      },
+      {
+       "time": 0.2,
+       "x": 0,
+       "y": -5.2
+      },
+      {
+       "time": 0.3,
+       "x": 0,
+       "y": -6
+      },
+      {
+       "time": 0.4,
+       "x": 0,
+       "y": -5.2
+      },
+      {
+       "time": 0.5,
+       "x": 0,
+       "y": -3
+      },
+      {
+       "time": 0.6,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.7,
+       "x": 0,
+       "y": -3
+      },
+      {
+       "time": 0.8,
+       "x": 0,
+       "y": -5.2
+      },
+      {
+       "time": 0.9,
+       "x": 0,
+       "y": -6
+      },
+      {
+       "time": 1,
+       "x": 0,
+       "y": -5.2
+      },
+      {
+       "time": 1.1,
+       "x": 0,
+       "y": -3
+      },
+      {
+       "time": 1.2,
+       "x": 0,
+       "y": 0
+      }
+     ]
+    },
+    "legL": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.1,
+       "value": 6
+      },
+      {
+       "time": 0.2,
+       "value": 10.39
+      },
+      {
+       "time": 0.3,
+       "value": 12
+      },
+      {
+       "time": 0.4,
+       "value": 10.39
+      },
+      {
+       "time": 0.5,
+       "value": 6
+      },
+      {
+       "time": 0.6,
+       "value": 0
+      },
+      {
+       "time": 0.7,
+       "value": -6
+      },
+      {
+       "time": 0.8,
+       "value": -10.39
+      },
+      {
+       "time": 0.9,
+       "value": -12
+      },
+      {
+       "time": 1,
+       "value": -10.39
+      },
+      {
+       "time": 1.1,
+       "value": -6
+      },
+      {
+       "time": 1.2,
+       "value": 0
+      }
+     ]
+    },
+    "legR": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.1,
+       "value": -6
+      },
+      {
+       "time": 0.2,
+       "value": -10.39
+      },
+      {
+       "time": 0.3,
+       "value": -12
+      },
+      {
+       "time": 0.4,
+       "value": -10.39
+      },
+      {
+       "time": 0.5,
+       "value": -6
+      },
+      {
+       "time": 0.6,
+       "value": 0
+      },
+      {
+       "time": 0.7,
+       "value": 6
+      },
+      {
+       "time": 0.8,
+       "value": 10.39
+      },
+      {
+       "time": 0.9,
+       "value": 12
+      },
+      {
+       "time": 1,
+       "value": 10.39
+      },
+      {
+       "time": 1.1,
+       "value": 6
+      },
+      {
+       "time": 1.2,
+       "value": 0
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.1,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.2,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.3,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.4,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.5,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.6,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.7,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.8,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.9,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1.1,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1.2,
+       "x": 0,
+       "y": 0
+      }
+     ]
+    },
+    "gunArm": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.1,
+       "value": -2.5
+      },
+      {
+       "time": 0.2,
+       "value": -4.33
+      },
+      {
+       "time": 0.3,
+       "value": -5
+      },
+      {
+       "time": 0.4,
+       "value": -4.33
+      },
+      {
+       "time": 0.5,
+       "value": -2.5
+      },
+      {
+       "time": 0.6,
+       "value": 0
+      },
+      {
+       "time": 0.7,
+       "value": 2.5
+      },
+      {
+       "time": 0.8,
+       "value": 4.33
+      },
+      {
+       "time": 0.9,
+       "value": 5
+      },
+      {
+       "time": 1,
+       "value": 4.33
+      },
+      {
+       "time": 1.1,
+       "value": 2.5
+      },
+      {
+       "time": 1.2,
+       "value": 0
+      }
+     ]
+    },
+    "clawArm": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.1,
+       "value": 3
+      },
+      {
+       "time": 0.2,
+       "value": 5.2
+      },
+      {
+       "time": 0.3,
+       "value": 6
+      },
+      {
+       "time": 0.4,
+       "value": 5.2
+      },
+      {
+       "time": 0.5,
+       "value": 3
+      },
+      {
+       "time": 0.6,
+       "value": 0
+      },
+      {
+       "time": 0.7,
+       "value": -3
+      },
+      {
+       "time": 0.8,
+       "value": -5.2
+      },
+      {
+       "time": 0.9,
+       "value": -6
+      },
+      {
+       "time": 1,
+       "value": -5.2
+      },
+      {
+       "time": 1.1,
+       "value": -3
+      },
+      {
+       "time": 1.2,
+       "value": 0
+      }
+     ]
+    }
+   }
+  },
+  "charge": {
+   "bones": {
+    "legR": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.08,
+       "value": 0
+      },
+      {
+       "time": 0.17,
+       "value": 0
+      },
+      {
+       "time": 0.25,
+       "value": 0
+      },
+      {
+       "time": 0.33,
+       "value": 0
+      },
+      {
+       "time": 0.42,
+       "value": 0
+      },
+      {
+       "time": 0.5,
+       "value": 0
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.08,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.17,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.25,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.33,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.42,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.5,
+       "x": 0,
+       "y": 0
+      }
+     ]
+    },
+    "body": {
+     "rotate": [
+      {
+       "value": 3
+      },
+      {
+       "time": 0.08,
+       "value": 3
+      },
+      {
+       "time": 0.17,
+       "value": 3
+      },
+      {
+       "time": 0.25,
+       "value": 3
+      },
+      {
+       "time": 0.33,
+       "value": 3
+      },
+      {
+       "time": 0.42,
+       "value": 3
+      },
+      {
+       "time": 0.5,
+       "value": 3
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 4
+      },
+      {
+       "time": 0.08,
+       "x": 0,
+       "y": 4
+      },
+      {
+       "time": 0.17,
+       "x": 0,
+       "y": 4
+      },
+      {
+       "time": 0.25,
+       "x": 0,
+       "y": 4
+      },
+      {
+       "time": 0.33,
+       "x": 0,
+       "y": 4
+      },
+      {
+       "time": 0.42,
+       "x": 0,
+       "y": 4
+      },
+      {
+       "time": 0.5,
+       "x": 0,
+       "y": 4
+      }
+     ]
+    },
+    "gunArm": {
+     "rotate": [
+      {
+       "value": 20
+      },
+      {
+       "time": 0.08,
+       "value": 20
+      },
+      {
+       "time": 0.17,
+       "value": 20
+      },
+      {
+       "time": 0.25,
+       "value": 20
+      },
+      {
+       "time": 0.33,
+       "value": 20
+      },
+      {
+       "time": 0.42,
+       "value": 20
+      },
+      {
+       "time": 0.5,
+       "value": 20
+      }
+     ]
+    },
+    "clawArm": {
+     "rotate": [
+      {
+       "value": 12
+      },
+      {
+       "time": 0.08,
+       "value": 12
+      },
+      {
+       "time": 0.17,
+       "value": 12
+      },
+      {
+       "time": 0.25,
+       "value": 12
+      },
+      {
+       "time": 0.33,
+       "value": 12
+      },
+      {
+       "time": 0.42,
+       "value": 12
+      },
+      {
+       "time": 0.5,
+       "value": 12
+      }
+     ]
+    }
+   }
+  },
+  "stunned": {
+   "bones": {
+    "legR": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.17,
+       "value": 0
+      },
+      {
+       "time": 0.33,
+       "value": 0
+      },
+      {
+       "time": 0.5,
+       "value": 0
+      },
+      {
+       "time": 0.67,
+       "value": 0
+      },
+      {
+       "time": 0.83,
+       "value": 0
+      },
+      {
+       "time": 1,
+       "value": 0
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.17,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.33,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.5,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.67,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.83,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1,
+       "x": 0,
+       "y": 0
+      }
+     ]
+    },
+    "body": {
+     "rotate": [
+      {
+       "value": -5
+      },
+      {
+       "time": 0.17,
+       "value": -4.13
+      },
+      {
+       "time": 0.33,
+       "value": -4.13
+      },
+      {
+       "time": 0.5,
+       "value": -5
+      },
+      {
+       "time": 0.67,
+       "value": -5.87
+      },
+      {
+       "time": 0.83,
+       "value": -5.87
+      },
+      {
+       "time": 1,
+       "value": -5
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": -10
+      },
+      {
+       "time": 0.17,
+       "x": 0,
+       "y": -10
+      },
+      {
+       "time": 0.33,
+       "x": 0,
+       "y": -10
+      },
+      {
+       "time": 0.5,
+       "x": 0,
+       "y": -10
+      },
+      {
+       "time": 0.67,
+       "x": 0,
+       "y": -10
+      },
+      {
+       "time": 0.83,
+       "x": 0,
+       "y": -10
+      },
+      {
+       "time": 1,
+       "x": 0,
+       "y": -10
+      }
+     ]
+    },
+    "gunArm": {
+     "rotate": [
+      {
+       "value": -14
+      },
+      {
+       "time": 0.17,
+       "value": -14
+      },
+      {
+       "time": 0.33,
+       "value": -14
+      },
+      {
+       "time": 0.5,
+       "value": -14
+      },
+      {
+       "time": 0.67,
+       "value": -14
+      },
+      {
+       "time": 0.83,
+       "value": -14
+      },
+      {
+       "time": 1,
+       "value": -14
+      }
+     ]
+    },
+    "clawArm": {
+     "rotate": [
+      {
+       "value": -12
+      },
+      {
+       "time": 0.17,
+       "value": -12
+      },
+      {
+       "time": 0.33,
+       "value": -12
+      },
+      {
+       "time": 0.5,
+       "value": -12
+      },
+      {
+       "time": 0.67,
+       "value": -12
+      },
+      {
+       "time": 0.83,
+       "value": -12
+      },
+      {
+       "time": 1,
+       "value": -12
+      }
+     ]
+    }
+   }
+  }
+ }
+}

@@ -1,4 +1,6 @@
-# The Reclaimer: final boss and Level 8
+# The Reclaimer: final boss and the Reclamation Plant (level 13)
+
+> Built as level 8 first; it moves to **level 13** once the five levels in `docs/levels-8-12.md` are in.
 
 The plan for Iggy's last level and its boss. Chris is drawing the art; this file is what the code will be built against, so
 the two match. Timings are starting points to tune by playing.

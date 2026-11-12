@@ -1,0 +1,12 @@
+nwarden.png
+size:429,244
+filter:Linear,Linear
+pma:true
+scale:0.4
+clawArm
+bounds:315,68,102,60
+gunArm
+bounds:315,130,112,112
+rest
+bounds:2,2,240,311
+rotate:90

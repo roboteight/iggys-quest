@@ -48,3 +48,7 @@ __pycache__/
 
 # debug previews written by the art cutting tools
 art-src/**/cutout-preview.png
+art-src/**/cutout-parts.png
+
+# Python environment for the art tools (python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt)
+.venv/

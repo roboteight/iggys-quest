@@ -7,7 +7,7 @@ import { H, W, flat, gfx, lerpColor, rng } from './art';
  * a precipitation tile for a style; `drawLevelBuilding` draws one rooftop.
  */
 
-export type ExtraStyle = 'wastes' | 'drowned' | 'void' | 'spores' | 'war' | 'plant';
+export type ExtraStyle = 'wastes' | 'drowned' | 'void' | 'spores' | 'war' | 'ice' | 'dunes' | 'wind' | 'locks' | 'sky' | 'plant';
 
 export interface StyleAssets {
   sky: string;
@@ -57,6 +57,39 @@ function makeSkyTex(scene: Phaser.Scene, key: string, style: ExtraStyle) {
       const x = r() * W, y = 60 + r() * 170;
       for (let k = 0; k < 4; k++) g.fillStyle(0x5a2418, 0.12).fillEllipse(x, y + k * 2, 220 - k * 30, 10 + k * 3);
     }
+  } else if (style === 'ice') {
+    // a polar night: deep blue, green aurora curtains, a small cold moon
+    gradient(g, [[0, 0x040a18], [0.5, 0x0e2440], [0.85, 0x2a5070], [1, 0x6a98b8]]);
+    for (let k = 0; k < 3; k++) {
+      const y0 = 70 + k * 40;
+      for (let x = 0; x < W; x += 6) g.fillStyle(k === 1 ? 0x7dffc0 : 0x5adfd0, 0.05 + 0.04 * Math.sin(x / 60 + k)).fillRect(x, y0 + Math.sin(x / 90 + k * 2) * 26, 6, 90 + Math.sin(x / 40) * 30);
+    }
+    g.fillStyle(0xeaf6ff, 0.9).fillCircle(760, 110, 22);
+    for (let i = 0; i < 70; i++) g.fillStyle(0xffffff, 0.2 + r() * 0.6).fillRect(r() * W, r() * 260, 2, 2);
+  } else if (style === 'dunes') {
+    // a white-hot sky, the sun a blinding disc, heat haze low down
+    gradient(g, [[0, 0x6a9ac0], [0.45, 0xd8c8a0], [0.8, 0xf0d090], [1, 0xf8e0a8]]);
+    halo(g, 300, 130, 40, 260, 0xfffbe8, 0.07);
+    g.fillStyle(0xfffdf0, 1).fillCircle(300, 130, 44);
+    for (let i = 0; i < 6; i++) g.fillStyle(0xffffff, 0.08).fillEllipse(r() * W, 300 + r() * 120, 260, 8);
+  } else if (style === 'wind') {
+    // a grey-green canyon sky, clouds torn sideways by the wind
+    gradient(g, [[0, 0x1a2a2a], [0.5, 0x48635c], [0.85, 0x8aa59a], [1, 0xb8cbb8]]);
+    for (let i = 0; i < 14; i++) {
+      const x = r() * W, y = 30 + r() * 220;
+      for (let k = 0; k < 4; k++) g.fillStyle(0xdfe8dc, 0.08).fillEllipse(x - k * 30, y + k * 2, 260 - k * 40, 14 - k * 2);
+    }
+  } else if (style === 'locks') {
+    // under a low green sky, light shafts falling through mist
+    gradient(g, [[0, 0x0a1c18], [0.5, 0x1f4a3e], [0.85, 0x4f7e66], [1, 0x7aa88a]]);
+    for (let i = 0; i < 5; i++) { const x = 100 + r() * 760; g.fillStyle(0xd8ffe0, 0.05).fillTriangle(x, 0, x + 60, 0, x + 140, H); }
+    for (let i = 0; i < 8; i++) { const x = r() * W, y = 40 + r() * 200; for (let k = 0; k < 3; k++) g.fillStyle(0x0a1c18, 0.18).fillEllipse(x + k * 20, y, 300 - k * 60, 26); }
+  } else if (style === 'sky') {
+    // high above the clouds: bright blue above, a golden sea of cloud below
+    gradient(g, [[0, 0x1a4a8a], [0.45, 0x5a9ad0], [0.75, 0xbcd8ec], [1, 0xf4dca8]]);
+    halo(g, 700, 140, 30, 200, 0xfff6d8, 0.06);
+    g.fillStyle(0xfffaea, 0.95).fillCircle(700, 140, 30);
+    for (let i = 0; i < 9; i++) { const x = r() * W, y = 80 + r() * 160; for (let k = 0; k < 4; k++) g.fillStyle(0xffffff, 0.16).fillEllipse(x + k * 30, y - k * 6, 180 - k * 30, 40 - k * 6); }
   } else if (style === 'plant') {
     // inside the plant: black iron dark above, a furnace-red glow from the slag below, smoke rolling under the roof
     gradient(g, [[0, 0x070404], [0.45, 0x1c0c08], [0.78, 0x5a1c0c], [1, 0xc24a18]]);
@@ -381,6 +414,109 @@ const warNear: Draw = (g, r, c, base) => {
   }
 };
 
+// ====================================================================== level 8 to 12 layers
+const iceFar: Draw = (g, r, c, base) => {
+  // snowy peaks
+  for (let x = -40; x < TW; x += 140 + r() * 120) {
+    const w = 200 + r() * 160, h = 160 + r() * 200;
+    wrap(x, w, (x0) => {
+      g.fillStyle(c, 1).fillTriangle(x0, base, x0 + w / 2, base - h, x0 + w, base);
+      g.fillStyle(0xe8f4ff, 0.7).fillTriangle(x0 + w / 2 - w * 0.12, base - h * 0.76, x0 + w / 2, base - h, x0 + w / 2 + w * 0.12, base - h * 0.76);
+    });
+  }
+};
+const iceMid: Draw = (g, r, c, base) => {
+  // signal gantries and frozen water towers
+  for (let x = 0; x < TW - 120; x += 160 + r() * 140) {
+    const h = 120 + r() * 120;
+    wrap(x, 90, (x0) => {
+      if (r() < 0.5) { g.fillStyle(c, 1).fillRect(x0, base - h, 6, h).fillRect(x0 + 80, base - h, 6, h).fillRect(x0 - 4, base - h, 94, 10); g.fillStyle(0xff9a3a, 0.8).fillCircle(x0 + 44, base - h + 18, 4); }
+      else { g.fillStyle(c, 1).fillRect(x0 + 20, base - h + 40, 50, 46).fillTriangle(x0 + 14, base - h + 40, x0 + 76, base - h + 40, x0 + 45, base - h + 10).fillRect(x0 + 26, base - h + 86, 4, h - 86).fillRect(x0 + 60, base - h + 86, 4, h - 86); }
+    });
+  }
+};
+const iceNear: Draw = (g, r, c, base) => {
+  // frozen freight cars on the tracks
+  for (let x = 0; x < TW - 160; x += 150 + r() * 120) {
+    wrap(x, 130, (x0) => {
+      g.fillStyle(c, 1).fillRect(x0, base - 70, 120, 56).fillCircle(x0 + 20, base - 12, 10).fillCircle(x0 + 100, base - 12, 10);
+      g.fillStyle(0xe8f4ff, 0.5).fillRect(x0, base - 72, 120, 5);
+    });
+  }
+};
+const dunesFar: Draw = (g, r, c, base) => {
+  for (let x = -60; x < TW; x += 180 + r() * 160) { const w = 320 + r() * 200, h = 60 + r() * 90; wrap(x, w, (x0) => g.fillStyle(c, 1).fillEllipse(x0 + w / 2, base, w, h * 2)); }
+};
+const dunesMid: Draw = (g, r, c, base) => {
+  // half-buried wrecks of giant machines
+  for (let x = 40; x < TW - 200; x += 260 + r() * 200) {
+    wrap(x, 180, (x0) => {
+      g.fillStyle(c, 1).fillPoints(flat([x0, base, x0 + 20, base - 70, x0 + 90, base - 110, x0 + 150, base - 60, x0 + 170, base]), true);
+      g.lineStyle(6, c, 1).lineBetween(x0 + 100, base - 100, x0 + 140, base - 170);
+      g.fillStyle(0xbfe8ff, 0.6).fillTriangle(x0 + 40, base - 40, x0 + 48, base - 70, x0 + 56, base - 40);
+    });
+  }
+};
+const dunesNear: Draw = (g, r, c, base) => {
+  for (let x = -40; x < TW; x += 220 + r() * 120) { const w = 380, h = 50 + r() * 40; wrap(x, w, (x0) => g.fillStyle(c, 1).fillEllipse(x0 + w / 2, base + 10, w, h * 2)); }
+};
+const windFar: Draw = (g, r, c, base) => {
+  // canyon walls
+  for (let x = 0; x < TW; x += 120 + r() * 100) { const w = 140 + r() * 80, h = 260 + r() * 180; wrap(x, w, (x0) => g.fillStyle(c, 1).fillPoints(flat([x0, base, x0 + 10, base - h, x0 + w * 0.5, base - h - 20, x0 + w - 10, base - h + 10, x0 + w, base]), true)); }
+};
+const windMid: Draw = (g, r, c, base) => {
+  // giant wind turbines on the rim
+  for (let x = 40; x < TW - 100; x += 200 + r() * 160) {
+    const h = 180 + r() * 100;
+    wrap(x, 140, (x0) => {
+      g.fillStyle(c, 1).fillRect(x0 + 66, base - h, 8, h);
+      const a = r() * Math.PI * 2;
+      for (let k = 0; k < 3; k++) { const t = a + (k * Math.PI * 2) / 3; g.lineStyle(7, c, 1).lineBetween(x0 + 70, base - h, x0 + 70 + Math.cos(t) * 64, base - h + Math.sin(t) * 64); }
+      g.fillStyle(c, 1).fillCircle(x0 + 70, base - h, 9);
+    });
+  }
+};
+const windNear: Draw = (g, r, c, base) => {
+  // catwalks and wind-socks
+  for (let x = 0; x < TW - 140; x += 180 + r() * 140) {
+    wrap(x, 140, (x0) => {
+      g.fillStyle(c, 1).fillRect(x0, base - 90, 120, 6).fillRect(x0 + 10, base - 90, 5, 90).fillRect(x0 + 105, base - 90, 5, 90);
+      g.fillStyle(0xff8a3a, 0.9).fillTriangle(x0 + 112, base - 130, x0 + 112, base - 114, x0 + 150, base - 120);
+      g.fillStyle(c, 1).fillRect(x0 + 110, base - 132, 3, 42);
+    });
+  }
+};
+const locksFar: Draw = (g, r, c, base) => {
+  // pump houses and chimneys across the basin
+  for (let x = 0; x < TW - 120; x += 140 + r() * 120) { const w = 80 + r() * 60, h = 90 + r() * 120; wrap(x, w, (x0) => { g.fillStyle(c, 1).fillRect(x0, base - h, w, h).fillTriangle(x0 - 6, base - h, x0 + w + 6, base - h, x0 + w / 2, base - h - 30); if (r() < 0.5) g.fillRect(x0 + w - 18, base - h - 60, 10, 60); }); }
+};
+const locksMid: Draw = (g, r, c, base) => {
+  // lock gates with chains hanging from their beams
+  for (let x = 40; x < TW - 160; x += 220 + r() * 140) {
+    wrap(x, 140, (x0) => {
+      g.fillStyle(c, 1).fillRect(x0, base - 150, 10, 150).fillRect(x0 + 120, base - 150, 10, 150).fillRect(x0 - 6, base - 160, 142, 14).fillRect(x0 + 14, base - 110, 102, 110);
+      g.lineStyle(3, c, 1).lineBetween(x0 + 40, base - 146, x0 + 40, base - 112).lineBetween(x0 + 90, base - 146, x0 + 90, base - 112);
+    });
+  }
+};
+const locksNear: Draw = (g, r, c, base) => {
+  for (let x = 0; x < TW - 80; x += 120 + r() * 120) wrap(x, 60, (x0) => { g.fillStyle(c, 1).fillRect(x0, base - 60, 14, 60).fillRect(x0 + 34, base - 40, 14, 40); g.lineStyle(9, c, 1).lineBetween(x0, base - 50, x0 + 50, base - 50); });
+};
+const skyFar: Draw = (g, r, c, base) => {
+  // a sea of cloud tops
+  for (let x = -60; x < TW; x += 80 + r() * 60) { const w = 160 + r() * 100; wrap(x, w, (x0) => g.fillStyle(c, 1).fillEllipse(x0 + w / 2, base - 40, w, 120 + r() * 60)); }
+};
+const skyMid: Draw = (g, r, c, base) => {
+  // distant airships and mooring masts
+  for (let x = 40; x < TW - 160; x += 260 + r() * 200) {
+    const y = base - 220 - r() * 120;
+    wrap(x, 160, (x0) => { g.fillStyle(c, 1).fillEllipse(x0 + 70, y, 140, 46).fillRect(x0 + 50, y + 22, 44, 12); g.fillStyle(c, 1).fillRect(x0 + 140, y + 30, 5, base - y); });
+  }
+};
+const skyNear: Draw = (g, r, c, base) => {
+  for (let x = -40; x < TW; x += 120 + r() * 80) { const w = 220 + r() * 120; wrap(x, w, (x0) => g.fillStyle(c, 1).fillEllipse(x0 + w / 2, base + 20, w, 90 + r() * 40)); }
+};
+
 // ====================================================================== plant layers
 const plantFar: Draw = (g, r, c, base) => {
   // smokestacks and cooling towers, their tops glowing, smoke climbing
@@ -453,6 +589,15 @@ function makePrecipTex(scene: Phaser.Scene, key: string, style: ExtraStyle) {
       const x = r() * 256, y = r() * 256, l = 10 + r() * 22;
       g.lineBetween(x, y, x - l, y + 0.5);
     }
+  } else if (style === 'ice') {
+    // snowflakes
+    for (let i = 0; i < 60; i++) g.fillStyle(0xffffff, 0.4 + r() * 0.5).fillCircle(4 + r() * 248, 4 + r() * 248, 0.8 + r() * 1.8);
+  } else if (style === 'dunes' || style === 'wind') {
+    // sand or spray streaking sideways
+    g.lineStyle(1.5, style === 'dunes' ? 0xf0d8a0 : 0xe8f0e8, 0.35);
+    for (let i = 0; i < 50; i++) { const x = r() * 256, y = r() * 256, l = 14 + r() * 26; g.lineBetween(x, y, x - l, y + 1); }
+  } else if (style === 'sky') {
+    for (let i = 0; i < 12; i++) g.fillStyle(0xffffff, 0.18).fillEllipse(r() * 256, r() * 256, 30 + r() * 30, 3);
   } else if (style === 'war' || style === 'plant') {
     // drifting ash and a few glowing embers
     for (let i = 0; i < 46; i++) {
@@ -476,7 +621,7 @@ function makePrecipTex(scene: Phaser.Scene, key: string, style: ExtraStyle) {
 
 // ====================================================================== public: per-style assets
 export function ensureStyle(scene: Phaser.Scene, style: ExtraStyle): StyleAssets {
-  const p = style === 'war' ? 'wr-' : style.slice(0, 2) + '-'; // 'wastes' and 'war' would both start with 'wa'
+  const p = { war: 'wr-', sky: 'sy-', wind: 'wn-' }[style as string] ?? style.slice(0, 2) + '-'; // ('wastes'/'war'/'wind' share 'wa'/'wi'; 'sk-' is the city skyline)
   const keys: StyleAssets = { sky: p + 'sky', layers: [[p + 'far', 0.08], [p + 'mid', 0.2], [p + 'near', 0.38]], fog: p + 'fog', precip: p + 'precip', fogAlpha: 0.9 };
   if (scene.textures.exists(keys.sky)) return keys;
   makeSkyTex(scene, keys.sky, style);
@@ -511,6 +656,36 @@ export function ensureStyle(scene: Phaser.Scene, style: ExtraStyle): StyleAssets
       makeLayerTex(scene, p + 'far', 44, 0x200c08, 0.9, 0xc84a1a, plantFar);
       makeLayerTex(scene, p + 'mid', 45, 0x150806, 0.6, 0xa83c16, plantMid);
       makeLayerTex(scene, p + 'near', 46, 0x0b0504, 0.3, 0x802c10, plantNear);
+      break;
+    case 'ice':
+      makeFogTex(scene, keys.fog, 0xd8f0ff, 0.05, 51);
+      makeLayerTex(scene, p + 'far', 52, 0x24405a, 0.9, 0x8ab8d8, iceFar);
+      makeLayerTex(scene, p + 'mid', 53, 0x18304a, 0.6, 0x6a98b8, iceMid);
+      makeLayerTex(scene, p + 'near', 54, 0x0c1a2c, 0.3, 0x4a7898, iceNear);
+      break;
+    case 'dunes':
+      makeFogTex(scene, keys.fog, 0xf0d8a0, 0.04, 55);
+      makeLayerTex(scene, p + 'far', 56, 0xc8a070, 0.9, 0xf0dcb0, dunesFar);
+      makeLayerTex(scene, p + 'mid', 57, 0xa87e4c, 0.6, 0xe0c090, dunesMid);
+      makeLayerTex(scene, p + 'near', 58, 0x6a4a2a, 0.3, 0xc8a070, dunesNear);
+      break;
+    case 'wind':
+      makeFogTex(scene, keys.fog, 0xdfe8dc, 0.05, 59);
+      makeLayerTex(scene, p + 'far', 60, 0x40564f, 0.9, 0xa0b8aa, windFar);
+      makeLayerTex(scene, p + 'mid', 61, 0x2c3e38, 0.6, 0x7a988a, windMid);
+      makeLayerTex(scene, p + 'near', 62, 0x18241f, 0.3, 0x5a786a, windNear);
+      break;
+    case 'locks':
+      makeFogTex(scene, keys.fog, 0xb8f0d0, 0.05, 63);
+      makeLayerTex(scene, p + 'far', 64, 0x1f4038, 0.9, 0x6aa088, locksFar);
+      makeLayerTex(scene, p + 'mid', 65, 0x142c26, 0.6, 0x4a806a, locksMid);
+      makeLayerTex(scene, p + 'near', 66, 0x0a1a16, 0.3, 0x2a604a, locksNear);
+      break;
+    case 'sky':
+      makeFogTex(scene, keys.fog, 0xffffff, 0.09, 67);
+      makeLayerTex(scene, p + 'far', 68, 0xdfe8f0, 0.1, 0xffffff, skyFar);
+      makeLayerTex(scene, p + 'mid', 69, 0x8a8070, 0.2, 0xf4e8d0, skyMid);
+      makeLayerTex(scene, p + 'near', 70, 0xf8f4ea, 0.1, 0xffffff, skyNear);
       break;
     case 'spores':
       makeFogTex(scene, keys.fog, 0x7dffc0, 0.022, 34);
@@ -636,6 +811,47 @@ export function drawLevelBuilding(scene: Phaser.Scene, style: ExtraStyle, x: num
         else g.lineBetween(wx + 3, wy + 19, wx + 9, wy + 5).lineBetween(wx + 9, wy + 5, wx + 15, wy + 19);
       }
     }
+  } else if (style === 'ice') {
+    // a frozen freight-car roof or rail platform: ice-blue top with icicles, iron and frost below
+    g.fillStyle(lerpColor(0x24404e, 0x2e4c5c, r()), 1).fillRect(0, 0, w, bodyH);
+    for (let ry = 26; ry < bodyH; ry += 44) g.fillStyle(0x16303e, 1).fillRect(0, ry, w, 4);
+    for (let rx = 18; rx < w; rx += 40) g.fillStyle(0x16303e, 1).fillRect(rx, 12, 4, bodyH);
+    g.fillStyle(0xbfe6ff, 1).fillRect(-4, 0, w + 8, 10);
+    g.fillStyle(0xffffff, 0.8).fillRect(-4, 0, w + 8, 3);
+    for (let ix = 6; ix < w; ix += 14 + r() * 18) { const l = 6 + r() * 16; g.fillStyle(0xd8f0ff, 0.9).fillTriangle(ix, 10, ix + 6, 10, ix + 3, 10 + l); }
+    edge(0xffffff);
+  } else if (style === 'dunes') {
+    // a slab of sand fused into glass (solid footing between the dunes): a thick, cracked sea-green glass top over sandstone
+    g.fillStyle(0xa8784a, 1).fillRect(0, 0, w, bodyH);
+    for (let ry = 30; ry < bodyH; ry += 22) g.fillStyle(r() < 0.5 ? 0x8e6238 : 0xb88a58, 1).fillRect(0, ry, w, 8);
+    g.fillStyle(0x4f8f88, 1).fillRect(-4, 0, w + 8, 22);
+    g.fillStyle(0x7cc4b8, 1).fillRect(-4, 0, w + 8, 12);
+    for (let sx = 10; sx < w; sx += 30 + r() * 50) { const l = 8 + r() * 18; g.lineStyle(1.5, 0x2e5e58, 0.9).lineBetween(sx, 2, sx + l * 0.4, 20); } // cracks
+    for (let i = 0; i < w / 60; i++) g.fillStyle(0xe8fff8, 0.7).fillRect(r() * (w - 20), 3 + r() * 5, 6 + r() * 14, 2); // glints
+    g.fillStyle(0xc8a070, 1).fillRect(-4, 22, w + 8, 3); // where the glass meets the sand below
+    edge(0xd8fff4);
+  } else if (style === 'wind') {
+    // a steel catwalk deck on a rock pillar
+    g.fillStyle(0x3e4e48, 1).fillRect(0, 12, w, bodyH);
+    for (let i = 0; i < w / 30; i++) g.fillStyle(0x2c3a35, 0.9).fillEllipse(r() * w, 30 + r() * (bodyH - 40), 30, 18);
+    g.fillStyle(0x5f8a7f, 1).fillRect(-4, 0, w + 8, 12);
+    for (let sx = -4; sx < w + 4; sx += 24) g.fillStyle(0xe0803a, 1).fillRect(sx, 9, 12, 3);
+    edge(0xd8e8e0);
+  } else if (style === 'locks') {
+    // a stone lock wall with an iron capping, wet and mossy
+    g.fillStyle(0x3a4a44, 1).fillRect(0, 0, w, bodyH);
+    for (let ry = 14; ry < bodyH; ry += 22) for (let rx = (ry / 22) % 2 ? 0 : 20; rx < w; rx += 40) g.fillStyle(0x2c3a35, 1).fillRect(rx, ry, 38, 20);
+    for (let i = 0; i < w / 50; i++) g.fillStyle(0x4f8a5a, 0.7).fillEllipse(r() * w, 14 + r() * 10, 18, 6);
+    g.fillStyle(0x6a5a40, 1).fillRect(-4, 0, w + 8, 10);
+    edge(0xc8e0c8);
+  } else if (style === 'sky') {
+    // a floating dock deck: planks and a brass rail, propeller pods underneath, nothing below
+    g.fillStyle(0x6a4a2c, 1).fillRect(0, 0, w, 22);
+    for (let px = 0; px < w; px += 20) g.fillStyle(0x4a3220, 1).fillRect(px, 2, 2, 20);
+    g.fillStyle(0x8a7a5a, 1).fillRect(-4, 22, w + 8, 8);
+    for (const px of [20, w - 40]) { g.fillStyle(0x3a4a50, 1).fillRect(px, 30, 20, 16); g.fillStyle(0xc98b4a, 1).fillRect(px - 10, 46, 40, 3); }
+    g.fillStyle(0xc98b4a, 1).fillRect(-4, 0, w + 8, 4);
+    edge(0xfff0c8);
   } else if (style === 'plant') {
     // an iron gantry: riveted deck plate with a hazard-striped edge, X-braced trusses below, a pipe and a furnace port
     const iron = lerpColor(0x2a2422, 0x342c28, r());
@@ -810,6 +1026,19 @@ export function makePlatformTextures(scene: Phaser.Scene) {
   slab('plat-moving', 0x7fd0ff, 0x2f6f8f, 0xffffff); // blue steel with white stripes: moves
   slab('plat-crumble', 0xe0b070, 0x8a5a2a, 0x3a2410); // cracked wood: falls apart
   slab('plat-secret', 0xffe27a, 0xb8860b, 0xffffff); // glowing gold: the hidden sky layer
+  // floating piers for the Brass Kraken's lock: planks lashed on barrels; the sinking kind is waterlogged and cracked
+  const pier = (key: string, plank: number, barrel: number, cracked: boolean) => {
+    const g = gfx(scene);
+    for (const bx of [16, 68]) { g.fillStyle(0x000000, 1).fillEllipse(bx, 16, 26, 14); g.fillStyle(barrel, 1).fillEllipse(bx, 16, 22, 10); g.fillStyle(0xc98b4a, 1).fillRect(bx - 11, 15, 22, 2); }
+    g.fillStyle(0x000000, 1).fillRect(0, 0, 84, 12);
+    for (let x = 2; x < 82; x += 10) { g.fillStyle(plank, 1).fillRect(x, 2, 9, 8); g.fillStyle(0x2a1a10, 0.6).fillRect(x + 8, 2, 1, 8); }
+    g.fillStyle(0xffffff, 0.25).fillRect(2, 2, 80, 2);
+    if (cracked) { g.lineStyle(1.5, 0x1a0e08, 1).lineBetween(20, 2, 26, 10).lineBetween(52, 2, 46, 10).lineBetween(60, 3, 70, 9); g.fillStyle(0x3a8a6a, 0.8).fillRect(2, 9, 80, 2); }
+    g.generateTexture(key, 84, 24);
+    g.destroy();
+  };
+  pier('plat-pier', 0xb0844e, 0x5a4a3a, false);
+  pier('plat-pier-sink', 0x7a6a4a, 0x3a4a40, true);
   const flag = (key: string, cloth: number) => {
     const g = gfx(scene);
     g.fillStyle(0x000000, 1).fillRect(0, 0, 8, 76);

@@ -1,6 +1,6 @@
 import type { ThemeName } from './music';
 
-export type LevelStyle = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores' | 'war' | 'plant';
+export type LevelStyle = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores' | 'war' | 'ice' | 'dunes' | 'wind' | 'locks' | 'sky' | 'plant';
 
 /** One entry per level. The scene, art and music all read from here. */
 export interface LevelDef {
@@ -22,7 +22,9 @@ export interface LevelDef {
 /** Score at which the level's boss arena appears. Defeating the boss finishes the level. */
 export const BOSS_SCORE = 4000;
 
-export type BossAttack = 'volley' | 'spread' | 'mortar' | 'stomp';
+/** volley: aimed shots. spread: a fan. mortar: lobbed shells. stomp: a shockwave, then it kneels (stomp its head).
+ *  charge: a lunge forward (back off). ring: shots in every direction, with gaps. rain: shells falling on marked spots. */
+export type BossAttack = 'volley' | 'spread' | 'mortar' | 'stomp' | 'charge' | 'ring' | 'rain';
 export interface BossDef {
   name: string;
   blurb: string;
@@ -32,16 +34,23 @@ export interface BossDef {
   attacks: BossAttack[];
   /** where shots leave the mech, relative to the middle of its feet (facing left) */
   muzzle: [number, number];
+  /** an energy shield that this many hits break (a head stomp smashes it outright); it comes back after a few seconds */
+  shield?: number;
 }
 
 export const BOSSES: Record<LevelStyle, BossDef> = {
   city: { name: 'Enforcer Nine', blurb: 'A hunched, bird-legged peacekeeper with cannons for arms.', hp: 24, speed: 50, attacks: ['volley', 'volley', 'stomp'], muzzle: [-90, -120] },
-  hollow: { name: 'Grandfather Gloom', blurb: 'A crooked clockwork giant on striped stilts that lobs exploding music-box gifts.', hp: 26, speed: 40, attacks: ['mortar', 'mortar', 'stomp'], muzzle: [-38, -164] },
-  wastes: { name: 'Dust Scorpion', blurb: 'A four-legged walker with a cannon on its tail.', hp: 28, speed: 60, attacks: ['spread', 'volley', 'stomp'], muzzle: [34, -128] },
-  drowned: { name: 'Deep Diver', blurb: 'A diving-suit mech with a glass dome and heavy claws.', hp: 30, speed: 35, attacks: ['volley', 'mortar', 'stomp'], muzzle: [-70, -92] },
-  void: { name: 'Neon Warden', blurb: 'A hovering sentinel on a ring of light.', hp: 30, speed: 70, attacks: ['spread', 'volley', 'spread', 'stomp'], muzzle: [-72, -86] },
-  war: { name: 'Iron Marshal', blurb: 'A rolling siege tank with a long gun, the one that has been shelling the trenches.', hp: 36, speed: 38, attacks: ['mortar', 'volley', 'spread', 'stomp'], muzzle: [-78, -88] },
-  spores: { name: 'Spore Mother', blurb: 'A tripod walker under a giant mushroom cap.', hp: 34, speed: 30, attacks: ['mortar', 'spread', 'stomp'], muzzle: [-58, -108] },
+  hollow: { name: 'Grandfather Gloom', blurb: 'A crooked clockwork giant on striped stilts that lobs exploding music-box gifts.', hp: 26, speed: 40, attacks: ['mortar', 'mortar', 'volley', 'stomp'], muzzle: [-38, -164] },
+  wastes: { name: 'Dust Scorpion', blurb: 'A four-legged walker with a cannon on its tail.', hp: 28, speed: 60, attacks: ['spread', 'volley', 'charge', 'stomp'], muzzle: [34, -128] },
+  drowned: { name: 'Deep Diver', blurb: 'A diving-suit mech with a glass dome and heavy claws.', hp: 30, speed: 35, attacks: ['volley', 'mortar', 'charge', 'stomp'], muzzle: [-70, -92] },
+  void: { name: 'Neon Warden', blurb: 'A hovering sentinel on a ring of light.', hp: 32, speed: 70, attacks: ['spread', 'ring', 'volley', 'stomp'], shield: 4, muzzle: [-72, -86] },
+  war: { name: 'Iron Marshal', blurb: 'A rolling siege tank with a long gun, the one that has been shelling the trenches.', hp: 36, speed: 38, attacks: ['mortar', 'rain', 'volley', 'spread', 'stomp'], muzzle: [-78, -88] },
+  spores: { name: 'Spore Mother', blurb: 'A tripod walker under a giant mushroom cap.', hp: 34, speed: 30, attacks: ['mortar', 'rain', 'spread', 'stomp'], muzzle: [-58, -108] },
+  ice: { name: 'Icebreaker', blurb: 'An armoured icebreaker hull on spiked tracks, with a ram prow and frost-cannon turrets.', hp: 40, speed: 70, attacks: ['charge', 'volley', 'spread', 'ring', 'stomp'], shield: 5, muzzle: [-60, -120] },
+  dunes: { name: 'Dune Dredger', blurb: 'A colossal mining dredge with a bucket wheel that reshapes the sand.', hp: 43, speed: 40, attacks: ['mortar', 'rain', 'charge', 'spread', 'stomp'], muzzle: [-100, -122] },
+  wind: { name: 'Gale Warden', blurb: 'A towering turbine mech whose chest is a giant fan.', hp: 46, speed: 30, attacks: ['spread', 'ring', 'volley', 'charge', 'stomp'], shield: 6, muzzle: [-10, -110] },
+  locks: { name: 'Brass Kraken', blurb: 'A mechanical squid lurking in the flooded lock, all brass tentacles and porthole eyes.', hp: 48, speed: 0, attacks: ['mortar', 'volley', 'rain', 'ring', 'stomp'], muzzle: [-30, -120] },
+  sky: { name: 'Iron Albatross', blurb: 'A flying fortress airship with a gun turret and a bridge window that glows.', hp: 52, speed: 45, attacks: ['mortar', 'rain', 'volley', 'ring', 'spread'], shield: 7, muzzle: [-40, -40] },
   // the final boss runs its own fight (play.scene.ts, the Reclaimer section); these attacks are only a fallback
   plant: { name: 'The Reclaimer', blurb: 'The scrap plant that eats old robots and melts them down. The machine that took Iggy apart.', hp: 60, speed: 0, attacks: ['mortar', 'volley'], muzzle: [-120, -220] },
 };
@@ -94,10 +103,45 @@ export const LEVELS: LevelDef[] = [
     blurb: 'Barbed wire, rubble and shell craters under a smoking sky.',
     style: 'war', music: 'war', precip: { vx: 30, vy: -90 }, lightning: true, bg: '#1a0f0d',
     intro: 'The trenches are all mud, wire and smoke. Somewhere past the ridge the Iron Marshal, a siege tank with a very long gun, has been shelling this ground for years, and it has not run out of shells yet. Listen for the whistle, find the marker and get out of the way.',
-    outro: 'The Iron Marshal rolls to a stop and its long gun droops. The smoke thins and the trenches go quiet. Then, on the horizon, a column of furnace smoke climbs over a plant the size of a city, and Iggy\'s gears go cold. He remembers that place. He remembers waking up in pieces.',
+    outro: 'The Iron Marshal rolls to a stop and its long gun droops. The trenches go quiet. Far off across a frozen rail yard, a column of furnace smoke climbs into the sky, and Iggy\'s gears go cold. He remembers that smoke. The only way towards it is across the ice.',
   },
   {
-    id: 'plant', number: 8, name: 'The Reclamation Plant',
+    id: 'glacier', number: 8, name: 'Glacier Yards',
+    blurb: 'A rail yard frozen solid. Every surface is slippery, and icicles hang over the tracks.',
+    style: 'ice', music: 'ice', precip: { vx: 30, vy: -60 }, lightning: false, bg: '#0a1420',
+    intro: 'The rail yard froze years ago with the trains still on the tracks. Every surface is glazed with ice, so Iggy slides wherever he goes: duck to dig his boot spikes in and stop. Something huge is breaking a path through the ice ahead.',
+    outro: 'The Icebreaker grinds to a halt and its boiler hisses out in a cloud of steam. Beyond the yard the snow thins into sand, and the sand glitters like broken glass.',
+  },
+  {
+    id: 'dunes', number: 9, name: 'Glass Dunes',
+    blurb: 'Rolling dunes fused into glass. Slide down the slopes to build speed.',
+    style: 'dunes', music: 'dunes', precip: { vx: 160, vy: -20 }, lightning: false, bg: '#2a1a0c',
+    intro: 'A desert where the sand has been fused into glass by some old fire. The dunes roll on for miles: running uphill is slow, but hold duck on the way down and Iggy slides like a sled. A dredge is mining the dunes somewhere ahead.',
+    outro: 'The Dune Dredger\'s bucket wheel creaks to a stop, half buried. The wind picks up. Ahead, a canyon is walled off by a row of giant fans, every one of them turning.',
+  },
+  {
+    id: 'gorge', number: 10, name: 'Turbine Gorge',
+    blurb: 'A canyon dammed by giant fans. The wind pushes Iggy back.',
+    style: 'wind', music: 'wind', precip: { vx: -380, vy: -30 }, lightning: false, bg: '#14201f',
+    intro: 'The only way on is through Turbine Gorge, where a wall of industrial fans blows a gale down the canyon. Where the wind streaks show, it pushes Iggy back: duck to brace against it. The heavier suits stand up to it better.',
+    outro: 'The Gale Warden\'s blades judder and stop. The canyon falls silent, and below it the old canal locks have flooded, green and still.',
+  },
+  {
+    id: 'locks', number: 11, name: 'Sunken Locks',
+    blurb: 'Flooded canal locks. Iggy sinks in the water and walks along the bottom.',
+    style: 'locks', music: 'locks', precip: { vx: 0, vy: -40 }, lightning: false, bg: '#071a17',
+    intro: 'The canal locks have flooded. Iggy is a heavy robot, so in the water he sinks and walks along the bottom: slow, with floaty jumps, and his shots fizzle under water. Something big lives in the deepest lock.',
+    outro: 'The Brass Kraken sinks into the dark, its eyes shuttering one by one. Above the locks, airships are tied to platforms floating in the clouds. The last road home goes up.',
+  },
+  {
+    id: 'skydocks', number: 12, name: 'Sky Docks',
+    blurb: 'A floating airship port above the clouds, with nothing underneath.',
+    style: 'sky', music: 'sky', precip: { vx: 60, vy: -20 }, lightning: false, bg: '#3a6a9a',
+    intro: 'The Sky Docks float above a sea of cloud: decks, moorings and drifting platforms, and nothing at all underneath. A missed jump is a long fall. The fortress that guards the docks is waiting at the far end.',
+    outro: 'The Iron Albatross lists, its gasbag torn, and slides down through the clouds with Iggy still aboard. It crashes through the roof of a plant the size of a city. He knows this place. It is where he was taken apart.',
+  },
+  {
+    id: 'plant', number: 13, name: 'The Reclamation Plant',
     blurb: 'Iron gantries over slag pits, conveyors and crushers, and the machine at the heart of it all.',
     style: 'plant', music: 'plant', precip: { vx: 20, vy: -60 }, lightning: false, bg: '#0b0605',
     intro: 'The Reclamation Plant never stopped working. Conveyors still run, crushers still drop, and slag still glows in the pits below the gantries. Every robot on the road home was built from parts this place spat out. Somewhere inside is the machine that took Iggy apart, and it wants its parts back.',

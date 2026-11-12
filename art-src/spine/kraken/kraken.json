@@ -1,0 +1,1025 @@
+{
+ "skeleton": {
+  "spine": "4.3.26",
+  "images": "./images/",
+  "x": -398,
+  "y": -33,
+  "width": 745,
+  "height": 655
+ },
+ "bones": [
+  {
+   "name": "root"
+  },
+  {
+   "name": "body",
+   "parent": "root",
+   "x": 0,
+   "y": 0
+  },
+  {
+   "name": "tentL",
+   "parent": "body",
+   "x": -180,
+   "y": 230
+  },
+  {
+   "name": "tentacle",
+   "parent": "body",
+   "x": -170,
+   "y": 230
+  },
+  {
+   "name": "eye1",
+   "parent": "body",
+   "x": 67,
+   "y": 393
+  },
+  {
+   "name": "eye2",
+   "parent": "body",
+   "x": -52,
+   "y": 410
+  }
+ ],
+ "slots": [
+  {
+   "name": "tentacle",
+   "bone": "tentacle",
+   "attachment": "tentacle"
+  },
+  {
+   "name": "rest",
+   "bone": "body",
+   "attachment": "rest"
+  },
+  {
+   "name": "tentL",
+   "bone": "tentL",
+   "attachment": "tentL"
+  },
+  {
+   "name": "eye1",
+   "bone": "eye1"
+  },
+  {
+   "name": "eye2",
+   "bone": "eye2"
+  }
+ ],
+ "skins": [
+  {
+   "name": "default",
+   "attachments": {
+    "tentacle": {
+     "tentacle": {
+      "x": 82,
+      "y": -125,
+      "width": 224,
+      "height": 292
+     }
+    },
+    "rest": {
+     "rest": {
+      "x": 68.5,
+      "y": 294.5,
+      "width": 557,
+      "height": 655
+     }
+    },
+    "tentL": {
+     "tentL": {
+      "x": -104,
+      "y": -35,
+      "width": 228,
+      "height": 230
+     }
+    },
+    "eye1": {
+     "eyesShut": {
+      "x": 0.31,
+      "y": 0.31,
+      "scaleX": 0.62,
+      "scaleY": 0.62,
+      "width": 105,
+      "height": 105
+     }
+    },
+    "eye2": {
+     "eyesShut2": {
+      "x": 0.25,
+      "y": 0.25,
+      "scaleX": 0.5,
+      "scaleY": 0.5,
+      "width": 105,
+      "height": 105
+     }
+    }
+   }
+  }
+ ],
+ "animations": {
+  "idle": {
+   "bones": {
+    "body": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.2,
+       "value": 0.5
+      },
+      {
+       "time": 0.4,
+       "value": 0.87
+      },
+      {
+       "time": 0.6,
+       "value": 1
+      },
+      {
+       "time": 0.8,
+       "value": 0.87
+      },
+      {
+       "time": 1,
+       "value": 0.5
+      },
+      {
+       "time": 1.2,
+       "value": 0
+      },
+      {
+       "time": 1.4,
+       "value": -0.5
+      },
+      {
+       "time": 1.6,
+       "value": -0.87
+      },
+      {
+       "time": 1.8,
+       "value": -1
+      },
+      {
+       "time": 2,
+       "value": -0.87
+      },
+      {
+       "time": 2.2,
+       "value": -0.5
+      },
+      {
+       "time": 2.4,
+       "value": 0
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.2,
+       "x": 0,
+       "y": 3
+      },
+      {
+       "time": 0.4,
+       "x": 0,
+       "y": 5.2
+      },
+      {
+       "time": 0.6,
+       "x": 0,
+       "y": 6
+      },
+      {
+       "time": 0.8,
+       "x": 0,
+       "y": 5.2
+      },
+      {
+       "time": 1,
+       "x": 0,
+       "y": 3
+      },
+      {
+       "time": 1.2,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1.4,
+       "x": 0,
+       "y": -3
+      },
+      {
+       "time": 1.6,
+       "x": 0,
+       "y": -5.2
+      },
+      {
+       "time": 1.8,
+       "x": 0,
+       "y": -6
+      },
+      {
+       "time": 2,
+       "x": 0,
+       "y": -5.2
+      },
+      {
+       "time": 2.2,
+       "x": 0,
+       "y": -3
+      },
+      {
+       "time": 2.4,
+       "x": 0,
+       "y": 0
+      }
+     ]
+    },
+    "tentL": {
+     "rotate": [
+      {
+       "value": 5.71
+      },
+      {
+       "time": 0.2,
+       "value": 5.87
+      },
+      {
+       "time": 0.4,
+       "value": 4.46
+      },
+      {
+       "time": 0.6,
+       "value": 1.85
+      },
+      {
+       "time": 0.8,
+       "value": -1.25
+      },
+      {
+       "time": 1,
+       "value": -4.01
+      },
+      {
+       "time": 1.2,
+       "value": -5.71
+      },
+      {
+       "time": 1.4,
+       "value": -5.87
+      },
+      {
+       "time": 1.6,
+       "value": -4.46
+      },
+      {
+       "time": 1.8,
+       "value": -1.85
+      },
+      {
+       "time": 2,
+       "value": 1.25
+      },
+      {
+       "time": 2.2,
+       "value": 4.01
+      },
+      {
+       "time": 2.4,
+       "value": 5.71
+      }
+     ]
+    },
+    "tentacle": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.2,
+       "value": -5
+      },
+      {
+       "time": 0.4,
+       "value": -8.66
+      },
+      {
+       "time": 0.6,
+       "value": -10
+      },
+      {
+       "time": 0.8,
+       "value": -8.66
+      },
+      {
+       "time": 1,
+       "value": -5
+      },
+      {
+       "time": 1.2,
+       "value": 0
+      },
+      {
+       "time": 1.4,
+       "value": 5
+      },
+      {
+       "time": 1.6,
+       "value": 8.66
+      },
+      {
+       "time": 1.8,
+       "value": 10
+      },
+      {
+       "time": 2,
+       "value": 8.66
+      },
+      {
+       "time": 2.2,
+       "value": 5
+      },
+      {
+       "time": 2.4,
+       "value": 0
+      }
+     ]
+    }
+   },
+   "slots": {
+    "eye1": {
+     "attachment": [
+      {
+       "name": null
+      }
+     ]
+    },
+    "eye2": {
+     "attachment": [
+      {
+       "name": null
+      }
+     ]
+    }
+   }
+  },
+  "walk": {
+   "bones": {
+    "body": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.2,
+       "value": 0.5
+      },
+      {
+       "time": 0.4,
+       "value": 0.87
+      },
+      {
+       "time": 0.6,
+       "value": 1
+      },
+      {
+       "time": 0.8,
+       "value": 0.87
+      },
+      {
+       "time": 1,
+       "value": 0.5
+      },
+      {
+       "time": 1.2,
+       "value": 0
+      },
+      {
+       "time": 1.4,
+       "value": -0.5
+      },
+      {
+       "time": 1.6,
+       "value": -0.87
+      },
+      {
+       "time": 1.8,
+       "value": -1
+      },
+      {
+       "time": 2,
+       "value": -0.87
+      },
+      {
+       "time": 2.2,
+       "value": -0.5
+      },
+      {
+       "time": 2.4,
+       "value": 0
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.2,
+       "x": 0,
+       "y": 3
+      },
+      {
+       "time": 0.4,
+       "x": 0,
+       "y": 5.2
+      },
+      {
+       "time": 0.6,
+       "x": 0,
+       "y": 6
+      },
+      {
+       "time": 0.8,
+       "x": 0,
+       "y": 5.2
+      },
+      {
+       "time": 1,
+       "x": 0,
+       "y": 3
+      },
+      {
+       "time": 1.2,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1.4,
+       "x": 0,
+       "y": -3
+      },
+      {
+       "time": 1.6,
+       "x": 0,
+       "y": -5.2
+      },
+      {
+       "time": 1.8,
+       "x": 0,
+       "y": -6
+      },
+      {
+       "time": 2,
+       "x": 0,
+       "y": -5.2
+      },
+      {
+       "time": 2.2,
+       "x": 0,
+       "y": -3
+      },
+      {
+       "time": 2.4,
+       "x": 0,
+       "y": 0
+      }
+     ]
+    },
+    "tentL": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.2,
+       "value": 6.93
+      },
+      {
+       "time": 0.4,
+       "value": 6.93
+      },
+      {
+       "time": 0.6,
+       "value": 0
+      },
+      {
+       "time": 0.8,
+       "value": -6.93
+      },
+      {
+       "time": 1,
+       "value": -6.93
+      },
+      {
+       "time": 1.2,
+       "value": 0
+      },
+      {
+       "time": 1.4,
+       "value": 6.93
+      },
+      {
+       "time": 1.6,
+       "value": 6.93
+      },
+      {
+       "time": 1.8,
+       "value": 0
+      },
+      {
+       "time": 2,
+       "value": -6.93
+      },
+      {
+       "time": 2.2,
+       "value": -6.93
+      },
+      {
+       "time": 2.4,
+       "value": 0
+      }
+     ]
+    },
+    "tentacle": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.2,
+       "value": -12.12
+      },
+      {
+       "time": 0.4,
+       "value": -12.12
+      },
+      {
+       "time": 0.6,
+       "value": 0
+      },
+      {
+       "time": 0.8,
+       "value": 12.12
+      },
+      {
+       "time": 1,
+       "value": 12.12
+      },
+      {
+       "time": 1.2,
+       "value": 0
+      },
+      {
+       "time": 1.4,
+       "value": -12.12
+      },
+      {
+       "time": 1.6,
+       "value": -12.12
+      },
+      {
+       "time": 1.8,
+       "value": 0
+      },
+      {
+       "time": 2,
+       "value": 12.12
+      },
+      {
+       "time": 2.2,
+       "value": 12.12
+      },
+      {
+       "time": 2.4,
+       "value": 0
+      }
+     ]
+    }
+   },
+   "slots": {
+    "eye1": {
+     "attachment": [
+      {
+       "name": null
+      }
+     ]
+    },
+    "eye2": {
+     "attachment": [
+      {
+       "name": null
+      }
+     ]
+    }
+   }
+  },
+  "charge": {
+   "bones": {
+    "body": {
+     "rotate": [
+      {
+       "value": -2
+      },
+      {
+       "time": 0.1,
+       "value": -2
+      },
+      {
+       "time": 0.2,
+       "value": -2
+      },
+      {
+       "time": 0.3,
+       "value": -2
+      },
+      {
+       "time": 0.4,
+       "value": -2
+      },
+      {
+       "time": 0.5,
+       "value": -2
+      },
+      {
+       "time": 0.6,
+       "value": -2
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 10
+      },
+      {
+       "time": 0.1,
+       "x": 0,
+       "y": 10
+      },
+      {
+       "time": 0.2,
+       "x": 0,
+       "y": 10
+      },
+      {
+       "time": 0.3,
+       "x": 0,
+       "y": 10
+      },
+      {
+       "time": 0.4,
+       "x": 0,
+       "y": 10
+      },
+      {
+       "time": 0.5,
+       "x": 0,
+       "y": 10
+      },
+      {
+       "time": 0.6,
+       "x": 0,
+       "y": 10
+      }
+     ]
+    },
+    "tentL": {
+     "rotate": [
+      {
+       "value": -26
+      },
+      {
+       "time": 0.1,
+       "value": -23.4
+      },
+      {
+       "time": 0.2,
+       "value": -28.6
+      },
+      {
+       "time": 0.3,
+       "value": -26
+      },
+      {
+       "time": 0.4,
+       "value": -23.4
+      },
+      {
+       "time": 0.5,
+       "value": -28.6
+      },
+      {
+       "time": 0.6,
+       "value": -26
+      }
+     ]
+    },
+    "tentacle": {
+     "rotate": [
+      {
+       "value": -30
+      },
+      {
+       "time": 0.1,
+       "value": -30
+      },
+      {
+       "time": 0.2,
+       "value": -30
+      },
+      {
+       "time": 0.3,
+       "value": -30
+      },
+      {
+       "time": 0.4,
+       "value": -30
+      },
+      {
+       "time": 0.5,
+       "value": -30
+      },
+      {
+       "time": 0.6,
+       "value": -30
+      }
+     ]
+    }
+   },
+   "slots": {
+    "eye1": {
+     "attachment": [
+      {
+       "name": null
+      }
+     ]
+    },
+    "eye2": {
+     "attachment": [
+      {
+       "name": null
+      }
+     ]
+    }
+   }
+  },
+  "stunned": {
+   "bones": {
+    "body": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.2,
+       "value": 0
+      },
+      {
+       "time": 0.4,
+       "value": 0
+      },
+      {
+       "time": 0.6,
+       "value": 0
+      },
+      {
+       "time": 0.8,
+       "value": 0
+      },
+      {
+       "time": 1,
+       "value": 0
+      },
+      {
+       "time": 1.2,
+       "value": 0
+      },
+      {
+       "time": 1.4,
+       "value": 0
+      },
+      {
+       "time": 1.6,
+       "value": 0
+      },
+      {
+       "time": 1.8,
+       "value": 0
+      },
+      {
+       "time": 2,
+       "value": 0
+      },
+      {
+       "time": 2.2,
+       "value": 0
+      },
+      {
+       "time": 2.4,
+       "value": 0
+      }
+     ],
+     "translate": [
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 0.2,
+       "x": 0,
+       "y": 1.5
+      },
+      {
+       "time": 0.4,
+       "x": 0,
+       "y": 2.6
+      },
+      {
+       "time": 0.6,
+       "x": 0,
+       "y": 3
+      },
+      {
+       "time": 0.8,
+       "x": 0,
+       "y": 2.6
+      },
+      {
+       "time": 1,
+       "x": 0,
+       "y": 1.5
+      },
+      {
+       "time": 1.2,
+       "x": 0,
+       "y": 0
+      },
+      {
+       "time": 1.4,
+       "x": 0,
+       "y": -1.5
+      },
+      {
+       "time": 1.6,
+       "x": 0,
+       "y": -2.6
+      },
+      {
+       "time": 1.8,
+       "x": 0,
+       "y": -3
+      },
+      {
+       "time": 2,
+       "x": 0,
+       "y": -2.6
+      },
+      {
+       "time": 2.2,
+       "x": 0,
+       "y": -1.5
+      },
+      {
+       "time": 2.4,
+       "x": 0,
+       "y": 0
+      }
+     ]
+    },
+    "tentL": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.2,
+       "value": 2
+      },
+      {
+       "time": 0.4,
+       "value": 3.46
+      },
+      {
+       "time": 0.6,
+       "value": 4
+      },
+      {
+       "time": 0.8,
+       "value": 3.46
+      },
+      {
+       "time": 1,
+       "value": 2
+      },
+      {
+       "time": 1.2,
+       "value": 0
+      },
+      {
+       "time": 1.4,
+       "value": -2
+      },
+      {
+       "time": 1.6,
+       "value": -3.46
+      },
+      {
+       "time": 1.8,
+       "value": -4
+      },
+      {
+       "time": 2,
+       "value": -3.46
+      },
+      {
+       "time": 2.2,
+       "value": -2
+      },
+      {
+       "time": 2.4,
+       "value": 0
+      }
+     ]
+    },
+    "tentacle": {
+     "rotate": [
+      {
+       "value": 0
+      },
+      {
+       "time": 0.2,
+       "value": 3
+      },
+      {
+       "time": 0.4,
+       "value": 5.2
+      },
+      {
+       "time": 0.6,
+       "value": 6
+      },
+      {
+       "time": 0.8,
+       "value": 5.2
+      },
+      {
+       "time": 1,
+       "value": 3
+      },
+      {
+       "time": 1.2,
+       "value": 0
+      },
+      {
+       "time": 1.4,
+       "value": -3
+      },
+      {
+       "time": 1.6,
+       "value": -5.2
+      },
+      {
+       "time": 1.8,
+       "value": -6
+      },
+      {
+       "time": 2,
+       "value": -5.2
+      },
+      {
+       "time": 2.2,
+       "value": -3
+      },
+      {
+       "time": 2.4,
+       "value": 0
+      }
+     ]
+    }
+   },
+   "slots": {
+    "eye1": {
+     "attachment": [
+      {
+       "name": "eyesShut"
+      }
+     ]
+    },
+    "eye2": {
+     "attachment": [
+      {
+       "name": "eyesShut2"
+      }
+     ]
+    }
+   }
+  }
+ }
+}

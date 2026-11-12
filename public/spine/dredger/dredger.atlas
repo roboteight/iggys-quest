@@ -1,0 +1,12 @@
+dredger.png
+size:454,299
+filter:Linear,Linear
+pma:true
+scale:0.5
+engineHot
+bounds:329,100,61,72
+rotate:90
+rest
+bounds:2,2,325,295
+wheel
+bounds:329,163,123,134

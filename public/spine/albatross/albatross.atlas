@@ -1,0 +1,11 @@
+albatross.png
+size:381,276
+filter:Linear,Linear
+pma:true
+scale:0.5
+propFront
+bounds:309,182,92,70
+rotate:90
+rest
+bounds:2,2,272,305
+rotate:90

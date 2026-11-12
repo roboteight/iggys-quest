@@ -495,6 +495,12 @@ const DEFS: Record<LevelStyle, Def> = {
   spores: { w: 92, h: 104, draw: mother },
   war: { w: 94, h: 68, draw: tank },
   plant: { w: 94, h: 68, draw: tank }, // fallback only: the Reclaimer is a Spine rig (reclaimer.ts)
+  // levels 8 to 12: Spine rigs (boss-spine.ts); these are only the size of the hit box and a fallback picture
+  ice: { w: 94, h: 68, draw: tank },
+  dunes: { w: 94, h: 70, draw: scorpion },
+  wind: { w: 84, h: 98, draw: diver },
+  locks: { w: 84, h: 98, draw: diver },
+  sky: { w: 100, h: 106, draw: warden, hover: true },
 };
 
 /** render one frame at the small grid and make its edges crisp */
