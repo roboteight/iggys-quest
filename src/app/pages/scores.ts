@@ -35,7 +35,7 @@ import { FocusOnLoad } from './focus-heading';
       </section>
       <section class="board" aria-labelledby="h-secrets">
         <h2 id="h-secrets">Golden breadboards: {{ found() }} of {{ levels.length }} found</h2>
-        <p class="empty">Each level hides one, high above a gap. Look and listen for a shimmer.</p>
+        <p class="empty">Each level hides one, high above a gap. Look and listen for a shimmer. Find one on every level from 1 to {{ progress.goldenNeeded() }} to open a secret level.</p>
         <ul>
           @for (l of levels; track l.id) {
             <li>Level {{ l.number }}, {{ l.name }}: <strong>{{ progress.secretFound(l.id) ? 'Found ★' : 'Not found yet' }}</strong></li>

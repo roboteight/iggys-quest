@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import type { SpineGameObject } from '@esotericsoftware/spine-phaser-v4';
 import { Settings } from '../settings.service';
 import {
   H, SUITS, W, drawBuilding, drawHollowBuilding, drawPowerFx, drawRobot, makeFlakes, makeFog, makeHollowFog, makeHollowLayer, makeHollowSky,
@@ -74,7 +75,7 @@ const POWER: Record<PowerId, { label: string; secs: number | null; tex: string; 
 
 interface Shot { s: Phaser.GameObjects.Image; vx: number; vy: number; kind: 'bolt' | 'rocket'; trail: number; big?: boolean; bossHit?: boolean; hit?: Set<Item> }
 interface Building { x: number; top: number; w: number; cliff?: boolean; conveyor?: number; wind?: boolean; dune?: boolean; sharedGfx?: boolean; gfx: Phaser.GameObjects.Graphics; zone: Phaser.GameObjects.Zone; collider: Phaser.Physics.Arcade.Collider }
-interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer' | 'secret' | 'hazard' | 'switch' | 'mine' | 'foe'; foe?: Foe; mT?: number; flap?: number; hint?: boolean; bonus?: boolean; pressed?: boolean; hz?: Haz; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number; cd?: number; aim?: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
+interface Item { kind: 'bb' | 'pu' | 'pylon' | 'wall' | 'patrol' | 'ring' | 'flyer' | 'secret' | 'hazard' | 'switch' | 'mine' | 'foe'; foe?: Foe; mT?: number; flap?: number; hint?: boolean; bonus?: boolean; pressed?: boolean; /** a secret's difficulty, 0 to 1 */ sd?: number; hz?: Haz; flyer?: Flyer; back?: Phaser.GameObjects.Image; hp?: number; walker?: { kind: 'skeleton' | 'crawler'; min: number; max: number; dir: number; speed: number; frame: number; cd?: number; aim?: number }; power?: PowerId; sprite: Phaser.GameObjects.Image; baseY: number; phase: number; taken?: boolean; falling?: boolean }
 
 /**
  * The newer enemies, drawn from their concept sheets (public/foes, cut by tools/foes-cut.py) and moved in code:
@@ -106,9 +107,12 @@ const FOES_BY_STYLE: Record<string, FoeType[]> = {
   city: ['gloop', 'magpie'], hollow: ['copycat', 'pogo'], wastes: ['magnet', 'pogo'], drowned: ['gloop', 'magpie'], void: ['mite', 'copycat'], spores: ['mite', 'pogo'], war: ['magnet'],
   ice: ['pogo', 'magpie', 'gloop'], dunes: ['magnet', 'pogo', 'gloop'], wind: ['mite', 'pogo'], locks: ['gloop', 'mite'], sky: ['magpie', 'mite'],
   plant: ['gloop', 'mite', 'copycat', 'magnet', 'pogo', 'magpie'], // the last level: everything at once
+  foundry: ['gloop', 'mite', 'copycat', 'magnet', 'pogo', 'magpie'], // and the secret one after it
 };
+/** levels whose big boss shells Iggy from afar on the way to it (the trenches have their own, heavier artillery) */
+const BARRAGE_STYLES: string[] = ['ice', 'dunes', 'locks', 'sky']; // (the Forgemaster fires from the background instead)
 /** levels where the Rivet Zeppelin flies over */
-const ZEPPELIN_STYLES = ['drowned', 'war', 'wastes', 'plant', 'sky', 'wind'];
+const ZEPPELIN_STYLES = ['drowned', 'war', 'wastes', 'plant', 'sky', 'wind', 'foundry'];
 /**
  * A secret tunnel under a long roof (every level but the first, which has its sky road). A cracked hatch in the roof gives way
  * when Iggy crouches or ground-pounds on it; walking over it, nothing happens. Inside: power-ups and bonus breadboards, and a
@@ -159,6 +163,21 @@ interface Haz {
 }
 interface Bullet { img: Phaser.GameObjects.Rectangle; trail: Phaser.GameObjects.Rectangle; vx: number; y: number }
 interface Shell { x: number; top: number; state: 'warn' | 'boom'; t: number; gfx: Phaser.GameObjects.Graphics; boomed: boolean }
+/**
+ * The Reclamation Plant: on the way to it, the Reclaimer rises on a lift in the far background now and then, fires a few
+ * glowing shots that fly out towards the camera and come down on marked spots near Iggy, then sinks out of sight.
+ */
+interface Cameo {
+  /** the Forgemaster (the Foundry Below, there the whole level) rather than the Reclaimer (the plant, now and then) */
+  forge: boolean;
+  spine?: SpineGameObject; play: (anim: string, loop: boolean) => void;
+  lift: Phaser.GameObjects.Graphics; phase: 'rise' | 'fire' | 'sink'; t: number; shots: number; cd: number; x: number;
+}
+interface CameoShot { img: Phaser.GameObjects.Image; fx: number; fy: number; x: number; top: number; t: number; mark: Phaser.GameObjects.Graphics }
+/** the cameo, in screen space: where it stands, its size (the arena rig is RECLAIMER_SCALE), and how long a shot takes to land */
+const CAMEO_X = 660, CAMEO_FEET = 235, CAMEO_SCALE = 0.22, CAMEO_FLIGHT = 1.25; // (small and high up, so it reads as far behind the level)
+/** the Forgemaster's cameo: its size, and its furnace eye (where it fires from) in sheet px from its feet */
+const FORGE_CAMEO_SCALE = 0.2, FORGE_EYE: [number, number] = [-53, -455];
 interface Plat {
   kind: 'moving' | 'crumble' | 'secret' | 'pier'; sinker?: boolean; img: Phaser.Physics.Arcade.Image; collider: Phaser.Physics.Arcade.Collider; baseX: number; baseY: number; amp: number; phase: number;
   stood: boolean; timer: number; state: 'idle' | 'shaking' | 'falling';
@@ -177,13 +196,20 @@ interface BossState {
   dashTo?: number; dashV?: number;
   /** its energy shield, if it has one: hits left, whether it's up, and seconds until it comes back */
   shield?: { hp: number; max: number; up: boolean; t: number; warned: boolean };
+  /** the Forgemaster: golden locks left on its chest, which stage of its fight it's in, and whether the next sweep is high */
+  locks?: number; phase?: number; sweepHigh?: boolean;
   /** the boss's Spine skeleton (if it has one), drawn in place of `sprite`, which then only carries its state */
   spine?: BossSpine;
 }
-interface BossShot { img: Phaser.GameObjects.Image; vx: number; vy: number; g: number; mortar: boolean }
+interface BossShot { img: Phaser.GameObjects.Image; vx: number; vy: number; g: number; mortar: boolean; pour?: boolean }
+/** molten metal on the arena floor: a pool from the ladle (burns out after `t` seconds) or a channel (t = Infinity) */
+interface Slag { x0: number; x1: number; t: number; gfx: Phaser.GameObjects.Graphics }
+/** the Forgemaster's three golden locks, on its chest (sheet px on forgemaster.webp; its feet are at 520, 700) */
+const FORGE_LOCKS: [number, number][] = [[394, 440], [445, 438], [523, 437]];
+const FORGE_FEET: [number, number] = [520, 700];
 /** a broken boss shield stays down this long (s); it flickers for the last second before it comes back */
 const SHIELD_DOWN = 6;
-interface BossWave { img: Phaser.GameObjects.Image; vx: number }
+interface BossWave { img: Phaser.GameObjects.Image; vx: number; high?: boolean }
 interface Flag { x: number; top: number; sprite: Phaser.GameObjects.Image; on: boolean }
 
 const RUN = 250;
@@ -241,7 +267,11 @@ export class PlayScene extends Phaser.Scene {
   private plats: Plat[] = [];
   private flags: Flag[] = [];
   private tunnels: Tunnel[] = [];
-  private nextTunnelX = 0;
+  /** the next secret (a tunnel, or a switch that raises a secret staircase) comes after this x */
+  private nextSecretX = 0;
+  private nextSecret: 'tunnel' | 'stairs' = 'tunnel';
+  /** set when a staircase switch is due: populate() puts it on the next roof with room for it */
+  private stairsDue: number | null = null;
   private nextFlagX = 1800;
   private arenaX: number | null = null;
   private arenaTop = 400;
@@ -249,6 +279,7 @@ export class PlayScene extends Phaser.Scene {
   private boss?: BossState;
   private bossShots: BossShot[] = [];
   private bossFx?: Phaser.GameObjects.Graphics;
+  private slag: Slag[] = [];
   private bossWaves: BossWave[] = [];
   private bossAmmoT = 8;
   private nextX = 0;
@@ -279,11 +310,15 @@ export class PlayScene extends Phaser.Scene {
   private soldierWarned = false;
   // warzone: random artillery shells and landmines
   private shells: Shell[] = [];
+  private cameo?: Cameo;
+  private cameoShots: CameoShot[] = [];
+  private nextCameoX = 2200;
   private shellCD = 3.5;
   private shellWarned = false;
   private switchPlaced = false;
   /** once the hidden path is revealed: the stretch of the level it covers, where breadboards become optional bonus */
-  private layerSpan: [number, number] | null = null;
+  /** stretches of the level a revealed secret road flies over: breadboards there are bonus (skipping them keeps a perfect run) */
+  private spans: [number, number][] = [];
   private landedNow = false;
   // levels 8 to 12
   private pools: Pool[] = [];
@@ -294,6 +329,12 @@ export class PlayScene extends Phaser.Scene {
   private scrambling = false;
   /** Glass Dunes sandstorms: seconds until the next one, and seconds left of the one blowing now */
   private stormCD = 14;
+  /** Sky Docks gusts: seconds until the next, seconds left of this one (a second's warning first), and which way it blows */
+  private gustCD = 7;
+  private gustT = 0;
+  private gustWarn = 0;
+  private gustDir = 1;
+  private gustGfx?: Phaser.GameObjects.Graphics;
   private stormT = 0;
   private stormTint?: Phaser.GameObjects.Rectangle;
   /** Glass Dunes: the sand drags at his boots. 0 = just set off (slow), 1 = got going (full speed); stopping loses it. */
@@ -420,6 +461,9 @@ export class PlayScene extends Phaser.Scene {
     this.shells.forEach((sh) => sh.gfx.destroy());
     this.shells = [];
     this.shellCD = 3.5;
+    this.cameo = undefined;
+    this.cameoShots = [];
+    this.nextCameoX = 2200;
     this.shellWarned = false;
     this.switchPlaced = false;
     this.pools.forEach((p) => { p.gfx.destroy(); p.collider.destroy(); p.zone.destroy(); });
@@ -427,6 +471,10 @@ export class PlayScene extends Phaser.Scene {
     this.inWater = false;
     this.sliding = false;
     this.stormCD = 14;
+    this.gustCD = 7;
+    this.gustT = 0;
+    this.gustWarn = 0;
+    this.gustGfx = undefined;
     this.stormT = 0;
     this.stormTint = undefined;
     this.sandGo = 0;
@@ -446,12 +494,14 @@ export class PlayScene extends Phaser.Scene {
     this.hangHinted = false;
     this.cliffHinted = false;
     this.cliffSeen = false;
-    this.layerSpan = null;
+    this.spans = [];
     this.tunnels = [];
-    this.nextTunnelX = 2400 + this.rand() * 1600;
+    this.stairsDue = null;
+    this.nextSecretX = 1200 + this.rand() * 1500;
     this.landedNow = false;
     this.hc = this.settings.highContrast;
     this.level = levelById(this.registry.get('level') as string | undefined);
+    this.nextSecret = this.pickSecret(); // (needs the level)
     this.sfx = new Sfx(this.settings.volume);
 
     // 8-bit background music. The Angular page changes it live through the 'music' registry entry.
@@ -522,6 +572,7 @@ export class PlayScene extends Phaser.Scene {
     this.rc = undefined;
     this.bossShots = [];
     this.bossWaves = [];
+    this.slag = [];
     this.bossAmmoT = 8;
     this.layers = [];
     this.t = 0;
@@ -606,7 +657,7 @@ export class PlayScene extends Phaser.Scene {
     makeEnemyRigTextures(this, this.level.style); // enemies are drawn and animated in code, then grimed up
     makeBossRigTextures(this, this.level.style); // the bosses are drawn and animated in code
     if (this.level.style === 'city') makeEnforcerRigTextures(this); // Enforcer Nine is the rigged concept-sheet cut-out (falls back to the drawn one)
-    const style = this.level.style;
+    const style = this.artStyle();
     let sky: string, layers: [string, number][], fogKey: string, precipKey: string;
     if (style !== 'city' && style !== 'hollow') {
       const a = ensureStyle(this, style);
@@ -658,15 +709,27 @@ export class PlayScene extends Phaser.Scene {
   }
 
   // ------------------------------------------------------------------ world generation
+  /** The look the level is drawn in: the Foundry Below (level 14) borrows the Reclamation Plant's. */
+  private artStyle() {
+    return this.level.style === 'foundry' ? 'plant' : this.level.style;
+  }
+
+  /** How hard the level is right here, 0 to 1: it climbs as Iggy runs, and later levels start further up (level 13 at 0.6). */
   private difficulty() {
-    return Math.min(1, Math.max(0, this.maxX) / 12000);
+    const floor = Phaser.Math.Clamp((this.level.number - 1) / 12, 0, 1) * 0.6;
+    return Math.min(1, floor + (1 - floor) * Math.max(0, this.maxX) / 12000);
+  }
+
+  /** The last four levels (10 to 13) pile on more: 0 before them, 0.25 on level 10, up to 1 on the last. */
+  private late() {
+    return Phaser.Math.Clamp((this.level.number - 9) / 4, 0, 1);
   }
 
   private addBuilding(x: number, top: number, w: number) {
     const st = this.level.style;
     const gfx = st === 'hollow' ? drawHollowBuilding(this, x, top, w, this.hc)
       : st === 'city' ? drawBuilding(this, x, top, w, this.hc)
-      : drawLevelBuilding(this, st as ExtraStyle, x, top, w, this.hc);
+      : drawLevelBuilding(this, this.artStyle() as ExtraStyle, x, top, w, this.hc);
     // the sky docks float: their decks are thin, with nothing underneath
     const zone = st === 'sky' ? this.add.zone(x + w / 2, top + 15, w, 30) : this.add.zone(x + w / 2, top + 300, w, 600);
     this.physics.add.existing(zone, true);
@@ -702,7 +765,9 @@ export class PlayScene extends Phaser.Scene {
         w = this.between(260, 420);
       }
       // a secret tunnel: a long roof, low enough that the tunnel's floor stays on screen
-      const tunnel = !cliff && this.level.id !== 'rooftops' && st !== 'sky' && st !== 'locks' && this.nextX > this.nextTunnelX;
+      const due = this.nextX > this.nextSecretX && this.stairsDue === null;
+      const tunnel = !cliff && due && this.nextSecret === 'tunnel';
+      if (due && this.nextSecret === 'stairs') { this.stairsDue = this.secretLevel(this.nextX); this.scheduleSecret(this.nextX); }
       if (tunnel) { w = this.between(640, 760); top = Math.min(top, 390); gap = Math.min(gap, 110); }
       const x = this.nextX + gap;
       const prev = this.buildings[this.buildings.length - 1];
@@ -711,10 +776,10 @@ export class PlayScene extends Phaser.Scene {
       if (st === 'locks' && prev) this.addPool(prev, b);
       if (st === 'wind' && this.maxX > 300 && this.rand() < 0.55) this.addWind(b);
       // the plant: some gantries are conveyor belts, carrying Iggy one way or the other
-      if (this.level.style === 'plant' && !cliff && w > 200 && this.rand() < 0.35) this.addConveyor(b, this.rand() < 0.5 ? -1 : 1);
+      if ((st === 'plant' || st === 'foundry') && !cliff && w > 200 && this.rand() < 0.35) this.addConveyor(b, this.rand() < 0.5 ? -1 : 1);
       if (tunnel) {
-        this.addTunnel(b);
-        this.nextTunnelX = x + 5000 + this.rand() * 2500;
+        this.addTunnel(b, this.secretLevel(x));
+        this.scheduleSecret(x);
       } else this.populate(b, prev, gap);
       if (prev) this.addPlatform(prev, b, gap);
       if (b.x >= this.nextFlagX && b.w >= 240) {
@@ -749,13 +814,14 @@ export class PlayScene extends Phaser.Scene {
     }
     // rooftop pylons
     const hazards: number[] = [];
-    if (b.w > 240 && this.rand() < 0.25 + d * 0.5) {
+    const late = this.late();
+    if (b.w > 240 && this.rand() < 0.25 + d * 0.5 + late * 0.15) {
       const px = b.x + this.between(90, b.w - 90);
       hazards.push(px);
       this.addItem('pylon', px, b.top - 21);
     }
     // brick wall: Iggy can crash through it (slowed, not hurt), or shoot it down
-    if (b.w > 260 && this.rand() < 0.22 + d * 0.25) {
+    if (b.w > 260 && this.rand() < 0.22 + d * 0.25 + late * 0.15) {
       const wx = b.x + this.between(110, b.w - 110);
       if (!hazards.some((h) => Math.abs(h - wx) < 90)) {
         hazards.push(wx);
@@ -770,11 +836,12 @@ export class PlayScene extends Phaser.Scene {
     }
     // a patrolling enemy walking back and forth across a clear roof
     // (not on a cliff top: he'd climb straight into it)
-    const patrol = !b.cliff && hazards.length === 0 && b.w > 220 && this.maxX > 200 && this.rand() < 0.22 + d * 0.3;
+    const patrol = !b.cliff && hazards.length === 0 && b.w > 220 && this.maxX > 200 && this.rand() < 0.22 + d * 0.3 + late * 0.2;
     if (patrol) this.addPatrol(b);
     // the newer enemies: one at most per roof, from this level's list
     const kinds = FOES_BY_STYLE[this.level.style] ?? [];
-    if (!patrol && !b.cliff && kinds.length && hazards.length === 0 && b.w > 240 && this.maxX > 350 && this.rand() < 0.2 + d * 0.15) {
+    // (on the last four levels a wide roof can have a patrol and one of these too)
+    if ((!patrol || (b.w > 320 && this.rand() < late * 0.6)) && !b.cliff && kinds.length && hazards.length === 0 && b.w > 240 && this.maxX > 350 && this.rand() < 0.2 + d * 0.15 + late * 0.25) {
       const kind = kinds[Math.floor(this.rand() * kinds.length)];
       if (kind !== 'magnet' || (prev && gap >= 70)) this.addFoe(kind, b);
     }
@@ -810,9 +877,13 @@ export class PlayScene extends Phaser.Scene {
     if (this.level.id === 'rooftops' && !this.switchPlaced && b.x > 2300 && b.w > 220 && hazards.length === 0) {
       this.switchPlaced = true;
       this.addSwitch(b.x + b.w / 2, b.top);
+    } else if (this.stairsDue !== null && b.w > 200 && !b.cliff && hazards.length === 0) {
+      // the other secret staircases: the same brass button, on a roof with room around it
+      this.addSwitch(b.x + Math.min(b.w / 2, 120), b.top, this.stairsDue);
+      this.stairsDue = null;
     }
     // power-ups
-    if (this.maxX > 300 && this.rand() < 0.14) {
+    if (this.maxX > 300 && this.rand() < 0.14 * (1 - 0.45 * late)) {
       const ids: PowerId[] = ['spring', 'magnet', 'shield', 'turbo', 'star', 'gun', 'gun', 'oil', 'oil'];
       const id = ids[Math.floor(this.rand() * ids.length)];
       this.addItem('pu', b.x + b.w / 2, b.top - 75, id);
@@ -825,9 +896,9 @@ export class PlayScene extends Phaser.Scene {
    * Level 1's hidden sky layer. Landing on a brass button set into a rooftop reveals a staircase of golden slabs leading to a high
    * road of bonus breadboards and a star. None of it is needed to finish the level, and its breadboards don't count against a perfect run.
    */
-  private addSwitch(x: number, top: number) {
+  private addSwitch(x: number, top: number, sd?: number) {
     const sprite = this.add.image(x, top - 8, 'switch-off').setDepth(6);
-    this.items.push({ kind: 'switch', sprite, baseY: sprite.y, phase: 0 });
+    this.items.push({ kind: 'switch', sprite, baseY: sprite.y, phase: 0, sd });
   }
 
   private pressSwitch(it: Item) {
@@ -835,19 +906,90 @@ export class PlayScene extends Phaser.Scene {
     it.sprite.setTexture('switch-on');
     this.sfx.secret();
     this.banner('Click! A hidden path appears.');
-    this.announce('Click! A hidden path has appeared high above, to the right. A staircase of golden slabs leads up to it. Breadboards in that stretch are now optional bonus, so skipping them keeps a perfect run alive.');
+    if (it.sd === undefined) this.announce('Click! A hidden path has appeared high above, to the right. A staircase of golden slabs leads up to it. Breadboards in that stretch are now optional bonus, so skipping them keeps a perfect run alive.');
     this.burst(it.sprite.x, it.sprite.y - 6, [0x4dff88, 0xffd23a, 0xffffff], 22, 220);
-    const x0 = it.sprite.x + 330;
-    // everything the hidden path flies over becomes optional, so taking it never costs a perfect run
-    this.layerSpan = [x0 - 90, x0 + 1130 + 140];
+    if (it.sd === undefined) {
+      const x0 = it.sprite.x + 330;
+      this.addSpan(x0 - 90, x0 + 1130 + 140);
+      this.addSecretLayer(x0);
+    } else this.addSecretStairs(it.sprite.x, it.sprite.y + 8, it.sd);
+    this.emitHud(true);
+  }
+
+  /** Everything a secret road flies over becomes optional bonus, so taking it never costs a perfect run. */
+  private addSpan(x0: number, x1: number) {
+    this.spans.push([x0, x1]);
     for (const o of this.items) {
-      if (o.kind === 'bb' && !o.bonus && !o.taken && o.sprite.x >= this.layerSpan[0] && o.sprite.x <= this.layerSpan[1]) {
+      if (o.kind === 'bb' && !o.bonus && !o.taken && o.sprite.x >= x0 && o.sprite.x <= x1) {
         o.bonus = true;
         this.bbSpawned--;
       }
     }
-    this.addSecretLayer(x0);
-    this.emitHud(true);
+  }
+
+  /**
+   * A secret staircase on any level after the first: golden slabs climbing from the switch's roof to a high road of bonus
+   * breadboards and a power-up. The harder it is (sd, 0 to 1), the wider and taller the jumps; from 0.4 the high road crumbles
+   * underfoot, and from 0.65 every other step drifts from side to side.
+   */
+  private addSecretStairs(sx: number, roof: number, sd: number) {
+    const dx = 140 + 45 * sd, rise = 34 + 12 * sd, top = Math.max(110, roof - 250);
+    const steps: { x: number; y: number; kind: 'secret' | 'crumble' | 'moving' }[] = [];
+    let x = sx + 200, y = roof - 95;
+    for (let i = 0; y > top; i++) {
+      steps.push({ x, y, kind: sd >= 0.65 && i % 2 === 1 ? 'moving' : 'secret' });
+      x += dx;
+      y -= rise;
+    }
+    y = top;
+    const road: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      steps.push({ x, y, kind: sd >= 0.4 && i % 2 === 0 ? 'crumble' : 'secret' });
+      road.push(x);
+      x += 135;
+    }
+    this.addSpan(sx, x + 100);
+    steps.forEach((st, i) => {
+      if (st.kind === 'secret') {
+        const img = this.physics.add.image(st.x, st.y, 'plat-secret').setDepth(7).setAlpha(this.reduced ? 1 : 0);
+        const body = img.body as Phaser.Physics.Arcade.Body;
+        body.setAllowGravity(false).setImmovable(true);
+        body.setSize(84, 12).setOffset(0, 2);
+        const plat: Plat = { collider: undefined as unknown as Phaser.Physics.Arcade.Collider, kind: 'secret', img, baseX: st.x, baseY: st.y, amp: 0, phase: 0, stood: false, timer: 0, state: 'idle' };
+        plat.collider = this.physics.add.collider(this.player, img, undefined, () => this.body.velocity.y >= 0 && this.body.prev.y + this.body.height <= body.top + 6);
+        this.plats.push(plat);
+        if (!this.reduced) this.tweens.add({ targets: img, alpha: 0.35, duration: 400, delay: i * 90 }); // the slabs light up one after another
+      } else this.addFloater(st.x, st.y, st.kind === 'moving', st.kind === 'moving' ? 24 + 16 * sd : 0);
+    });
+    for (const rx of road) for (const ox of [-30, 0, 30]) {
+      this.addItem('bb', rx + ox, y - 40);
+      this.items[this.items.length - 1].sprite.setTint(0xffe27a);
+    }
+    const prizes: PowerId[] = sd < 0.5 ? ['star', 'spring', 'shield'] : ['star', 'gun', 'shield', 'turbo'];
+    this.addItem('pu', road[road.length - 1], y - 48, prizes[Math.floor(this.rand() * prizes.length)]);
+    const tricky = sd >= 0.65 ? ' Some steps drift, and the top slabs crumble: keep moving.' : sd >= 0.4 ? ' The top slabs crumble a moment after you land: keep moving.' : '';
+    this.announce(`Click! A secret staircase of golden slabs has appeared ahead, climbing to a high road of bonus breadboards and a power-up.${tricky} Skipping it keeps a perfect run alive.`);
+  }
+
+  /** What the next secret will be. Level 1 has its own staircase, and the sky docks and locks have no room under the ground. */
+  private pickSecret(): 'tunnel' | 'stairs' {
+    const st = this.level.style;
+    if (st === 'sky' || st === 'locks') return 'stairs';
+    if (this.level.id === 'rooftops') return 'tunnel';
+    return this.rand() < 0.5 ? 'tunnel' : 'stairs';
+  }
+
+  /** After a secret at x, the next one: closer together on later levels. */
+  private scheduleSecret(x: number) {
+    const tier = Phaser.Math.Clamp((this.level.number - 1) / 12, 0, 1);
+    this.nextSecretX = x + 4200 - 1800 * tier + this.rand() * 1800;
+    this.nextSecret = this.pickSecret();
+  }
+
+  /** How hard a secret at x is, 0 to 1: later levels, and further along each level, make it harder. */
+  private secretLevel(x: number) {
+    const tier = Phaser.Math.Clamp((this.level.number - 1) / 12, 0, 1);
+    return Phaser.Math.Clamp(tier * 0.75 + Math.min(1, x / 16000) * 0.25, 0, 1);
   }
 
   private addSecretLayer(x0: number) {
@@ -882,7 +1024,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   /** Hollows out a secret tunnel under building b (see Tunnel), replacing its solid block with the pieces around the tunnel. */
-  private addTunnel(b: Building) {
+  private addTunnel(b: Building, sd: number) {
     const top = b.top, floor = top + TUNNEL_DEPTH;
     const hx = b.x + 110, ex = b.x + b.w - 170;
     const parts: Tunnel['parts'] = [];
@@ -921,10 +1063,15 @@ export class PlayScene extends Phaser.Scene {
     for (let x = hx + 70; x < ex; x += 130) { g.fillStyle(0xffd66b, 0.18).fillCircle(x, top + TUNNEL_ROOF + 14, 26); g.fillStyle(0xffe9a8, 1).fillCircle(x, top + TUNNEL_ROOF + 8, 4); }
     g.fillStyle(0x6bffb0, 0.25).fillRect(ex, top + TUNNEL_ROOF, HATCH_W, floor - top - TUNNEL_ROOF);
     g.fillStyle(0x3a3040, 1).fillRect(hx, floor - 4, ex + HATCH_W - hx, 4);
-    // the hatch on the roof: a slightly different panel with cracks (the exit hatch looks the same from above)
+    // the hatches on the roof: riveted rusty iron plates set into it, cracked across (the exit looks the same from above)
     for (const x of [hx, ex]) {
-      t.cover.fillStyle(0x000000, 0.18).fillRect(x + 4, top + 2, HATCH_W - 8, 10);
-      t.cover.lineStyle(1.5, 0x000000, 0.45).lineBetween(x + 10, top + 3, x + 24, top + 11).lineBetween(x + 24, top + 11, x + 40, top + 4).lineBetween(x + 40, top + 4, x + 50, top + 10);
+      const c = t.cover;
+      c.fillStyle(0x2a1a12, 1).fillRect(x + 2, top - 1, HATCH_W - 4, 13); // the dark seam round it
+      c.fillStyle(0x8a5a34, 1).fillRect(x + 5, top, HATCH_W - 10, 10); // the plate
+      c.fillStyle(0xc98b4a, 1).fillRect(x + 5, top, HATCH_W - 10, 2); // its lit top edge
+      for (const bx of [x + 9, x + HATCH_W - 9]) c.fillStyle(this.hc ? 0xffffff : 0xe8c890, 1).fillCircle(bx, top + 6, 1.8); // rivets
+      c.lineStyle(2, 0x1a0e08, 1).lineBetween(x + 14, top + 1, x + 24, top + 9).lineBetween(x + 24, top + 9, x + 34, top + 3).lineBetween(x + 34, top + 3, x + 46, top + 9);
+      if (this.hc) c.lineStyle(2, 0xffffff, 1).strokeRect(x + 2, top - 1, HATCH_W - 4, 13);
     }
     // the loot: two power-ups and a row of bonus breadboards (missing them never costs a perfect run)
     const ids: PowerId[] = ['star', 'turbo', 'shield', 'spring', 'gun', 'oil', 'magnet'];
@@ -939,9 +1086,31 @@ export class PlayScene extends Phaser.Scene {
     for (let x = hx + HATCH_W + 40; x < ex - 30; x += 42) if (Math.abs(x - mid) > 40) add('bb', x, floor - 30);
     add('pu', mid, floor - 40, ids[Math.floor(this.rand() * ids.length)]);
     add('pu', ex - 40, floor - 40, ids[Math.floor(this.rand() * ids.length)]);
+    // the harder ones are guarded: a walker from 0.25, two from 0.5, and a Glitch Mite drifting about from 0.7
+    const inside: Building = { ...b, x: hx + HATCH_W + 30, w: ex - hx - HATCH_W - 60, top: floor };
+    const guards = sd >= 0.5 ? 2 : sd >= 0.25 ? 1 : 0;
+    // the ceiling is too low to stomp them, so a guarded tunnel always has a blaster crate on the roof before its hatch,
+    // at walking height (he picks it up just by running past)
+    if (guards > 0) this.addItem('pu', b.x + 55, top - 34, 'gun');
+    for (let i = 0; i < guards; i++) {
+      this.addPatrol(inside);
+      const g = this.items[this.items.length - 1];
+      g.sprite.setVisible(false);
+      t.items.push(g);
+    }
+    if (sd >= 0.7) {
+      const m = this.addFoe('mite', { ...inside, top: floor + 10 });
+      m.sprite.setVisible(false);
+      t.items.push(m);
+    }
     // a few breadboards along the roof, so the stretch above looks like any other
     for (let x = b.x + 40; x < b.x + b.w - 40; x += 170) if (x < hx - 20 || x > hx + HATCH_W + 20) this.addItem('bb', x, top - 34);
     this.tunnels.push(t);
+  }
+
+  /** Inside a secret tunnel's hollow (below its roof, above its floor): shots fly on through there, not into the building. */
+  private inTunnel(x: number, y: number) {
+    return this.tunnels.some((t) => x >= t.hx && x <= t.ex + HATCH_W && y > t.top + TUNNEL_ROOF && y < t.floor);
   }
 
   private openTunnel(t: Tunnel) {
@@ -1013,9 +1182,11 @@ export class PlayScene extends Phaser.Scene {
     if (this.level.style === 'plant') { this.spawnReclaimer(); return; }
     const def = BOSSES[this.level.style];
     const sprite = this.add.image(this.camLock! + W - 150, this.arenaTop, `boss-${this.level.style}-a`).setOrigin(0.5, this.level.style === 'city' ? 0.95 : 1).setDepth(8); // Enforcer Nine sits a little lower so its feet meet the roof
-    this.boss = { def, sprite, hp: def.hp, max: def.hp, state: 'intro', timer: 2.2, cd: 1.5, attack: 'volley', stomped: false, touchCD: 0, said: 0 };
+    const hp = Math.round(def.hp * (1 + 0.25 * this.late())); // the last bosses take more beating
+    this.boss = { def, sprite, hp, max: hp, state: 'intro', timer: 2.2, cd: 1.5, attack: 'volley', stomped: false, touchCD: 0, said: 0 };
     this.boss.spine = BossSpine.attach(this, sprite, this.level.style);
-    if (def.shield) this.boss.shield = { hp: def.shield, max: def.shield, up: true, t: 0, warned: false };
+    if (def.shield) { const sh = def.shield + Math.round(2 * this.late()); this.boss.shield = { hp: sh, max: sh, up: true, t: 0, warned: false }; }
+    if (def.locks) { this.boss.locks = def.locks; this.boss.phase = 1; }
     this.bossFx = this.add.graphics().setDepth(8.5);
     if (this.level.style === 'locks') {
       // there's nothing to stomp from out on the piers: Iggy gets a blaster and plenty of shots
@@ -1024,7 +1195,9 @@ export class PlayScene extends Phaser.Scene {
       this.announce('A blaster with 50 shots. Shoot the Kraken from the piers, and keep moving: some piers sink.');
     }
     this.banner(`Boss: ${def.name}`);
-    this.announce(`Boss fight: ${def.name}. ${def.blurb} Shoot it, or stomp on its head when it kneels.${def.shield ? ` It has an energy shield: ${def.shield} hits break it, or a head stomp smashes it. It comes back a few seconds later.` : ''}`);
+    this.announce(def.locks
+      ? `Final boss: ${def.name}. ${def.blurb} Its shield is held up by ${def.locks} golden locks: break the shield with ${this.boss.shield?.max} hits, or a head stomp when it kneels, to smash a lock and hurt it while the shield is down.`
+      : `Boss fight: ${def.name}. ${def.blurb} Shoot it, or stomp on its head when it kneels.${def.shield ? ` It has an energy shield: ${def.shield} hits break it, or a head stomp smashes it. It comes back a few seconds later.` : ''}`);
     this.sfx.bossAppear();
     this.music?.setIntensity(1);
     this.music?.stinger();
@@ -1203,11 +1376,17 @@ export class PlayScene extends Phaser.Scene {
         s.setTexture(this.textures.exists(wk) ? wk : `boss-${style}-a`);
         b.cd -= edt;
         if (b.cd <= 0) {
-          b.attack = b.def.attacks[Math.floor(Math.random() * b.def.attacks.length)];
+          const list = (b.phase === 3 && b.def.phase3) || (b.phase === 2 && b.def.phase2) || b.def.attacks;
+          b.attack = list[Math.floor(Math.random() * list.length)];
+          if (b.attack === 'sweep') {
+            b.sweepHigh = Math.random() < 0.5;
+            this.banner(b.sweepHigh ? 'High sweep: duck!' : 'Low sweep: jump!');
+            this.announce(b.sweepHigh ? 'The hammer swings high: duck!' : 'The hammer swings low: jump!');
+          }
           b.state = 'telegraph';
           // later bosses wind up a little quicker (never under half a second for the shots, so there's time to react)
           const tier = this.bossTier();
-          b.timer = b.attack === 'stomp' ? 0.9 : b.attack === 'charge' ? 0.85 - 0.15 * tier : 0.6 - 0.1 * tier;
+          b.timer = b.attack === 'stomp' ? 0.9 : b.attack === 'charge' ? 0.85 - 0.15 * tier : b.attack === 'sweep' ? 0.9 : 0.6 - 0.1 * tier;
           s.setTexture(`boss-${this.level.style}-b`);
           this.sfx.bossCharge(b.attack === 'stomp' || b.attack === 'charge');
           if (b.attack === 'charge') this.sayOnce('ram', `${b.def.name} is rearing back to ram you. Back away!`);
@@ -1234,6 +1413,20 @@ export class PlayScene extends Phaser.Scene {
         }
       }
       this.updateBossShield(b, edt);
+      if (b.locks !== undefined) {
+        if ((b.phase ?? 1) < 3 && b.hp <= b.max / 3) this.forgePhase(b, 3);
+        // the golden locks: lit while they hold, black and cracked once smashed
+        const g = this.bossFx!;
+        for (let i = 0; i < (b.def.locks ?? 0); i++) {
+          const [lx, ly] = this.forgeLock(b, i), smashed = i < b.def.locks! - b.locks;
+          if (smashed) {
+            g.fillStyle(0x1a1210, 0.85).fillRect(lx - 11, ly - 17, 22, 34);
+            g.lineStyle(2, 0x000000, 1).lineBetween(lx - 8, ly - 12, lx + 2, ly + 2).lineBetween(lx + 2, ly + 2, lx - 4, ly + 14);
+          } else if (!this.reduced && b.shield?.up && i === b.def.locks! - b.locks) {
+            g.lineStyle(this.hc ? 3 : 2, this.hc ? 0xffffff : 0xffe27a, 0.6 + Math.sin(this.t * 6) * 0.3).strokeRect(lx - 13, ly - 19, 26, 38); // the one the shield hangs on
+          }
+        }
+      }
       // touching the mech
       const r = this.bossBox(b);
       if (b.state !== 'intro' && body.right > r.x0 + 6 && body.left < r.x1 - 6 && body.bottom > r.y0 && body.top < r.y1) {
@@ -1255,6 +1448,7 @@ export class PlayScene extends Phaser.Scene {
       }
     }
 
+    this.updateSlag(edt);
     // the mech's projectiles
     const camX = this.camLock;
     this.bossShots = this.bossShots.filter((sh) => {
@@ -1268,6 +1462,7 @@ export class PlayScene extends Phaser.Scene {
       }
       if (!gone && sh.img.y >= this.arenaTop - 8) {
         gone = true;
+        if (sh.pour) this.addSlag(sh.img.x - 45, sh.img.x + 45, 3.5);
         if (sh.mortar) {
           this.sfx.boom();
           this.debris(sh.img.x, this.arenaTop - 10, 'spark', this.reduced ? 3 : 8, 1.2);
@@ -1281,7 +1476,8 @@ export class PlayScene extends Phaser.Scene {
     this.bossWaves = this.bossWaves.filter((w) => {
       w.img.x += w.vx * edt;
       let gone = w.img.x < camX - 40 || w.img.x > camX + W + 40;
-      if (!gone && Math.abs(body.center.x - w.img.x) < 20 && body.bottom > this.arenaTop - 22) this.hit('enemy');
+      const inLine = w.high ? body.top < this.arenaTop - 32 && body.bottom > this.arenaTop - 78 : body.bottom > this.arenaTop - 22; // (ducking clears a high sweep)
+      if (!gone && Math.abs(body.center.x - w.img.x) < 20 && inLine) this.hit('enemy');
       if (gone) w.img.destroy();
       return !gone;
     });
@@ -1318,7 +1514,8 @@ export class PlayScene extends Phaser.Scene {
     b.state = 'walk';
     // each boss is harder than the last: quicker between attacks, faster shots, more of them
     const tier = this.bossTier(), more = Math.round(tier * 2), fast = 1 + 0.35 * tier;
-    b.cd = (enraged ? 1.1 : 1.8) * (1 - 0.35 * tier);
+    b.cd = (enraged ? 1.1 : 1.8) * (1 - 0.35 * tier - 0.1 * this.late());
+    if (b.phase === 3 && Math.random() < 0.45) b.cd = 0.35; // the last stage: often a second attack straight after the first
     if (b.attack === 'volley') {
       const n = (enraged ? 3 : 2) + more;
       for (let i = 0; i < n; i++) this.time.delayedCall(i * (260 - 60 * tier), () => b.state !== 'dead' && s.active && this.fireBossShot(mx, my, this.body.center.x, this.body.center.y, 270 * fast));
@@ -1340,6 +1537,25 @@ export class PlayScene extends Phaser.Scene {
       this.sayOnce('ring', 'A ring of shots! Find a gap between them, or jump.');
     } else if (b.attack === 'rain') {
       this.bossRain(b, (enraged ? 5 : 4) + Math.round(tier * 2));
+    } else if (b.attack === 'pour') {
+      // the ladle (on its far side) flings molten metal over its shoulder, onto where Iggy stands and either side of him
+      const sign = s.flipX ? -1 : 1, lx = s.x + 40 * sign + 228 * sign, ly = s.y - 190;
+      const n = b.phase === 3 ? 3 : b.phase === 2 ? 2 : 1;
+      for (let i = 0; i < n; i++) {
+        const tx = px + (i - (n - 1) / 2) * 130, T = 1.1, g = 900;
+        const img = this.add.image(lx, ly, 'boss-orb').setDepth(9).setScale(1.5).setTint(0xffa030);
+        this.bossShots.push({ img, vx: (tx - lx) / T, vy: (this.arenaTop - 8 - ly - 0.5 * g * T * T) / T, g, mortar: true, pour: true });
+      }
+      this.sfx.bossMortar();
+      this.sayOnce('pour', 'Molten metal from the ladle! It burns on the floor for a few seconds: stay off it.');
+    } else if (b.attack === 'sweep') {
+      // the hammer swung flat across the arena towards Iggy: low (jump it) or high (duck under it)
+      const dir = px > s.x ? 1 : -1, high = !!b.sweepHigh;
+      const img = this.add.image(s.x + dir * 120, this.arenaTop - (high ? 54 : 14), 'boss-wave').setDepth(9).setFlipX(dir < 0);
+      if (high) img.setTint(0xffb060).setScale(1.3, 0.8);
+      this.bossWaves.push({ img, vx: dir * (380 + 120 * tier), high });
+      this.sfx.bossStomp();
+      if (!this.reduced) this.cameras.main.shake(160, 0.006);
     } else if (b.attack === 'charge') {
       const lo = this.camLock! + 140, hi = this.camLock! + W - 90;
       const dir = px > s.x ? 1 : -1;
@@ -1395,6 +1611,15 @@ export class PlayScene extends Phaser.Scene {
     this.sayOnce('rain', 'Shells are falling from the sky! Stay off the red marks on the ground.');
   }
 
+  /** The line under the boss's health bar: its shield, and for the Forgemaster its locks and stage. */
+  private bossNote(b: BossState) {
+    const sh = b.shield, locks = b.locks;
+    if (locks !== undefined && locks <= 0) return b.phase === 3 ? 'Locks smashed · Overheating: it attacks twice' : 'Locks smashed · No shield';
+    const lockText = locks !== undefined ? ` · ${locks} ${locks === 1 ? 'lock' : 'locks'} left` : '';
+    if (!sh) return undefined;
+    return (sh.up ? `Shield: ${sh.hp} of ${sh.max} hits left` : 'Shield down: hit it now') + lockText;
+  }
+
   /** A broken shield stays down a few seconds, flickers as a warning, then comes back at full strength. */
   private updateBossShield(b: BossState, edt: number) {
     const sh = b.shield, g = this.bossFx;
@@ -1402,12 +1627,13 @@ export class PlayScene extends Phaser.Scene {
     if (!sh || !g || b.state === 'dead') return;
     if (!sh.up) {
       sh.t -= edt;
-      if (sh.t <= 1 && !sh.warned) {
+      if (sh.t <= 1 && !sh.warned && !(b.locks !== undefined && b.locks <= 0)) {
         sh.warned = true;
         this.sfx.warn();
         this.announce('The shield is coming back!');
       }
-      if (sh.t <= 0) {
+      if (sh.t <= 0 && b.locks !== undefined && b.locks <= 0) sh.t = Infinity; // no locks left: it never comes back
+      else if (sh.t <= 0) {
         sh.up = true;
         sh.hp = sh.max;
         this.sfx.zap();
@@ -1436,9 +1662,70 @@ export class PlayScene extends Phaser.Scene {
     this.sfx.boom();
     this.burst(cx, cy, [0x5ad8ff, 0xffffff, 0x9aeaff], 30, 320);
     this.debris(cx, cy, 'spark', this.reduced ? 3 : 12, 1.2);
-    this.banner('Shield down!');
-    this.announce(`Shield down! ${b.def.name} can be hurt for a few seconds.`);
+    if (b.locks !== undefined) {
+      b.locks--;
+      const [lx, ly] = this.forgeLock(b, b.def.locks! - b.locks - 1);
+      this.explode(lx, ly, 30);
+      this.burst(lx, ly, [0xffd23a, 0xffffff, 0xff9a2a], 24, 260);
+      if (b.locks > 0) {
+        this.banner(`Lock smashed! ${b.locks} left`);
+        this.announce(`A golden lock is smashed! ${b.locks} ${b.locks === 1 ? 'lock' : 'locks'} left. The shield is down: hurt it now, before it comes back.`);
+      } else this.forgePhase(b, 2);
+    } else {
+      this.banner('Shield down!');
+      this.announce(`Shield down! ${b.def.name} can be hurt for a few seconds.`);
+    }
     this.emitHud(true);
+  }
+
+  /** Where one of the Forgemaster's chest locks is in the game right now. */
+  private forgeLock(b: BossState, i: number): [number, number] {
+    const d = BossSpine.def('foundry'), s = b.sprite, sign = s.flipX ? -1 : 1, k = d?.scale ?? 0.6;
+    const [sx, sy] = FORGE_LOCKS[Math.max(0, Math.min(2, i))];
+    return [s.x + (d?.dx ?? 0) + (sx - FORGE_FEET[0]) * k * sign, s.y + (d?.footDrop ?? 0) + (sy - FORGE_FEET[1]) * k * s.scaleY];
+  }
+
+  /** The Forgemaster's fight in stages: 2, the locks are gone and the floor breaks into molten channels; 3, a third of its health left. */
+  private forgePhase(b: BossState, phase: number) {
+    if ((b.phase ?? 1) >= phase) return;
+    b.phase = phase;
+    if (phase === 2) {
+      const cam = this.camLock!;
+      for (const [x0, x1] of [[cam + 250, cam + 330], [cam + 460, cam + 540]] as const) {
+        this.addSlag(x0, x1, Infinity);
+        this.addFloater((x0 + x1) / 2, this.arenaTop - 85, true, 0); // a ledge over each channel
+      }
+      if (!this.reduced) this.cameras.main.shake(500, 0.012);
+      this.sfx.boom();
+      this.banner('All locks smashed!');
+      this.announce('All three locks are smashed and its shield is gone for good! The floor cracks open into two molten channels: jump over them, or stand on the ledges above them. It swings its hammer flat now: jump the low sweeps, duck the high ones.');
+      this.music?.setIntensity(2);
+    } else {
+      this.banner('It\'s overheating!');
+      this.announce(`${b.def.name} is overheating! It attacks faster, often twice in a row.`);
+    }
+  }
+
+  /** Molten metal on the arena floor, from x0 to x1, for t seconds (Infinity: a channel that stays). */
+  private addSlag(x0: number, x1: number, t: number) {
+    this.slag.push({ x0, x1, t, gfx: this.add.graphics().setDepth(5.5) });
+  }
+
+  private updateSlag(dt: number) {
+    const body = this.body;
+    this.slag = this.slag.filter((p) => {
+      p.t -= dt;
+      const g = p.gfx, y = this.arenaTop, fade = Math.min(1, p.t);
+      g.clear();
+      if (p.t <= 0) { g.destroy(); return false; }
+      const glow = this.reduced ? 0 : Math.sin(this.t * 6 + p.x0) * 0.1;
+      g.fillStyle(0xff6a1a, (0.85 + glow) * fade).fillRect(p.x0, y - 4, p.x1 - p.x0, 8);
+      g.fillStyle(0xffe08a, (0.7 + glow) * fade).fillRect(p.x0 + 6, y - 3, p.x1 - p.x0 - 12, 3);
+      if (this.hc) g.lineStyle(2, 0xffffff, fade).strokeRect(p.x0, y - 5, p.x1 - p.x0, 9);
+      if (!this.reduced && Math.random() < dt * 8) this.dust(Phaser.Math.Between(p.x0, p.x1), y - 4, 1, 6, 20, 0.6);
+      if (this.boss?.state !== 'dead' && body.center.x > p.x0 + 4 && body.center.x < p.x1 - 4 && body.bottom >= y - 3 && body.bottom <= y + 6) this.hit('blast');
+      return true;
+    });
   }
 
   private addFlag(b: Building) {
@@ -1971,6 +2258,7 @@ export class PlayScene extends Phaser.Scene {
 
   private updateFoe(it: Item, edt: number) {
     const f = it.foe!, s = it.sprite, body = this.body;
+    if (!s.visible && f.type !== 'magpie') return; // hidden in a secret tunnel: it waits until the tunnel is found
     const px = body.center.x, py = body.center.y, cam = this.cameras.main;
     f.t += edt;
     const onScreen = s.x > cam.scrollX - 40 && s.x < cam.scrollX + W + 40;
@@ -2292,6 +2580,38 @@ export class PlayScene extends Phaser.Scene {
     b.gfx.once('destroy', () => g.destroy());
   }
 
+  /** Sky Docks crosswinds: a warning, then a few seconds of wind one way or the other, with streaks blowing across the screen. */
+  private updateGust(dt: number) {
+    if (this.arenaX !== null) { this.gustT = 0; this.gustWarn = 0; }
+    else if (this.gustWarn > 0) {
+      this.gustWarn -= dt;
+      if (this.gustWarn <= 0) this.gustT = 2.6 + Math.random() * 1.2;
+    } else if (this.gustT > 0) {
+      this.gustT -= dt;
+      if (this.gustT <= 0) this.gustCD = Math.max(3.5, 8 - this.difficulty() * 3) + Math.random() * 3;
+    } else if (this.maxX > 600 && (this.gustCD -= dt) <= 0) {
+      this.gustDir = Math.random() < 0.5 ? -1 : 1;
+      this.gustWarn = 1;
+      this.sfx.jet();
+      const way = this.gustDir > 0 ? 'right' : 'left';
+      this.banner(this.gustDir > 0 ? 'Crosswind →' : '← Crosswind');
+      if (this.said.has('gust')) this.announce(`Crosswind blowing ${way}!`);
+      else this.sayOnce('gust', `Crosswind! A gust is about to blow Iggy to the ${way}. Duck on a deck to brace against it, and time your jumps.`);
+    }
+    // the streaks: lines blowing across the whole screen (still ones when motion is reduced)
+    this.gustGfx ??= this.add.graphics().setScrollFactor(0).setDepth(19);
+    const g = this.gustGfx;
+    g.clear();
+    const on = this.gustT > 0 ? 1 : this.gustWarn > 0 ? 0.35 : 0;
+    if (!on) return;
+    for (let i = 0; i < 18; i++) {
+      const y = 40 + ((i * 97) % (H - 120));
+      const len = 40 + ((i * 53) % 70);
+      const x = this.reduced ? (i * 151) % W : (((i * 151 + this.t * 700 * this.gustDir) % (W + 200)) + W + 200) % (W + 200) - 100;
+      g.lineStyle(2, 0xffffff, (0.25 + ((i * 37) % 10) / 40) * on).lineBetween(x, y, x - len * this.gustDir, y);
+    }
+  }
+
   private windAt(x: number) {
     return this.buildings.find((b) => b.wind && x > b.x - 70 && x < b.x + b.w);
   }
@@ -2489,7 +2809,7 @@ export class PlayScene extends Phaser.Scene {
     if (ZEPPELIN_STYLES.includes(this.level.style) && this.arenaX === null && !this.over && this.maxX > 900) {
       this.zepT -= edt;
       if (this.zepT <= 0) {
-        this.zepT = 17 + Math.random() * 7 - this.difficulty() * 4;
+        this.zepT = 17 + Math.random() * 7 - this.difficulty() * 4 - this.late() * 5;
         const cam = this.cameras.main;
         const sprite = this.add.image(cam.scrollX + W + 110, 82, 'foe-zeppelin').setScale(0.5).setDepth(8);
         const f: Foe = { type: 'zeppelin', state: 'fly', t: 0, dir: -1, min: 0, max: 0, top: 0, cd: 0.6, vx: -125, vy: 0 };
@@ -2638,7 +2958,7 @@ export class PlayScene extends Phaser.Scene {
     const flash = this.add.circle(x, groundY - 12, radius * 0.6, 0xffb347, 0.85).setDepth(13);
     this.tweens.add({ targets: flash, scale: this.reduced ? 1.4 : 2.4, alpha: 0, duration: 380, onComplete: () => flash.destroy() });
     const b = this.body;
-    if (Math.abs(b.center.x - x) < radius && b.bottom > groundY - 80 && this.invuln <= 0) this.hit('blast');
+    if (Math.abs(b.center.x - x) < radius && b.bottom > groundY - 80 && b.bottom < groundY + 12 && this.invuln <= 0) this.hit('blast'); // (not under it, in a tunnel)
   }
 
   private detonateMine(it: Item, hurt: boolean, points = 0) {
@@ -2663,7 +2983,7 @@ export class PlayScene extends Phaser.Scene {
       b.img.x += b.vx * dt;
       b.trail.x = b.img.x - Math.sign(b.vx) * 14;
       const x = b.img.x;
-      const wall = this.buildings.some((bb) => x >= bb.x && x <= bb.x + bb.w && b.y > bb.top + 2);
+      const wall = this.buildings.some((bb) => x >= bb.x && x <= bb.x + bb.w && b.y > bb.top + 2) && !this.inTunnel(x, b.y);
       const off = x < cam.scrollX - 80 || x > cam.scrollX + W + 80;
       const hitsIggy = body.right > x - 7 && body.left < x + 7 && body.bottom > b.y - 3 && body.top < b.y + 3;
       if (hitsIggy) {
@@ -2680,23 +3000,31 @@ export class PlayScene extends Phaser.Scene {
     });
   }
 
-  /** The Iron Marshal's artillery: a shell whistles in, a marker shows where it will land, then it explodes. */
+  /**
+   * Shelling from the boss ahead: the Iron Marshal's artillery in the trenches, and the big bosses' long-range fire on their
+   * levels (fewer shells to start with, more as Iggy gets closer). A shell whistles in, a marker shows where it will land, then
+   * it explodes.
+   */
   private updateShells(dt: number) {
-    if (this.level.style !== 'war') return;
-    if (!this.over && this.arenaX === null) {
+    const st = this.level.style, war = st === 'war';
+    if (!war && !BARRAGE_STYLES.includes(st)) return;
+    if (!this.over && this.arenaX === null && (war || this.maxX > 1500)) {
       this.shellCD -= dt;
       if (this.shellCD <= 0) {
-        this.shellCD = Math.max(1.4, 3.3 - this.difficulty() * 1.6) + Math.random() * 1.6;
+        const d = this.difficulty();
+        this.shellCD = war ? Math.max(1.4, 3.3 - d * 1.6) + Math.random() * 1.6 : Math.max(2.6, 6 - d * 3) + Math.random() * 2.5;
         const px = this.body.center.x;
         for (let tries = 0; tries < 6; tries++) {
           const x = px + this.between(-90, 380) * (Math.random() < 0.8 ? 1 : 0.5);
-          const b = this.buildings.find((bb) => x >= bb.x + 24 && x <= bb.x + bb.w - 24);
-          if (!b) continue;
-          this.shells.push({ x, top: b.top, state: 'warn', t: 0, gfx: this.add.graphics().setDepth(12), boomed: false });
+          const top = this.duneTopAt(x) ?? this.buildings.find((bb) => !bb.dune && x >= bb.x + 24 && x <= bb.x + bb.w - 24)?.top;
+          if (top === undefined) continue;
+          this.shells.push({ x, top, state: 'warn', t: 0, gfx: this.add.graphics().setDepth(12), boomed: false });
           this.sfx.whistle();
           if (!this.shellWarned) {
             this.shellWarned = true;
-            this.announce('Artillery! Listen for the whistle and watch for the orange marker on the ground, then get clear before the shell lands.');
+            this.announce(war
+              ? 'Artillery! Listen for the whistle and watch for the orange marker on the ground, then get clear before the shell lands.'
+              : `${BOSSES[st].name} is shelling you from somewhere ahead! Listen for the whistle and watch for the orange marker on the ground, then get clear before it lands.`);
           }
           break;
         }
@@ -2729,6 +3057,119 @@ export class PlayScene extends Phaser.Scene {
       sh.gfx.destroy();
       return false;
     });
+  }
+
+  /** The final bosses in the background of their levels (see Cameo): the Reclaimer now and then, the Forgemaster throughout. */
+  private updateCameo(dt: number) {
+    const forge = this.level.style === 'foundry';
+    if (this.level.style !== 'plant' && !forge) return;
+    const cam = this.cameras.main;
+    // time for it to appear: the Reclaimer every 4500-6000 px; the Forgemaster just after the start, to stay. Never in the arena.
+    if (!this.cameo && !this.over && this.arenaX === null && this.mode !== 'time' && this.maxX > (forge ? 400 : this.nextCameoX)) {
+      const lift = this.add.graphics().setScrollFactor(0).setDepth(-82);
+      let spine: SpineGameObject | undefined, play: Cameo['play'] = () => undefined;
+      if (forge) {
+        const [data, atlas] = ['forgemaster-spine-data', 'forgemaster-spine-atlas'];
+        if (this.cache.json.exists(data) && this.cache.text.exists(atlas) && 'spine' in this.add) {
+          try {
+            spine = this.add.spine(CAMEO_X, H + 300, data, atlas).setDepth(-81.5);
+            spine.animationStateData.defaultMix = 0.2;
+            play = (anim, loop) => { if (spine!.animationState.getTrack(0)?.animation?.name !== anim) spine!.animationState.setAnimation(0, anim, loop); };
+          } catch { spine = undefined; }
+        }
+      } else {
+        const rig = ReclaimerRig.create(this, CAMEO_X, H + 300, -81.5);
+        spine = rig?.spine;
+        play = (anim, loop) => rig?.play(anim, loop);
+      }
+      spine?.setScrollFactor(0).setScale(forge ? FORGE_CAMEO_SCALE : CAMEO_SCALE).setTint(0x6e6070).setAlpha(0.9); // far off: small, dark and hazy
+      this.cameo = { forge, spine, play, lift, phase: 'rise', t: 0, shots: forge ? Infinity : 3 + Math.round(this.difficulty() * 2), cd: forge ? 1.5 : 0.8, x: CAMEO_X };
+      this.sfx.bossAppear();
+      if (forge) this.sayOnce('forgecameo', 'The Forgemaster is watching from across the foundry, and it will fire at you all the way through the level! Each shot lands on an orange marker near Iggy: get clear of the markers.');
+      else if (this.said.has('cameo')) this.announce('The Reclaimer rises again in the distance!');
+      else this.sayOnce('cameo', 'The Reclaimer is rising in the distance, and it is firing at you! Each shot comes down on an orange marker near Iggy: get clear of the markers.');
+    }
+    const c = this.cameo;
+    if (c) {
+      c.t += dt;
+      const k = c.forge ? FORGE_CAMEO_SCALE : CAMEO_SCALE / RECLAIMER_SCALE;
+      const rise = this.reduced ? 1 : Math.min(1, c.t / 1.4);
+      let y = CAMEO_FEET;
+      if (c.phase === 'rise') {
+        y = CAMEO_FEET + (1 - rise) * 300;
+        if (rise >= 1) { c.phase = 'fire'; c.t = 0; c.play(c.forge ? 'walk' : 'roar', c.forge); }
+      } else if (c.phase === 'fire') {
+        c.cd -= dt;
+        if (this.arenaX !== null || this.over) c.shots = 0;
+        // the Forgemaster paces along its far ledge between volleys
+        if (c.forge && !this.reduced) c.x = CAMEO_X + Math.sin(c.t * 0.22) * 140;
+        if (c.cd <= 0 && c.shots > 0) {
+          c.shots--;
+          const d = this.difficulty();
+          const n = c.forge ? 1 + (d > 0.45 ? 1 : 0) + (d > 0.8 ? 1 : 0) : 1; // the Forgemaster fires volleys, bigger further in
+          c.cd = c.forge ? Math.max(1.6, 3.4 - 1.8 * d) + Math.random() * 1.2 : 1.1 - 0.3 * d;
+          c.play(c.forge ? 'charge' : 'windup', false);
+          this.time.delayedCall(c.forge ? 500 : 350, () => this.cameo === c && c.play(c.forge ? 'walk' : 'idle', true));
+          for (let i = 0; i < n; i++) this.time.delayedCall(i * 260, () => this.cameo === c && this.cameoFire(c, k));
+        }
+        if (c.shots <= 0 && c.cd <= -0.6) { c.phase = 'sink'; c.t = 0; }
+      } else {
+        y = CAMEO_FEET + (this.reduced ? 300 : Math.min(1, c.t / 1.2) * 300);
+        if (this.reduced || c.t >= 1.2) {
+          c.spine?.destroy();
+          c.lift.destroy();
+          this.cameo = undefined;
+          this.nextCameoX = c.forge ? Infinity : this.maxX + 4500 + this.rand() * 1500;
+        }
+      }
+      if (this.cameo) {
+        c.spine?.setPosition(c.x, y + (c.forge ? 0 : 40 * k));
+        // what it stands on: the Reclaimer a rusty lift on two pistons, the Forgemaster a long ledge across the foundry
+        const g = c.lift, x = c.x;
+        g.clear();
+        if (c.forge) {
+          g.fillStyle(0x2a1e1a, 1).fillRect(CAMEO_X - 240, y - 2, 480, 10);
+          for (let px = CAMEO_X - 220; px <= CAMEO_X + 220; px += 110) g.fillStyle(0x1e1614, 1).fillRect(px - 5, y + 8, 10, H - y);
+          g.fillStyle(0xff6a1a, 0.5).fillRect(CAMEO_X - 240, y + 8, 480, 2); // the glow of the metal running along it
+        } else {
+          g.fillStyle(0x1e181c, 1).fillRect(x - 46, y + 4, 10, H - y).fillRect(x + 36, y + 4, 10, H - y);
+          g.fillStyle(0x3a2e2c, 1).fillRect(x - 64, y - 2, 128, 10);
+          for (let i = 0; i < 8; i++) g.fillStyle(i % 2 ? 0x1e181c : 0x8a6a2a, 1).fillRect(x - 64 + i * 16, y + 4, 8, 3);
+        }
+      }
+    }
+    // the shots: they swell as they fly out of the background, and land on their markers
+    this.cameoShots = this.cameoShots.filter((sh) => {
+      sh.t += dt;
+      const u = Math.min(1, sh.t / CAMEO_FLIGHT);
+      const tx = sh.x - cam.scrollX, ty = sh.top - 12;
+      sh.img.setPosition(Phaser.Math.Linear(sh.fx, tx, u * u), Phaser.Math.Linear(sh.fy, ty, u) - Math.sin(u * Math.PI) * 120).setScale(0.25 + 1.3 * u);
+      sh.mark.clear();
+      if (this.reduced || Math.floor(sh.t / 0.14) % 2 === 0) {
+        sh.mark.lineStyle(3, this.hc ? 0xffffff : 0xff7a1a, 1).strokeEllipse(sh.x, sh.top - 3, 78, 16);
+        sh.mark.lineStyle(3, 0xffd23a, 1).lineBetween(sh.x - 10, sh.top - 3, sh.x + 10, sh.top - 3).lineBetween(sh.x, sh.top - 8, sh.x, sh.top + 2);
+      }
+      if (u < 1) return true;
+      this.blast(sh.x, sh.top, 52);
+      sh.img.destroy();
+      sh.mark.destroy();
+      return false;
+    });
+  }
+
+  /** One shot from a background boss: out of its mouth (or eye) towards the camera, onto a marked spot on a roof near Iggy. */
+  private cameoFire(c: Cameo, k: number) {
+    let x = 0, top: number | undefined;
+    for (let tries = 0; tries < 8 && top === undefined; tries++) { // (aim at a roof, not a gap)
+      x = this.body.center.x + this.between(-60, 320);
+      top = this.buildings.find((bb) => x >= bb.x + 20 && x <= bb.x + bb.w - 20)?.top;
+    }
+    if (top === undefined) return;
+    const [mx, my] = c.forge ? FORGE_EYE : RC_MAW;
+    const fx = c.x + mx * k, fy = CAMEO_FEET + my * k;
+    const img = this.add.image(fx, fy, 'boss-orb').setScrollFactor(0).setDepth(13).setScale(0.25).setTint(0xffb050);
+    this.cameoShots.push({ img, fx, fy, x, top, t: 0, mark: this.add.graphics().setDepth(12) });
+    this.sfx.whistle();
   }
 
   private addHazard(x: number, top: number) {
@@ -2814,7 +3255,7 @@ export class PlayScene extends Phaser.Scene {
     const war = this.level.style === 'war';
     const wallTex = ['wall-war-dirt', 'wall-war-block', 'wall-war-hog'][Math.abs(Math.floor(x / 7)) % 3];
     const tex = war && kind === 'pylon' ? 'wire-war' : war && kind === 'wall' ? wallTex : kind === 'secret' ? 'secret' : kind === 'bb' ? 'breadboard' : kind === 'pylon' ? 'pylon' : kind === 'wall' ? 'wall' : POWER[power!].tex;
-    const inSpan = kind === 'bb' && !!this.layerSpan && x >= this.layerSpan[0] && x <= this.layerSpan[1];
+    const inSpan = kind === 'bb' && this.spans.some(([a, z]) => x >= a && x <= z);
     if (kind === 'bb' && !inSpan) this.bbSpawned++;
     const sprite = this.add.image(x, y, tex).setDepth(kind === 'pylon' || kind === 'wall' ? 6 : 7);
     this.items.push({ kind, power, sprite, baseY: y, phase: Math.random() * 6, hp: kind === 'wall' ? 5 : undefined, bonus: inSpan || undefined });
@@ -3052,7 +3493,7 @@ export class PlayScene extends Phaser.Scene {
         }
       }
       const hitIt = this.items.find((it) => !it.taken && !sh.hit?.has(it) && (it.kind === 'pylon' || it.kind === 'wall' || it.kind === 'patrol' || it.kind === 'flyer' || it.kind === 'mine' || (it.kind === 'foe' && it.foe!.state !== 'down')) && (it.kind === 'foe' ? Math.abs(s.x - it.sprite.x) < it.sprite.displayWidth * 0.42 && Math.abs(s.y - it.sprite.y) < it.sprite.displayHeight * 0.48 : Math.abs(s.x - it.sprite.x) < (it.kind === 'patrol' ? 16 : it.kind === 'flyer' ? 22 : it.kind === 'mine' ? 20 : 18) && Math.abs(s.y - it.sprite.y) < (it.kind === 'mine' ? 34 : it.kind === 'wall' ? 34 : it.kind === 'patrol' ? it.sprite.height / 2 + 4 : it.kind === 'flyer' ? 20 : 24)));
-      const hitBuilding = this.buildings.some((b) => s.x >= b.x && s.x <= b.x + b.w && s.y > b.top + 2);
+      const hitBuilding = this.buildings.some((b) => s.x >= b.x && s.x <= b.x + b.w && s.y > b.top + 2) && !this.inTunnel(s.x, s.y);
       const off = s.x < cam.scrollX - 60 || s.x > cam.scrollX + W + 120 || s.y < -60 || s.y > H + 60;
       if (hitIt || hitBuilding) {
         const dmg = sh.big ? 3 : 1;
@@ -3314,6 +3755,8 @@ export class PlayScene extends Phaser.Scene {
     this.shells.forEach((sh) => sh.gfx.destroy());
     this.shells = [];
     this.shellCD = Math.max(this.shellCD, 2.5);
+    this.cameoShots.forEach((c) => { c.img.destroy(); c.mark.destroy(); });
+    this.cameoShots = [];
     this.bossShots.forEach((sh) => sh.img.destroy());
     this.bossWaves.forEach((w) => w.img.destroy());
     this.bossShots = [];
@@ -3580,10 +4023,10 @@ export class PlayScene extends Phaser.Scene {
     const next = SUITS[this.suitIdx + 1];
     const state: HudState = {
       level: `Level ${this.level.number}: ${this.level.name}${this.mode === 'time' ? ' (Time attack)' : this.mode === 'endless' ? ' (Endless)' : this.seed ? ' (Daily challenge)' : ''}`,
-      goal: BOSS_SCORE,
+      goal: this.level.goal ?? BOSS_SCORE,
       mode: this.mode,
       time: Math.floor(this.runTime),
-      boss: this.boss && this.boss.state !== 'dead' ? { name: this.boss.def.name, hp: Math.max(0, this.boss.hp), max: this.boss.max, note: this.rc ? this.rcNote() : this.boss.shield ? (this.boss.shield.up ? `Shield: ${this.boss.shield.hp} of ${this.boss.shield.max} hits left` : 'Shield down: hit it now') : undefined } : null,
+      boss: this.boss && this.boss.state !== 'dead' ? { name: this.boss.def.name, hp: Math.max(0, this.boss.hp), max: this.boss.max, note: this.rc ? this.rcNote() : this.bossNote(this.boss) } : null,
       score: this.score(),
       breadboards: this.breadboards,
       lives: this.lives,
@@ -3746,11 +4189,14 @@ export class PlayScene extends Phaser.Scene {
         this.stormTint ??= this.add.rectangle(0, 0, W, H, 0xd8a860, 0).setOrigin(0).setScrollFactor(0).setDepth(19);
         this.stormTint.setAlpha(this.stormT > 0 ? Math.min(0.22, this.stormT * 0.2, (STORM_LEN - this.stormT) * 0.2) : 0);
       }
-      const storm = this.level.style === 'dunes' && this.stormT > 0 && !this.hang;
+      // sky docks: crosswinds gust across the decks, either way, after a second's warning (not in the boss arena)
+      if (this.level.style === 'sky' && !this.over) this.updateGust(dt);
+      const skyGust = this.level.style === 'sky' && this.gustT > 0 && !this.hang;
+      const storm = (this.level.style === 'dunes' && this.stormT > 0 && !this.hang) || skyGust;
       const gust = storm || (this.level.style === 'wind' && !this.hang ? this.windAt(body.center.x) : undefined);
       if (gust && !this.over) {
-        const push = (storm ? 130 : WIND_PUSH) * (this.ducked ? (storm ? 0 : 0.5) : 1) * WIND_SUIT[this.suitIdx] * (this.live().longGrace ? 0.6 : 1) * (1 + 0.3 * Math.max(0, Math.sin(this.t * 1.3)));
-        body.x -= push * dt;
+        const push = (skyGust ? 170 + 50 * this.late() : storm ? 130 : WIND_PUSH) * (this.ducked ? (storm ? 0 : 0.5) : 1) * WIND_SUIT[this.suitIdx] * (this.live().longGrace ? 0.6 : 1) * (1 + 0.3 * Math.max(0, Math.sin(this.t * 1.3)));
+        body.x -= push * dt * (skyGust ? -this.gustDir : 1);
         if (!this.reduced && Math.random() < dt * 14) this.dust(body.center.x + Phaser.Math.Between(-20, 40), body.center.y + Phaser.Math.Between(-30, 20), 1, 6, 2, 0.5);
         if (!storm) this.sayOnce('wind', 'Wind! It pushes Iggy back wherever the wind-socks fly. Duck to brace against it.');
       }
@@ -3849,7 +4295,7 @@ export class PlayScene extends Phaser.Scene {
             it.back?.setScale(k);
           }
           if (Math.abs(px - s.x) < 14 && Math.abs(py - s.y) < 44) this.passRing(it);
-        } else if (it.kind === 'patrol' && it.walker) {
+        } else if (it.kind === 'patrol' && it.walker && it.sprite.visible) { // (hidden in a secret tunnel: waits until it's found)
           const w = it.walker;
           // soldiers on the later levels stop, aim and fire along the roof (duck or jump to dodge)
           const aiming = (w.aim ?? 0) > 0;
@@ -3863,7 +4309,7 @@ export class PlayScene extends Phaser.Scene {
             } else if (w.cd <= 0 && Math.abs(dx) > 50 && Math.abs(dx) < 340 && Math.abs(py - s.y) < 80) {
               w.aim = 0.6;
               w.dir = Math.sign(dx) || w.dir;
-              w.cd = Math.max(1.5, 3.2 - this.difficulty() * 1.1) + Math.random() * 1.5;
+              w.cd = Math.max(1.5 - 0.4 * this.late(), 3.2 - this.difficulty() * 1.1 - this.late() * 0.8) + Math.random() * 1.5;
               this.sfx.warn();
               if (!this.soldierWarned) {
                 this.soldierWarned = true;
@@ -3964,6 +4410,7 @@ export class PlayScene extends Phaser.Scene {
       this.updateBoss(dt, edt);
       this.boss?.spine?.sync(this.live().enemySpeed / 100);
       this.updateShells(edt);
+      this.updateCameo(edt);
       this.updateBullets(edt);
       this.updateFoeEffects(dt, edt);
 
@@ -4016,7 +4463,7 @@ export class PlayScene extends Phaser.Scene {
     this.updateShots(dt);
 
     // -- camera only moves forward; Iggy can't run off the left edge
-    const arenaDue = this.mode === 'story' ? this.score() >= BOSS_SCORE : this.mode === 'time' ? this.maxX >= TIME_DISTANCE : false;
+    const arenaDue = this.mode === 'story' ? this.score() >= (this.level.goal ?? BOSS_SCORE) : this.mode === 'time' ? this.maxX >= TIME_DISTANCE : false;
     if (this.arenaX === null && !this.over && arenaDue) this.openArena();
     if (this.arenaX !== null && this.camLock === null && !this.over && body.center.x > this.arenaX + 140) {
       this.camLock = this.arenaX - 20;

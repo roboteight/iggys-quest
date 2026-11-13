@@ -175,7 +175,9 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
               @if (overlay() === 'intro') { <p>{{ story().intro }}</p> }
               @if (overlay() === 'complete' && gameMode() === 'story' && !isDaily()) {
                 <p>{{ story().outro }}</p>
-                @if (!nextLevel()) { <p><strong>The end.</strong> Every boss mech is scrap, Iggy is in his best suit and the road home is open. Thank you for playing. You can still chase perfect runs, secrets, the daily challenge and the time attack boards.</p> }
+                @if (!nextLevel()) { <p><strong>The end.</strong> Every boss mech is scrap, Iggy is in his best suit and the road home is open. Thank you for playing. You can still chase perfect runs, secrets, the daily challenge and the time attack boards.</p>
+                  @if (!progress.unlocked('foundry')) { <p>Something is still buried under the plant. Find the golden breadboard on every level to open it: {{ progress.goldenFound() }} of {{ progress.goldenNeeded() }} found so far.</p> }
+                }
               }
               @if ((overlay() === 'gameover' || overlay() === 'complete') && over(); as o) {
                 <dl class="stats">
@@ -381,7 +383,8 @@ export class PlayPage implements OnDestroy {
   protected readonly nextLevel = computed(() => {
     const o = this.over();
     const i = LEVELS.findIndex((l) => l.id === o?.level);
-    return i >= 0 ? LEVELS[i + 1] : undefined;
+    const next = i >= 0 ? LEVELS[i + 1] : undefined;
+    return next && this.progress.unlocked(next.id) ? next : undefined; // (the secret level only once it's open)
   });
   protected readonly hud = signal<HudState>({ level: '', goal: 5000, score: 0, breadboards: 0, lives: 3, nextLifeIn: 100, perfect: true, mode: 'story', time: 0, suit: 'Rusty Original', nextSuit: 'Patchwork', nextSuitNeed: 3, powerUps: [], boss: null });
   private readonly touch: TouchInput = { left: false, right: false, jump: false, fire: false, duck: false };

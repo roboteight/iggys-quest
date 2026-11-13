@@ -172,6 +172,21 @@ const BOSSES2 = {
       stunned: [2, 8, (u) => ({ ship: { r: 10 + 2 * S(u), y: -30 * u }, prop: { r: 12 } })], // listing, sinking
     },
   },
+  // the Forgemaster (the secret level 14): front-on, hammer on the left, crane and ladle on the right. Spine turns are
+  // counter-clockwise, so raising the hammer (its head swinging up from low on the left) is a clockwise, negative turn.
+  forgemaster: {
+    bones: [['body', 'root', 'rest'], ['crane', 'body', 'crane'], ['stacks', 'body', 'stacks'], ['head', 'body', 'head'], ['hammer', 'body', 'hammer']],
+    slots: [['crane', 'crane', 'crane'], ['stacks', 'stacks', 'stacks'], ['rest', 'body', 'rest'], ['head', 'head', 'head'], ['hammer', 'hammer', 'hammer']],
+    animations: {
+      idle: [2.4, 12, (u) => ({ body: { r: 0.4 * S(u), y: 3 * S(u) }, stacks: { r: 1.2 * S(u, 1, 0.2) }, head: { r: 2 * S(u, 1, 0.4) }, crane: { r: 2.5 * S(u, 1, 0.3) }, hammer: { r: 3 * S(u, 1, 0.1) } })],
+      // a heavy stomp: the hammer and the ladle swing with each step
+      walk: [1.4, 12, (u) => ({ body: { r: 1.2 * S(u, 2), y: 6 * Math.abs(S(u, 2)) }, stacks: { r: 2 * S(u, 2, 0.15) }, head: { r: 2 * S(u, 2) }, crane: { r: 5 * S(u) }, hammer: { r: 8 * S(u) } })],
+      // the wind-up: hammer raised high, the body leaning back, the ladle tipped forward
+      charge: [0.5, 6, (u) => ({ body: { r: 3 + 0.5 * S(u, 4), y: 4 }, stacks: { r: 3 }, head: { r: 4 }, crane: { r: -10 + 2 * S(u, 2) }, hammer: { r: -105 + 3 * S(u, 4) } })],
+      // locks broken: slumped, the hammer dragging, the crane sagging
+      stunned: [1.6, 8, (u) => ({ body: { r: -3 + S(u), y: -10 }, stacks: { r: -6 }, head: { r: -12 + 2 * S(u) }, crane: { r: 14 }, hammer: { r: 18 } })],
+    },
+  },
 };
 
 function build2(name) {

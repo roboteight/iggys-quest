@@ -1,0 +1,17 @@
+forgemaster.png
+size:505,254
+filter:Linear,Linear
+pma:true
+scale:0.5
+crane
+bounds:272,47,133,205
+hammer
+bounds:407,150,102,96
+rotate:90
+head
+bounds:272,2,46,43
+rest
+bounds:2,7,268,245
+stacks
+bounds:407,28,120,76
+rotate:90

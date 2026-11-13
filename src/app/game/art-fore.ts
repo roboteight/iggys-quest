@@ -91,6 +91,8 @@ const DRAW: Record<LevelStyle, Draw> = {
   sky: (g, r) => {
     for (let i = 0; i < 9; i++) { g.fillStyle(0xffffff, 0.55).fillEllipse(i * 120 + r() * 40, H + 10, 200, 60); g.fillStyle(0xffffff, 0.35).fillEllipse(i * 120 + r() * 40, -10, 160, 40); }
   },
+  // the Foundry Below (level 14) looks like the plant it lies under
+  get foundry() { return DRAW.plant; },
   // chains and hooks hanging from the roof, a row of glowing slag spatter along the bottom
   plant: (g, r) => {
     for (let i = 0; i < 6; i++) {

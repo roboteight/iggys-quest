@@ -495,6 +495,7 @@ const DEFS: Record<LevelStyle, Def> = {
   spores: { w: 92, h: 104, draw: mother },
   war: { w: 94, h: 68, draw: tank },
   plant: { w: 94, h: 68, draw: tank }, // fallback only: the Reclaimer is a Spine rig (reclaimer.ts)
+  foundry: { w: 120, h: 130, draw: tank }, // fallback only: the Forgemaster is a Spine rig (boss-spine.ts)
   // levels 8 to 12: Spine rigs (boss-spine.ts); these are only the size of the hit box and a fallback picture
   ice: { w: 94, h: 68, draw: tank },
   dunes: { w: 94, h: 70, draw: scorpion },

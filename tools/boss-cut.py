@@ -130,6 +130,25 @@ BOSSES = {
         },
         'feet': (470, 700),
     },
+    # the secret final boss (level 14): drawn front-on, the hammer in its right hand (on the left) and the crane on its left
+    'forgemaster': {
+        'main': [(140, 470), (300, 455), (330, 250), (400, 212), (418, 150), (440, 86), (652, 86), (668, 196), (690, 190),
+                 (868, 62), (932, 62), (968, 250), (968, 410), (952, 440), (950, 505), (912, 505), (902, 455), (838, 455), (832, 515),
+                 (800, 560), (785, 610), (760, 660), (745, 706),
+                 (300, 706), (140, 680)],
+        'parts': {
+            'hammer': ([(138, 488), (262, 478), (318, 462), (350, 500), (322, 560), (262, 668), (138, 668)], (326, 478)),
+            'crane': ([(698, 196), (868, 62), (932, 62), (968, 250), (968, 410), (952, 440), (950, 505), (912, 505), (902, 455), (838, 455), (812, 400), (770, 430), (712, 432), (698, 330)], (738, 404)),
+            'head': (box(422, 196, 514, 282), (468, 278)),
+            'stacks': ([(415, 150), (440, 86), (652, 86), (668, 196), (640, 238), (430, 238)], (535, 236)),
+            'rest': (None, (520, 700)),
+        },
+        'feet': (520, 700),
+        'smoke_y': 192,  # above this, smoke and the paper it closes in are cut away, leaving only the crown of stacks
+        'clear_warm': [(898, 270, 972, 510)],  # paper lit orange by the molten metal, round the ladle
+        'fill_box': [(840, 330, 962, 470)],  # holes inside the pour (bright spots the paper filters took) are filled back in
+        'shadow_y': 640,  # below this, grey running out to the paper is its shadow on the ground
+    },
     'albatross': {
         'main': box(258, 58, 832, 672),
         'parts': {
@@ -140,7 +159,7 @@ BOSSES = {
         'feet': (545, 650),
     },
 }
-SHEETS = {'diver': 'deep-diver', 'nwarden': 'neon-warden', 'spore': 'spore-mother', 'marshal': 'iron-marshal', 'scorpion': 'dust-scorpion', 'icebreaker': 'icebreaker', 'dredger': 'dune-dredger', 'warden': 'gale-warden', 'kraken': 'brass-kraken', 'albatross': 'iron-albatross'}
+SHEETS = {'diver': 'deep-diver', 'nwarden': 'neon-warden', 'spore': 'spore-mother', 'marshal': 'iron-marshal', 'scorpion': 'dust-scorpion', 'icebreaker': 'icebreaker', 'dredger': 'dune-dredger', 'warden': 'gale-warden', 'kraken': 'brass-kraken', 'albatross': 'iron-albatross', 'forgemaster': 'forgemaster'}
 # these sheets are stained and shaded more than the portrait ones
 MASK = dict(light_min=150, flat_max=55, pocket=2.0)
 
@@ -195,6 +214,44 @@ def cut(name):
                 m = ndimage.binary_opening(m, iterations=1)
                 lab, n = ndimage.label(m)
                 if n > 1:  # drop the specks left behind
+                    sizes = ndimage.sum(m, lab, range(1, n + 1))
+                    m = np.isin(lab, 1 + np.nonzero(sizes >= 250)[0])
+            for cx0, cy0, cx1, cy1 in cfg.get('clear_warm', []):
+                yy0, yy1 = max(cy0 - bx[1], 0), max(cy1 - bx[1], 0)
+                xx0, xx1 = max(cx0 - bx[0], 0), max(cx1 - bx[0], 0)
+                win = sub[yy0:yy1, xx0:xx1].astype(int)
+                m[yy0:yy1, xx0:xx1] &= ~((win.mean(2) > 165) & (win.mean(2) < 222) & ((win.max(2) - win.min(2)) < 95))  # (not the white-hot metal)
+            for fx0, fy0, fx1, fy1 in cfg.get('fill_box', []):
+                yy0, yy1 = max(fy0 - bx[1], 0), max(fy1 - bx[1], 0)
+                xx0, xx1 = max(fx0 - bx[0], 0), max(fx1 - bx[0], 0)
+                if yy1 > yy0 and xx1 > xx0:
+                    m[yy0:yy1, xx0:xx1] |= ndimage.binary_fill_holes(m[yy0:yy1, xx0:xx1])
+            if 'smoke_y' in cfg and part in ('stacks', 'rest'):  # (not the crane: its chains are grey too)
+                # smoke (grey or brown) and paper above the line go, whatever they touch; then only the crown, the biggest piece, stays
+                rows = (np.arange(bx[1], bx[3]) < cfg['smoke_y'])[:, None]
+                sat, mean = sub.max(2).astype(int) - sub.min(2), sub.mean(2)
+                smoke = ((sat < 45) & (mean > 82)) | ((mean > 150) & (sat < 80))
+                m &= ~(rows & smoke)
+                lab, n = ndimage.label(m)
+                if n > 1:
+                    sizes = ndimage.sum(m, lab, range(1, n + 1))
+                    m = lab == (1 + int(np.argmax(sizes)))
+            for key, grey in (('shadow_y', lambda r, g, b_, sat, mean: (sat < 40) & (mean > 80)),
+                              ):
+                if key not in cfg:
+                    continue
+                r, g, b_ = (sub[..., i].astype(int) for i in range(3))
+                sat, mean = sub.max(2).astype(int) - sub.min(2), sub.mean(2)
+                rows = np.arange(bx[1], bx[3])[:, None]
+                rows = rows < cfg[key] if key == 'smoke_y' else rows >= cfg[key]
+                cand = grey(r, g, b_, sat, mean) & rows & m
+                # only grey that runs out to the paper goes; grey metal inside the drawing is closed in by ink
+                lab0, _ = ndimage.label(cand)
+                outside = ndimage.binary_dilation(~m, iterations=2)
+                m &= ~np.isin(lab0, list(set(np.unique(lab0[outside & cand])) - {0}))
+                m = ndimage.binary_opening(m, iterations=1)
+                lab, n = ndimage.label(m)
+                if n > 1:
                     sizes = ndimage.sum(m, lab, range(1, n + 1))
                     m = np.isin(lab, 1 + np.nonzero(sizes >= 250)[0])
             taken[bx[1]:bx[3], bx[0]:bx[2]] |= m

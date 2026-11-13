@@ -50,6 +50,9 @@ const RIGS: Partial<Record<LevelStyle, RigDef>> = {
   war: { file: 'marshal', scale: 0.26, footDrop: 0, facesRight: true, speed: 1 },
   // the Dust Scorpion (level 3): the sheet draws it facing right
   wastes: { file: 'scorpion', scale: 0.23, footDrop: 14, facesRight: true, speed: 1 }, // (its leg tips sit higher on the sheet than the claw it was measured from)
+  // the Forgemaster (secret level 14): drawn front-on with the hammer on the left, so it already faces Iggy; its hit box is the
+  // body (the hammer and the crane reach well outside it)
+  foundry: { file: 'forgemaster', scale: 0.6, footDrop: 4, facesRight: false, speed: 1, dx: 40, hit: { hw: 140, top: 300, bottom: 0, dx: 50 } },
   hollow: { file: 'gloom', scale: 0.266, footDrop: 0, facesRight: true, speed: 9 / 8 / 1.1 },
 };
 const MIX = 0.15; // seconds to blend from one animation into the next
@@ -65,6 +68,11 @@ export function preloadBossSpine(scene: Phaser.Scene, style: LevelStyle) {
 
 export class BossSpine {
   private constructor(private readonly img: Phaser.GameObjects.Image, private readonly spine: SpineGameObject, private readonly def: RigDef) {}
+
+  /** A level's rig settings (scale, offsets), for code that places things on the boss's body. */
+  static def(style: LevelStyle): Readonly<RigDef> | undefined {
+    return RIGS[style];
+  }
 
   /** Puts the boss's skeleton over its image and hides the image. Returns undefined (and leaves the image alone) if there is no rig. */
   static attach(scene: Phaser.Scene, img: Phaser.GameObjects.Image, style: LevelStyle): BossSpine | undefined {
@@ -114,7 +122,7 @@ export class BossSpine {
     const h = this.def.hit;
     if (!h) return undefined;
     const x = this.img.x + (h.dx ?? (this.def.dx ?? 0) * 0.4); // (the Kraken's head sits left of its middle)
-    return { x0: x - h.hw, x1: x + h.hw, y0: this.img.y - h.top, y1: this.img.y - h.bottom };
+    return { x0: x - h.hw, x1: x + h.hw, y0: this.img.y - h.top * this.img.scaleY, y1: this.img.y - h.bottom }; // (lower when it kneels)
   }
 
   destroy() {

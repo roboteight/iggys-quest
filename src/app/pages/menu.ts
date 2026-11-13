@@ -27,11 +27,12 @@ interface SuitSheet extends Omit<Sheet, 'text'> {
 
 /** Which sheet belongs to which boss, by level look. */
 const BOSS_SHEET: Record<string, string> = {
-  city: 'enforcer-nine', hollow: 'grandfather-gloom', wastes: 'dust-scorpion', drowned: 'deep-diver', void: 'neon-warden', spores: 'spore-mother', war: 'iron-marshal', ice: 'icebreaker', dunes: 'dune-dredger', wind: 'gale-warden', locks: 'brass-kraken', sky: 'iron-albatross', plant: 'the-reclaimer',
+  city: 'enforcer-nine', hollow: 'grandfather-gloom', wastes: 'dust-scorpion', drowned: 'deep-diver', void: 'neon-warden', spores: 'spore-mother', war: 'iron-marshal', ice: 'icebreaker', dunes: 'dune-dredger', wind: 'gale-warden', locks: 'brass-kraken', sky: 'iron-albatross', plant: 'the-reclaimer', foundry: 'forgemaster',
 };
 
 /** Specific descriptions for sheets that have been looked at closely; the others fall back to the boss's one-line blurb. */
 const BOSS_ALT: Record<string, string> = {
+  foundry: 'Concept art sheet for the Forgemaster, the secret final boss of level 14: a hulking front-on foundry robot in rusted verdigris armour, with a crown of smoking, burning smokestacks, a small iron mask head with one glowing furnace eye, a round crucible belly glowing white-hot behind a grate with three golden circuit-board locks, a huge forge hammer in its right hand and a crane on its left shoulder swinging a ladle that pours molten metal. Smaller drawings show the mask head, the belly with its locks, and a sketch of it stunned with the locks destroyed.',
   plant: 'Concept art sheet for the Reclaimer, the final boss of level 8: a towering rusted smelting machine with twin smokestacks, a domed head studded with glowing orange eyes, a furnace mouth ringed with grinding iron teeth and fed by a conveyor belt, a hydraulic crane arm ending in a crushing claw, a winch swinging a wrecking ball on a chain, and heavy stamping legs. Smaller drawings show the furnace mouth, the eye array, a stamping leg and its scale beside a person.',
   spores: 'Concept art sheet for the Spore Mother, the boss of level 6: a towering riveted mech under a huge domed mushroom cap with gills, glowing orange eyes and a fanged mouth, standing on three heavy hydraulic legs. One arm is a spore emitter and the other a claw with a ground drill. Smaller drawings show its back view, the claw, and a porthole vent.',
 };
@@ -243,7 +244,11 @@ const BOSS_ALT: Record<string, string> = {
                   <div class="card locked" [style.--c]="accent(l.style)">
                     <span class="num">Level {{ l.number }}</span>
                     <span class="name">{{ l.name }}</span>
-                    <span class="status">Locked: beat the boss of level {{ l.number - 1 }} first</span>
+                    @if (l.id === 'foundry') {
+                      <span class="status">Secret level, locked: find the golden breadboard on every level ({{ progress.goldenFound() }} of {{ progress.goldenNeeded() }} found)</span>
+                    } @else {
+                      <span class="status">Locked: beat the boss of level {{ l.number - 1 }} first</span>
+                    }
                   </div>
                 }
               </li>
@@ -316,7 +321,7 @@ const BOSS_ALT: Record<string, string> = {
         <div class="head"><span class="sec" aria-hidden="true">§ 05</span><h2 id="bosses">The boss mechs</h2></div>
         <p class="sub">One waits at the end of every world, with its own attacks and its own music.</p>
         <ul class="plates">
-          @for (b of bosses; track b.name) {
+          @for (b of bosses; track b.name) { @if (b.level !== 'The Foundry Below' || progress.unlocked('foundry')) {
             <li>
               <figure class="plate">
                 <p class="fig" aria-hidden="true"><span>Fig. 05.{{ b.number }}</span><span>Boss</span></p>
@@ -327,7 +332,7 @@ const BOSS_ALT: Record<string, string> = {
               </figure>
               <div class="caption"><p class="where">Level {{ b.number }}: {{ b.level }}</p><h3>{{ b.name }}</h3><p>{{ b.text }}</p></div>
             </li>
-          }
+          } }
         </ul>
       </section>
 

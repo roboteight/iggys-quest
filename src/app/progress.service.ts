@@ -1,5 +1,7 @@
 import { effect, Injectable, signal } from '@angular/core';
 import { LEVELS } from './game/levels';
+/** the secret level at the end, opened by finding the golden breadboard on every other level */
+export const SECRET_LEVEL = 'foundry';
 import { ACHIEVEMENTS, Achievement } from './achievements';
 
 export interface ScoreEntry {
@@ -54,8 +56,17 @@ export class ProgressService {
 
   /** Level 1 is always open; every other level opens when the one before it has been cleared. */
   unlocked(levelId: string): boolean {
+    if (levelId === SECRET_LEVEL) return this.goldenFound() >= this.goldenNeeded(); // the secret level: every golden breadboard
     const i = LEVELS.findIndex((l) => l.id === levelId);
     return i <= 0 || this.progress().completed.includes(LEVELS[i - 1].id);
+  }
+
+  /** How many of the golden breadboards that open the secret level have been found (one per level before it), and how many there are. */
+  goldenFound(): number {
+    return LEVELS.filter((l) => l.id !== SECRET_LEVEL && this.secretFound(l.id)).length;
+  }
+  goldenNeeded(): number {
+    return LEVELS.length - 1;
   }
 
   /** Story mode: the rings Iggy starts a level with, the most he has finished the level before it with (none for level 1). */
