@@ -8,7 +8,8 @@
  *  - void: F-minor synthwave, 128 BPM
  *  - spores: marimba-like triangle lead in C/D/Em, 100 BPM
  *  - ice / dunes / wind / locks / sky: variations on the drowned, wastes, void, drowned and city themes (see VARIANTS)
- *  - plant: a slow, heavy C-minor industrial pulse, 92 BPM (its boss track 138 BPM)
+ *  - plant: a driving, menacing C-phrygian industrial grind, 124 BPM, with a gritty doubled bass (its boss track 160 BPM)
+ *  - foundry: the plant's grind a semitone up and harsher, 140 BPM (its boss track 174 BPM)
  */
 
 const NAMES: Record<string, number> = { C: 0, 'C#': 1, D: 2, 'D#': 3, E: 4, F: 5, 'F#': 6, G: 7, 'G#': 8, A: 9, 'A#': 10, B: 11 };
@@ -32,6 +33,8 @@ interface Theme {
   leadLen?: number;
   kickGain?: number;
   bassLen?: number;
+  /** a detuned sawtooth doubling the bass at this gain, for a gritty, menacing low end (the last two levels) */
+  growl?: number;
   /** arpeggio index per step, or null for none */
   arp: number[] | null;
   /** chord stabs (all arp notes at once) on these steps, or null */
@@ -43,41 +46,43 @@ interface Theme {
   hat: (s: number) => number; // gain, 0 = none
 }
 
-type NewTheme = 'ice' | 'dunes' | 'wind' | 'locks' | 'sky';
-export type ThemeName = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores' | 'war' | 'ice' | 'dunes' | 'wind' | 'locks' | 'sky' | 'plant';
+type NewTheme = 'ice' | 'dunes' | 'wind' | 'locks' | 'sky' | 'foundry';
+export type ThemeName = 'city' | 'hollow' | 'wastes' | 'drowned' | 'void' | 'spores' | 'war' | 'ice' | 'dunes' | 'wind' | 'locks' | 'sky' | 'plant' | 'foundry';
 
 const BASE_THEMES: Record<Exclude<ThemeName, NewTheme>, Theme> = {
-  // the Reclamation Plant: a slow, heavy C-minor pulse, low square lead over clanking machinery
+  // the Reclamation Plant: a driving C-phrygian grind. The half-step Db chord and the tritone (F#) in the stabbing low lead
+  // make it menacing; an eighth-note bass doubled by a gritty sawtooth hammers underneath, with busy kicks and sixteenth hats
   plant: {
-    bpm: 92,
+    bpm: 124,
     steps: 16,
     chords: [
       { root: 36, arp: [60, 63, 67] }, // Cm
+      { root: 37, arp: [61, 65, 68] }, // Db
       { root: 32, arp: [56, 60, 63] }, // Ab
       { root: 31, arp: [55, 59, 62] }, // G
-      { root: 29, arp: [53, 56, 60] }, // Fm
     ],
-    progression: [0, 0, 1, 2, 0, 0, 3, 2],
+    progression: [0, 0, 1, 0, 0, 0, 2, 3],
     lead: parse([
-      'C4 _ _ . C4 _ D#4 _ G4 _ _ _ . . . .',
-      'C4 _ _ . C4 _ D#4 _ F4 _ D#4 _ . . . .',
-      'G#3 _ _ . C4 _ D#4 _ G#4 _ _ _ . . . .',
-      'G3 _ _ . B3 _ D4 _ G4 _ F4 _ D4 _ . .',
-      'C4 _ _ . C4 _ D#4 _ G4 _ _ _ C5 _ _ _',
-      'C4 _ _ . C4 _ D#4 _ F4 _ D#4 _ C4 _ . .',
-      'F4 _ _ . G#4 _ C5 _ G#4 _ F4 _ . . . .',
-      'G4 _ F4 _ D4 _ B3 _ G3 _ _ _ . . . .',
+      'C4 . C4 . C4 . D#4 _ C4 . F#4 _ G4 _ . .',
+      'C4 . C4 . C4 . D#4 _ C#4 _ _ _ C4 _ . .',
+      'C#4 . C#4 . F4 . G#4 _ G4 _ F4 _ C#4 _ . .',
+      'C4 . C4 . D#4 . G4 _ F#4 _ _ _ . . . .',
+      'C5 _ _ . G4 _ . D#4 C4 _ . . F#4 _ G4 _',
+      'C5 _ _ . G4 _ . D#4 C#4 _ _ _ C4 _ . .',
+      'G#3 . C4 . D#4 . G#4 _ G4 _ D#4 _ C4 _ . .',
+      'G3 . B3 . D4 . F4 _ F#4 _ G4 _ _ _ . .',
     ]),
     leadWave: 'square',
-    leadGain: 0.13,
+    leadGain: 0.12,
     arp: null,
-    stabs: [10],
-    bass: (s) => (s % 4 === 0 ? 0 : s === 6 ? 7 : null),
-    kick: (s) => s === 0 || s === 8 || s === 10,
+    stabs: [6, 14],
+    bass: (s) => (s % 2 === 0 ? (s === 14 ? 1 : 0) : null),
+    kick: (s) => s % 4 === 0 || s === 3 || s === 11,
     snare: (s) => s === 4 || s === 12,
-    hat: (s) => (s % 4 === 2 ? 0.07 : s % 2 === 1 ? 0.03 : 0),
-    kickGain: 0.5,
-    bassLen: 2,
+    hat: (s) => (s % 4 === 2 ? 0.07 : s % 2 === 1 ? 0.035 : 0.02),
+    kickGain: 0.55,
+    bassLen: 1.6,
+    growl: 0.1,
   },
   // a slow D-minor march: brass-like square lead over a snare roll
   war: {
@@ -303,9 +308,9 @@ const BASE_THEMES: Record<Exclude<ThemeName, NewTheme>, Theme> = {
  *  - spores:  frantic marimba runs in C/D/Em/G, 136 BPM
  */
 const BASE_BOSS_THEMES: Record<Exclude<ThemeName, NewTheme>, Theme> = {
-  // the Reclaimer: the plant's pulse doubled into a grinding chase
+  // the Reclaimer: the plant's grind doubled into a relentless chase
   plant: {
-    bpm: 138,
+    bpm: 160,
     steps: 16,
     chords: [
       { root: 36, arp: [60, 63, 67] }, // Cm
@@ -328,12 +333,13 @@ const BASE_BOSS_THEMES: Record<Exclude<ThemeName, NewTheme>, Theme> = {
     leadGain: 0.11,
     arp: null,
     stabs: [6, 14],
-    bass: (s) => (s % 2 === 0 ? 0 : null),
-    kick: (s) => s % 4 === 0 || s === 10 || s === 14,
+    bass: (s) => (s % 2 === 0 ? (s === 14 ? 1 : 0) : null),
+    kick: (s) => s % 4 === 0 || s === 6 || s === 10 || s === 14,
     snare: (s) => s === 4 || s === 12,
     hat: (s) => (s % 2 === 0 ? 0.1 : 0.05),
-    kickGain: 0.55,
+    kickGain: 0.6,
     bassLen: 2,
+    growl: 0.12,
   },
   // the Iron Marshal: the march doubles up and drives
   war: {
@@ -559,6 +565,7 @@ const VARIANTS: Record<NewTheme, [Exclude<ThemeName, NewTheme>, Partial<Theme>, 
   wind: ['void', { bpm: 140, leadWave: 'square', leadGain: 0.12 }, 2], // fast and breathless
   locks: ['drowned', { bpm: 78, leadWave: 'sine', leadGain: 0.2 }, -3], // slow and muffled
   sky: ['city', { bpm: 132, leadWave: 'triangle', leadGain: 0.15 }, 5], // big and open
+  foundry: ['plant', { bpm: 140, leadWave: 'sawtooth', leadGain: 0.1, growl: 0.13 }, 1], // the plant's grind, higher, harsher, faster
 };
 const THEMES = { ...BASE_THEMES } as Record<ThemeName, Theme>;
 const BOSS_THEMES = { ...BASE_BOSS_THEMES } as Record<ThemeName, Theme>;
@@ -566,6 +573,8 @@ for (const [name, [from, tweak, semis]] of Object.entries(VARIANTS) as [NewTheme
   THEMES[name] = { ...transpose(BASE_THEMES[from], semis), ...tweak };
   BOSS_THEMES[name] = { ...transpose(BASE_BOSS_THEMES[from], semis), bpm: BASE_BOSS_THEMES[from].bpm + 6 };
 }
+// the Forgemaster: the fastest and heaviest track in the game
+BOSS_THEMES.foundry = { ...BOSS_THEMES.foundry, bpm: 174, growl: 0.15 };
 
 export class Music {
   private ctx?: AudioContext;
@@ -713,7 +722,11 @@ export class Music {
     if (th.stabs?.includes(s)) chord.arp.forEach((n) => this.tone('square', freq(n), t, sd * 1.6, 0.045, 0.004));
     // bass
     const b = th.bass(s);
-    if (b !== null) this.tone('triangle', freq(chord.root + b), t, sd * (th.bassLen ?? (th.steps === 12 ? 3.2 : 1.7)), 0.42, 0.005);
+    if (b !== null) {
+      const len = sd * (th.bassLen ?? (th.steps === 12 ? 3.2 : 1.7));
+      this.tone('triangle', freq(chord.root + b), t, len, 0.42, 0.005);
+      if (th.growl) this.tone('sawtooth', freq(chord.root + b + 12) * 1.008, t, len * 0.8, th.growl, 0.004); // the grit, a little out of tune
+    }
     // drums
     if (th.kick(s, bar)) this.kick(t);
     if (th.snare(s)) this.snare(t);

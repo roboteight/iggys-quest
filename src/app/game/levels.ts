@@ -165,7 +165,7 @@ export const LEVELS: LevelDef[] = [
     // the secret level: unlocked by finding the golden breadboard on every one of the 13 levels before it (progress.service.ts)
     id: 'foundry', number: 14, name: 'The Foundry Below', goal: 6000,
     blurb: 'The secret foundry under the plant, where every boss mech was forged.',
-    style: 'foundry', music: 'plant', precip: { vx: 30, vy: -90 }, lightning: false, bg: '#120604',
+    style: 'foundry', music: 'foundry', precip: { vx: 30, vy: -90 }, lightning: false, bg: '#120604',
     intro: 'The thirteen golden breadboards fit together into a key, and under the plant a door that was never on any map grinds open. Below is a foundry older than the plant itself, still pouring metal. Every boss Iggy fought was forged down here, and the thing that forged them is waiting.',
     outro: 'The Forgemaster\'s hammer drops, its furnace eye goes dark, and the molten channels cool to black glass. The foundry falls silent. Nothing will be forged down here again, and Iggy climbs back up into the daylight with the golden key in his hand.',
   },
