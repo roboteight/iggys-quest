@@ -115,7 +115,7 @@ export class ProgressService {
     if (p.perfect.length >= 1) ids.push('perfect-1');
     if (p.perfect.length >= n) ids.push('perfect-all');
     if (p.secrets.length >= 1) ids.push('secret-1');
-    if (p.secrets.length >= n) ids.push('secret-all');
+    if (this.goldenFound() >= this.goldenNeeded()) ids.push('secret-all'); // the 13 that open the secret level
     return this.award(...ids);
   }
 

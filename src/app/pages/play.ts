@@ -249,7 +249,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
               <li><strong>Jump:</strong> @for (c of keys('jump'); track c) { <kbd>{{ label(c) }}</kbd> }. Hold for a higher jump; press again in mid-air for a double jump.</li>
               <li><strong>Wall kick:</strong> if you fall into a gap, press jump while touching the side of a building.</li>
               <li><strong>Hang and climb:</strong> jump at a tall cliff and Iggy catches the edge with his hands. Press jump, or keep holding toward the wall, to climb up. Press duck to let go, or jump while holding away from the wall to kick off it. Hold duck as you pass an edge if you don’t want to grab it.</li>
-              <li><strong>Duck:</strong> hold @for (c of keys('duck'); track c) { <kbd>{{ label(c) }}</kbd> }. Iggy crouches and can’t run, and his shots fly low, so he can hit small targets on the ground, like crawlers, that standing shots pass over.</li>
+              <li><strong>Duck:</strong> hold @for (c of keys('duck'); track c) { <kbd>{{ label(c) }}</kbd> }. Iggy crouches and can shuffle along slowly (left and right still work, at a crawl), and his shots fly low, so he can hit small targets on the ground, like crawlers, that standing shots pass over.</li>
               <li><strong>Shoot:</strong> @for (c of keys('fire'); track c) { <kbd>{{ label(c) }}</kbd> } (hold to keep firing), once you have a gun.</li>
               <li><strong>Pause:</strong> <kbd>Esc</kbd> or the Pause button. You can change the keys, and make the game easier, under Options in the pause menu or on the Settings page. The Fullscreen button fills your screen; press <kbd>Esc</kbd> to leave it.</li>
               <li><strong>Gamepad:</strong> left stick or d-pad moves and ducks, <kbd>A</kbd> jumps, <kbd>X</kbd> or <kbd>B</kbd> or a trigger shoots, <kbd>Start</kbd> pauses.</li>
@@ -431,7 +431,10 @@ export class PlayPage implements OnDestroy {
       this.game.events.on('hud', (s: HudState) => this.zone.run(() => this.hud.set(s)));
       this.game.events.once('hud', () => this.zone.run(() => this.maybeIntro()));
       this.game.events.on('announce', (t: string) => this.zone.run(() => this.announcement.set(t)));
-      this.game.events.on('secret', (id: string) => this.zone.run(() => { this.progress.findSecret(id); this.award(this.progress.milestones()); }));
+      // the golden breadboards found so far, so the game can say "4 of 13" when Iggy picks one up
+      const shareSecrets = () => this.game?.registry.set('secrets', LEVELS.filter((l) => this.progress.secretFound(l.id)).map((l) => l.id));
+      shareSecrets();
+      this.game.events.on('secret', (id: string) => this.zone.run(() => { this.progress.findSecret(id); shareSecrets(); this.award(this.progress.milestones()); }));
       this.game.events.on('achieve', (id: string) => this.zone.run(() => this.award(this.progress.award(id))));
       this.game.events.on('complete', (s: GameOverState) =>
         this.zone.run(() => {

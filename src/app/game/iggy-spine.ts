@@ -61,6 +61,7 @@ export class IggySpine {
   /** the gun picture each skeleton is showing ('' = none) */
   private held = new Map<SpineGameObject, string>();
   private lastFire = 0;
+  private current = ''; // the animation playing on track 0
   private constructor(private readonly suits: (SpineGameObject | undefined)[]) {}
 
   /** One skeleton per suit; a suit whose files didn't load is left out (the drawn robot stands in for it). */
@@ -100,11 +101,14 @@ export class IggySpine {
       this.shown = p.suit;
     }
     const climbing = p.hanging && p.climb >= 0;
-    const anim = climbing ? 'climb' : p.hanging ? 'hang' : p.dash ? 'dash' : p.pound ? 'pound' : p.tuck ? 'tuck' : p.duck > 0.5 ? 'duck' : !p.onGround ? (p.vy < 0 ? 'jump' : 'fall') : p.footSpeed > 25 ? 'run' : 'idle';
+    // (at sprint speed, the high-kneed sprint; the switch has a little give so it doesn't flicker at the edge)
+    const sprinting = p.footSpeed > (this.current === 'sprint' ? 280 : 295) && !p.scramble;
+    const anim = climbing ? 'climb' : p.hanging ? 'hang' : p.dash ? 'dash' : p.pound ? 'pound' : p.tuck ? 'tuck' : p.duck > 0.5 ? (p.footSpeed > 20 ? 'crawl' : 'duck') : !p.onGround ? (p.vy < 0 ? 'jump' : 'fall') : sprinting ? 'sprint' : p.footSpeed > 25 ? 'run' : 'idle';
+    this.current = anim;
     let cur = s.animationState.getTrack(0);
     if (cur?.animation?.name !== anim) cur = s.animationState.setAnimation(0, anim, !climbing);
     // the run is one full stride a second, and the drawn Iggy takes one stride every 70 pixels: keep the feet in step with the ground
-    s.animationState.timeScale = anim === 'run' ? p.footSpeed / 70 : 1;
+    s.animationState.timeScale = anim === 'run' ? p.footSpeed / 70 : anim === 'sprint' ? p.footSpeed / 92 : anim === 'crawl' ? p.footSpeed / 45 : 1; // (a sprint stride covers more ground, a crawl's much less)
     if (climbing && cur?.animation) {
       // the climb follows the game's climb exactly (its hands stay on the roof while the game lifts him)
       cur.timeScale = 0;

@@ -75,20 +75,26 @@ const rad = (d) => (d * Math.PI) / 180;
 /** how far the hip has to drop so a straight leg swung by `deg` still reaches the ground */
 const drop = (deg) => LEG * (1 - Math.cos(rad(deg)));
 
-const run = (u) => {
+/**
+ * A running stride: the leg swinging forward folds at the knee (heel up behind him), the standing leg keeps a little bend.
+ * `k` sets how hard he runs: the plain run, or the sprint (longer, higher-kneed strides, leaning in, arms pumping).
+ */
+const stride = (u, k) => {
   const a = u * Math.PI * 2;
-  const hipL = 30 * Math.sin(a), hipR = 30 * Math.sin(a + Math.PI);
-  const kneeL = -55 * Math.max(0, Math.cos(a)), kneeR = -55 * Math.max(0, Math.cos(a + Math.PI));
+  const hipL = k.swing * Math.sin(a) + k.bias, hipR = k.swing * Math.sin(a + Math.PI) + k.bias;
+  const kneeL = -k.knee * Math.max(0, Math.cos(a)) - k.stance, kneeR = -k.knee * Math.max(0, Math.cos(a + Math.PI)) - k.stance;
   const planted = Math.cos(a) < 0 ? hipL : hipR; // the leg sweeping back is the one on the ground
   return {
-    hip: { r: 0, x: 0, y: -drop(planted) + 10 * Math.abs(Math.sin(a * 1)) },
-    torso: { r: -7 + 2 * Math.sin(a * 2), x: 0, y: 0 },
-    head: { r: 2 * Math.sin(a * 2 + 1) },
+    hip: { r: 0, x: 0, y: -drop(planted) - k.crouch + k.bounce * Math.abs(Math.sin(a)) },
+    torso: { r: -k.lean + 2 * Math.sin(a * 2), x: 0, y: 0 },
+    head: { r: k.lean * 0.4 + 2 * Math.sin(a * 2 + 1) },
     thighL: { r: hipL }, shinL: { r: kneeL }, thighR: { r: hipR }, shinR: { r: kneeR },
-    upperArmL: { r: -28 * Math.sin(a) }, foreArmL: { r: 35 + 15 * Math.max(0, -Math.sin(a)) },
-    upperArmR: { r: 28 * Math.sin(a) }, foreArmR: { r: 35 + 15 * Math.max(0, Math.sin(a)) },
+    upperArmL: { r: -k.arms * Math.sin(a) }, foreArmL: { r: k.elbow + 15 * Math.max(0, -Math.sin(a)) },
+    upperArmR: { r: k.arms * Math.sin(a) }, foreArmR: { r: k.elbow + 15 * Math.max(0, Math.sin(a)) },
   };
 };
+const run = (u) => stride(u, { swing: 34, bias: 2, knee: 80, stance: 6, crouch: 6, bounce: 12, lean: 8, arms: 30, elbow: 40 });
+const sprint = (u) => stride(u, { swing: 46, bias: 6, knee: 105, stance: 10, crouch: 12, bounce: 16, lean: 15, arms: 48, elbow: 70 });
 const idle = (u) => {
   const a = u * Math.PI * 2;
   return {
@@ -152,6 +158,21 @@ const duck = (u) => {
     torso: { r: -14, x: 0, y: 0 }, head: { r: 8 + Math.sin(a) },
     thighL: { r: t }, shinL: { r: s }, thighR: { r: t - 8 }, shinR: { r: s + 10 },
     upperArmL: { r: 40 }, foreArmL: { r: 55 }, upperArmR: { r: 30 }, foreArmR: { r: 50 },
+  };
+};
+
+/** moving while crouched: the duck pose, with the legs shuffling in turn (each boot lifts a little as it comes forward) */
+const crawl = (u) => {
+  const a = u * Math.PI * 2;
+  const t = 70, s = -112, thigh = KNEE - THIGH, shin = GROUND - KNEE;
+  const fy = thigh * Math.cos(rad(t)) + shin * Math.cos(rad(t + s));
+  const legL = 16 * Math.sin(a), legR = 16 * Math.sin(a + Math.PI);
+  return {
+    hip: { r: 0, x: 0, y: -(LEG - fy) + 4 * Math.abs(Math.sin(a)) },
+    torso: { r: -16 + 2 * Math.sin(a * 2), x: 0, y: 0 }, head: { r: 9 + 1.5 * Math.sin(a * 2 + 1) },
+    thighL: { r: t + legL }, shinL: { r: s - legL * 0.7 - 14 * Math.max(0, Math.cos(a)) },
+    thighR: { r: t - 8 + legR }, shinR: { r: s + 10 - legR * 0.7 - 14 * Math.max(0, Math.cos(a + Math.PI)) },
+    upperArmL: { r: 40 - 14 * Math.sin(a) }, foreArmL: { r: 55 }, upperArmR: { r: 30 + 14 * Math.sin(a) }, foreArmR: { r: 50 },
   };
 };
 
@@ -279,9 +300,11 @@ const skeleton = {
   animations: {
     idle: animation(2, 16, idle),
     run: animation(1, 16, run), // one full stride (both feet); the game drives its time from the distance run
+    sprint: animation(1, 16, sprint), // the same at full sprint (iggy-spine.ts switches to it at sprint speed)
     jump: animation(0.6, 6, jump),
     fall: animation(0.6, 6, fall),
     duck: animation(1.6, 8, duck),
+    crawl: animation(1, 16, crawl), // one shuffle of both feet; the game drives its time from his speed
     tuck: animation(0.6, 4, tuck), // the double jump
     dash: animation(0.3, 4, dash),
     pound: animation(0.3, 4, pound),

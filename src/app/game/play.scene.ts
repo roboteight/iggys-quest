@@ -6,7 +6,7 @@ import {
   makeRain, makeSky, makeSkyline, makeSmallTextures, suitFor,
 } from './art';
 import { ensureStyle, drawLevelBuilding, makeEnemyTextures, makeFlyerTextures, makeRingTextures, makeWarTextures, makePlatformTextures, ExtraStyle } from './art-levels';
-import { BOSSES, BOSS_SCORE, BossAttack, BossDef, LevelDef, levelById } from './levels';
+import { BOSSES, BOSS_SCORE, BossAttack, BossDef, LEVELS, LevelDef, levelById } from './levels';
 import { makeBossShots } from './boss-shots';
 import { makeEnemyRigTextures } from './enemy-rigs';
 import { makeBossRigTextures } from './boss-rigs';
@@ -63,6 +63,8 @@ const GUN_NAMES = ['', 'Blaster', 'Twin blaster', 'Spread gun', 'Rocket launcher
 const GUN_MAX = 4;
 const GUN_AMMO = 30; // shots per gun pickup; ammo never times out, so players can save it
 const GUN_AMMO_MAX = 99;
+/** with the strongest gun, each further gun token speeds up firing: this many times at most, each cutting the wait by 20% */
+const GUN_RATE_MAX = 4, GUN_RATE_STEP = 0.8;
 const POWER: Record<PowerId, { label: string; secs: number | null; tex: string; text: string }> = {
   spring: { label: 'Spring legs', secs: 12, tex: 'pu-spring', text: 'Spring legs! Jump much higher.' },
   magnet: { label: 'Magnet', secs: 12, tex: 'pu-magnet', text: 'Magnet! Breadboards fly to you.' },
@@ -213,6 +215,10 @@ interface BossWave { img: Phaser.GameObjects.Image; vx: number; high?: boolean }
 interface Flag { x: number; top: number; sprite: Phaser.GameObjects.Image; on: boolean }
 
 const RUN = 250;
+/** holding a direction this long (s) starts a sprint, which builds up over SPRINT_RAMP more to SPRINT_BOOST extra speed */
+const SPRINT_AFTER = 0.5, SPRINT_RAMP = 0.6, SPRINT_BOOST = 0.35;
+/** crouched, he can still shuffle along at this fraction of his running speed */
+const CRAWL = 0.4;
 const GRAVITY = 1500;
 const JUMP = 620;
 const SPRING_JUMP = 800;
@@ -399,6 +405,11 @@ export class PlayScene extends Phaser.Scene {
   private cliffSeen = false;
   private shots: Shot[] = [];
   private gunLevel = 0; // 0 = no gun, 1..4 = Blaster, Twin blaster, Spread gun, Rocket launcher
+  private gunRate = 0; // fire-rate boosts on top of the strongest gun (0..GUN_RATE_MAX); lost with the gun
+  /** sprinting: how long a direction has been held without stopping, which way, and how far he leans into it (radians) */
+  private sprintT = 0;
+  private sprintDir = 0;
+  private lean = 0;
   private fireCD = 0;
   private fireAnim = 0;
   private charge = 0; // seconds the fire button has been held
@@ -608,6 +619,10 @@ export class PlayScene extends Phaser.Scene {
     this.stumble = 0;
     this.power = { spring: 0, magnet: 0, shield: 0, turbo: 0, star: 0, gun: 0, oil: 0 };
     this.gunLevel = 0;
+    this.gunRate = 0;
+    this.sprintT = 0;
+    this.sprintDir = 0;
+    this.lean = 0;
     this.lastHud = '';
     this.nextLightning = 10 + Math.random() * 10;
 
@@ -3404,7 +3419,7 @@ export class PlayScene extends Phaser.Scene {
     this.ducked = on;
     this.body.setSize(22, on ? 26 : 46, false);
     this.body.setOffset(0, on ? 20 : 0);
-    this.announce(on ? 'Ducking. Shots now fly low, at small targets on the ground.' : '');
+    this.announce(on ? 'Ducking. Iggy can still shuffle along slowly, and shots now fly low, at small targets on the ground.' : '');
   }
 
   private shoot(big = false) {
@@ -3437,6 +3452,7 @@ export class PlayScene extends Phaser.Scene {
       this.fireCD = 0.2;
       this.sfx.shoot();
     }
+    this.fireCD *= Math.pow(GUN_RATE_STEP, this.gunRate); // fire-rate boosts
     this.fireAnim = 1;
     this.debris(x, y, 'spark', this.reduced ? 1 : 3, 0.5);
     // ammo: rockets cost 2, everything else 1 per trigger pull; a charged shot costs double
@@ -3444,6 +3460,7 @@ export class PlayScene extends Phaser.Scene {
     if (this.power.gun <= 0) {
       this.power.gun = 0;
       this.gunLevel = 0;
+      this.gunRate = 0;
       this.announce('Out of ammo. The gun is gone.');
     }
     this.emitHud();
@@ -3631,8 +3648,18 @@ export class PlayScene extends Phaser.Scene {
     it.taken = true;
     this.bonus += 500;
     this.sfx.secret();
-    this.banner('Secret found!');
-    this.announce('Secret found: the golden breadboard! Plus 500 points.');
+    // how many of the 13 that open the secret level (one per level before it) have been found, counting this one
+    const keyLevels = LEVELS.filter((l) => l.id !== 'foundry');
+    const found = new Set<string>((this.registry.get('secrets') as string[] | undefined) ?? []);
+    found.add(this.level.id);
+    const n = keyLevels.filter((l) => found.has(l.id)).length, of = keyLevels.length;
+    if (this.level.id === 'foundry') {
+      this.banner('Golden breadboard!');
+      this.announce('The Foundry\'s own golden breadboard! Plus 500 points.');
+    } else {
+      this.banner(`Golden breadboard ${n} of ${of}`);
+      this.announce(`Golden breadboard ${n} of ${of}! Plus 500 points.${n === of ? ' That\'s all of them: the secret level under the plant is open.' : ''}`);
+    }
     this.burst(it.sprite.x, it.sprite.y, [0xffd23a, 0xfff3b0, 0xffffff], 34, 260);
     this.game.events.emit('secret', this.level.id);
     this.emitHud(true);
@@ -3645,19 +3672,24 @@ export class PlayScene extends Phaser.Scene {
     if (id === 'gun') {
       // a second gun while the first is still active upgrades it
       const active = this.power.gun > 0 && this.gunLevel > 0;
-      const prev = this.gunLevel;
+      const prev = this.gunLevel, prevRate = this.gunRate;
       this.gunLevel = active ? Math.min(GUN_MAX, prev + 1) : 1;
+      if (!active) this.gunRate = 0;
+      else if (prev >= GUN_MAX) this.gunRate = Math.min(GUN_RATE_MAX, this.gunRate + 1); // the strongest gun fires faster instead
       this.power.gun = Math.min(GUN_AMMO_MAX, this.power.gun + GUN_AMMO);
       const name = GUN_NAMES[this.gunLevel];
-      this.banner(active ? `Gun upgrade: ${name}` : name);
+      const faster = this.gunRate > prevRate;
+      this.banner(!active ? name : faster ? `${name}: faster fire ${this.gunRate} of ${GUN_RATE_MAX}` : `Gun upgrade: ${name}`);
       this.announce(
         !active
           ? `${name} with ${this.power.gun} shots! Tap X or F to shoot, or hold it to charge a big piercing shot and let go to fire. Ammo doesn't run out over time, so you can save it. Grab another gun to upgrade this one.`
-          : prev >= GUN_MAX
-            ? `${name} ammo topped up to ${this.power.gun} shots.`
-            : `Gun upgraded to ${name}, level ${this.gunLevel} of ${GUN_MAX}. ${this.power.gun} shots.`,
+          : faster
+            ? `${name} fires faster: speed boost ${this.gunRate} of ${GUN_RATE_MAX}. ${this.power.gun} shots.`
+            : prev >= GUN_MAX
+              ? `${name} is already as fast as it goes. Ammo topped up to ${this.power.gun} shots.`
+              : `Gun upgraded to ${name}, level ${this.gunLevel} of ${GUN_MAX}. ${this.power.gun} shots.${this.gunLevel === GUN_MAX ? ' More guns from now on make it fire faster.' : ''}`,
       );
-      if (active && prev < GUN_MAX) this.sfx.suit();
+      if (active && (prev < GUN_MAX || faster)) this.sfx.suit();
       else this.sfx.power();
     } else {
       this.power[id] = p.secs ?? 1;
@@ -4040,7 +4072,7 @@ export class PlayScene extends Phaser.Scene {
           .filter((k) => this.power[k] > 0)
           .map((k) => ({
             id: k,
-            label: k === 'gun' ? `${GUN_NAMES[this.gunLevel]} (level ${this.gunLevel} of ${GUN_MAX})` : POWER[k].label,
+            label: k === 'gun' ? `${GUN_NAMES[this.gunLevel]} (level ${this.gunLevel} of ${GUN_MAX}${this.gunRate ? `, faster fire ${this.gunRate} of ${GUN_RATE_MAX}` : ''})` : POWER[k].label,
             detail: k === 'gun' ? `${Math.ceil(this.power.gun)} shots` : POWER[k].secs === null ? '' : `${Math.ceil(this.power[k])}s`,
           })),
         ...(this.slowT > 0 ? [{ id: 'slow', label: this.glueT > 0 ? 'Stuck in glue' : 'Slowed', detail: `${Math.ceil(this.slowT)}s` }] : []),
@@ -4140,9 +4172,22 @@ export class PlayScene extends Phaser.Scene {
       // duck: crouch on the ground (can still turn round and shoot, but can't run); the hitbox gets shorter
       this.setDucked(ground && (this.held('duck') || this.touch.duck || pad.duck));
       let target = left === right ? 0 : left ? -speed : speed;
+      // sprint: keep a direction held (not crouching, not pushing against a wall) and he speeds up
+      const dirHeld = left === right ? 0 : left ? -1 : 1;
+      const blockedAhead = dirHeld < 0 ? body.blocked.left || body.touching.left : body.blocked.right || body.touching.right;
+      if (dirHeld !== 0 && dirHeld === this.sprintDir && !this.ducked && !blockedAhead && !this.hang) this.sprintT += dt;
+      else this.sprintT = 0;
+      this.sprintDir = dirHeld;
+      const sprint = Phaser.Math.Clamp((this.sprintT - SPRINT_AFTER) / SPRINT_RAMP, 0, 1);
+      target *= 1 + SPRINT_BOOST * sprint;
+      this.lean += ((this.reduced ? 0 : 0.13 * sprint) - this.lean) * Math.min(1, dt * 8);
+      if (sprint > 0 && ground) {
+        if (!this.reduced && Math.random() < dt * 14 * sprint) this.dust(body.center.x - dirHeld * 12, body.bottom, 1, 10, 6, 0.7); // dust kicked up behind him
+        if (sprint >= 1) this.sayOnce('sprint', 'Sprinting! Keep a direction held and Iggy runs faster.');
+      }
       if (this.ducked) {
         if (target !== 0) this.facing = Math.sign(target);
-        target = 0;
+        target = Math.sign(target) * Math.min(Math.abs(target), RUN) * CRAWL; // a crouched shuffle, never sprinting
       }
       if (target !== 0) this.facing = Math.sign(target);
       // wall contact: remember which side, with a little grace time after leaving it
@@ -4520,7 +4565,7 @@ export class PlayScene extends Phaser.Scene {
     this.spinT = Math.max(0, this.spinT - dt);
     this.tuckT = Math.max(0, this.tuckT - dt);
     const sp = this.spinT > 0 ? 1 - this.spinT / 0.5 : 1;
-    const spin = this.spinT > 0 ? Math.PI * 2 * (1 - Math.pow(1 - sp, 2)) : 0;
+    const spin = (this.spinT > 0 ? Math.PI * 2 * (1 - Math.pow(1 - sp, 2)) : 0) + this.lean; // (plus his lean into a sprint)
     // invulnerable = flicker (or steady dim when motion is reduced)
     this.robot.setAlpha(this.invuln > 0 ? (this.reduced ? 0.6 : Math.sin(this.t * 40) > 0 ? 1 : 0.35) : 1);
     drawRobot(this.robot, SUITS[this.suitIdx], {
