@@ -24,10 +24,11 @@ export interface LevelDef {
 /** Score at which the level's boss arena appears. Defeating the boss finishes the level. */
 export const BOSS_SCORE = 4000;
 
-/** pour: a ladle of molten metal lobbed onto the floor, which burns for a few seconds. sweep: the hammer swung flat across
+/** saw: spinning saw blades flung from the Dune Dredger's bucket wheel, rolling along the floor (jump them).
+ *  pour: a ladle of molten metal lobbed onto the floor, which burns for a few seconds. sweep: the hammer swung flat across
  *  the arena, low (jump it) or high (duck under it). volley: aimed shots. spread: a fan. mortar: lobbed shells. stomp: a shockwave, then it kneels (stomp its head).
  *  charge: a lunge forward (back off). ring: shots in every direction, with gaps. rain: shells falling on marked spots. */
-export type BossAttack = 'volley' | 'spread' | 'mortar' | 'stomp' | 'charge' | 'ring' | 'rain' | 'pour' | 'sweep';
+export type BossAttack = 'volley' | 'spread' | 'mortar' | 'stomp' | 'charge' | 'ring' | 'rain' | 'pour' | 'sweep' | 'saw';
 export interface BossDef {
   name: string;
   blurb: string;
@@ -55,7 +56,7 @@ export const BOSSES: Record<LevelStyle, BossDef> = {
   war: { name: 'Iron Marshal', blurb: 'A rolling siege tank with a long gun, the one that has been shelling the trenches.', hp: 36, speed: 38, attacks: ['mortar', 'rain', 'volley', 'spread', 'stomp'], muzzle: [-78, -88] },
   spores: { name: 'Spore Mother', blurb: 'A tripod walker under a giant mushroom cap.', hp: 34, speed: 30, attacks: ['mortar', 'rain', 'spread', 'stomp'], muzzle: [-58, -108] },
   ice: { name: 'Icebreaker', blurb: 'An armoured icebreaker hull on spiked tracks, with a ram prow and frost-cannon turrets.', hp: 40, speed: 70, attacks: ['charge', 'volley', 'spread', 'ring', 'stomp'], shield: 5, muzzle: [-60, -120] },
-  dunes: { name: 'Dune Dredger', blurb: 'A colossal mining dredge with a bucket wheel that reshapes the sand.', hp: 43, speed: 40, attacks: ['mortar', 'rain', 'charge', 'spread', 'stomp'], muzzle: [-100, -122] },
+  dunes: { name: 'Dune Dredger', blurb: 'A colossal mining dredge with a bucket wheel that reshapes the sand.', hp: 43, speed: 40, attacks: ['saw', 'mortar', 'rain', 'saw', 'charge', 'spread', 'stomp'], muzzle: [-100, -122] },
   wind: { name: 'Gale Warden', blurb: 'A towering turbine mech whose chest is a giant fan.', hp: 46, speed: 30, attacks: ['spread', 'ring', 'volley', 'charge', 'stomp'], shield: 6, muzzle: [-10, -110] },
   locks: { name: 'Brass Kraken', blurb: 'A mechanical squid lurking in the flooded lock, all brass tentacles and porthole eyes.', hp: 48, speed: 0, attacks: ['mortar', 'volley', 'rain', 'ring', 'stomp'], muzzle: [-30, -120] },
   sky: { name: 'Iron Albatross', blurb: 'A flying fortress airship with a gun turret and a bridge window that glows.', hp: 52, speed: 45, attacks: ['mortar', 'rain', 'volley', 'ring', 'spread'], shield: 7, muzzle: [-40, -40] },

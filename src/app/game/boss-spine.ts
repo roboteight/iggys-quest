@@ -28,6 +28,8 @@ interface RigDef {
   hit?: { hw: number; top: number; bottom: number; dx?: number };
   /** draw it behind the floor (so the floor hides its lower part) instead of in front */
   behind?: boolean;
+  /** tip it this many degrees, nose up (a three-quarter view whose tracks climb away from the viewer: this sets them down) */
+  tilt?: number;
 }
 const RIGS: Partial<Record<LevelStyle, RigDef>> = {
   // the image sits on origin 0.95 of its 828-sheet-pixel crop; the skeleton's root is at the feet
@@ -37,7 +39,8 @@ const RIGS: Partial<Record<LevelStyle, RigDef>> = {
   ice: { file: 'icebreaker', scale: 0.58, footDrop: 8, facesRight: false, speed: 1, dx: 20, hit: { hw: 140, top: 230, bottom: 0, dx: 10 } },
   // the Dune Dredger: a little over twice the size of the others, drawn in front of the floor with the near corner of its
   // tracks (the sheet's lowest point, a three-quarter view) standing on the sand
-  dunes: { file: 'dredger', scale: 0.62, footDrop: 0, facesRight: false, speed: 1, dx: 24, hit: { hw: 165, top: 255, bottom: 0, dx: 0 } },
+  // (tipped nose-up and lowered a little, so the back of its tracks reaches the floor as well as the front corner)
+  dunes: { file: 'dredger', scale: 0.62, footDrop: 16, tilt: 9, facesRight: false, speed: 1, dx: 24, hit: { hw: 165, top: 255, bottom: 0, dx: 0 } },
   wind: { file: 'warden', scale: 0.27, footDrop: 2, facesRight: true, speed: 1 },
   // the Brass Kraken: twice the size of the others, rising out of the lock with its tentacles across the walkway
   locks: { file: 'kraken', scale: 0.56, footDrop: 84, facesRight: false, speed: 1, dx: -68, hit: { hw: 80, top: 200, bottom: 10, dx: -40 }, behind: true },
@@ -107,7 +110,7 @@ export class BossSpine {
     const left = !img.flipX;
     spine.setPosition(img.x + (def.dx ?? 0), img.y + def.footDrop * img.scaleY);
     spine.setScale((left === def.facesRight ? -1 : 1) * def.scale * img.scaleX, def.scale * img.scaleY);
-    spine.setAngle(img.angle);
+    spine.setAngle(img.angle + (def.tilt ?? 0) * (left ? 1 : -1));
     spine.setAlpha(img.alpha);
   }
 

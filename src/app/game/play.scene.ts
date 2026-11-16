@@ -212,6 +212,10 @@ const FORGE_FEET: [number, number] = [520, 700];
 /** a broken boss shield stays down this long (s); it flickers for the last second before it comes back */
 const SHIELD_DOWN = 6;
 interface BossWave { img: Phaser.GameObjects.Image; vx: number; high?: boolean }
+/** a saw blade from the Dune Dredger's bucket wheel, rolling along the floor (`hop` makes it bounce as it goes) */
+interface Saw { img: Phaser.GameObjects.Image; vx: number; t: number; hop: boolean }
+/** the Dune Dredger's bucket wheel, where its saws come from: sheet px from its feet (560, 625) to the hub (232, 465) */
+const DREDGER_HUB: [number, number] = [232 - 560, 465 - 625];
 interface Flag { x: number; top: number; sprite: Phaser.GameObjects.Image; on: boolean }
 
 const RUN = 250;
@@ -287,6 +291,7 @@ export class PlayScene extends Phaser.Scene {
   private bossFx?: Phaser.GameObjects.Graphics;
   private slag: Slag[] = [];
   private bossWaves: BossWave[] = [];
+  private saws: Saw[] = [];
   private bossAmmoT = 8;
   private nextX = 0;
   private lastTop = 400;
@@ -443,6 +448,7 @@ export class PlayScene extends Phaser.Scene {
     for (const k of new Set(Object.values(FOE_TEX))) this.load.image(`foe-${k}`, `foes/${k}.png`);
     for (const k of [...Array.from({ length: 6 }, (_, i) => `f${i}`), 'glide']) this.load.image(`foe-magpie-${k}`, `foes/magpie-${k}.png`); // its wingbeat (tools/magpie-cut.py)
     this.load.image('foe-bomb', 'foes/bomb.png');
+    if (levelById(this.registry.get('level')).style === 'dunes') this.load.image('dredger-saw', 'foes/dredger-saw.png'); // its bucket wheel, as a flung saw
     this.load.image('foe-copycat-down', 'foes/copycat-down.png');
     const style = levelById(this.registry.get('level')).style;
     if (style === 'city') preloadEnforcerRig(this);
@@ -583,6 +589,7 @@ export class PlayScene extends Phaser.Scene {
     this.rc = undefined;
     this.bossShots = [];
     this.bossWaves = [];
+    this.saws = [];
     this.slag = [];
     this.bossAmmoT = 8;
     this.layers = [];
@@ -1292,6 +1299,8 @@ export class PlayScene extends Phaser.Scene {
     this.invuln = 10;
     this.bossShots.forEach((s) => s.img.destroy());
     this.bossWaves.forEach((w) => w.img.destroy());
+    this.saws.forEach((w) => w.img.destroy());
+    this.saws = [];
     this.bossShots = [];
     this.bossWaves = [];
     this.sfx.bossDown();
@@ -1401,10 +1410,11 @@ export class PlayScene extends Phaser.Scene {
           b.state = 'telegraph';
           // later bosses wind up a little quicker (never under half a second for the shots, so there's time to react)
           const tier = this.bossTier();
-          b.timer = b.attack === 'stomp' ? 0.9 : b.attack === 'charge' ? 0.85 - 0.15 * tier : b.attack === 'sweep' ? 0.9 : 0.6 - 0.1 * tier;
+          b.timer = b.attack === 'stomp' ? 0.9 : b.attack === 'charge' ? 0.85 - 0.15 * tier : b.attack === 'sweep' ? 0.9 : b.attack === 'saw' ? 0.75 : 0.6 - 0.1 * tier;
           s.setTexture(`boss-${this.level.style}-b`);
           this.sfx.bossCharge(b.attack === 'stomp' || b.attack === 'charge');
           if (b.attack === 'charge') this.sayOnce('ram', `${b.def.name} is rearing back to ram you. Back away!`);
+          if (b.attack === 'saw') this.sayOnce('saw', `${b.def.name} is revving its bucket wheel! It flings spinning saw blades along the floor: jump them.`);
           if (b.attack === 'stomp') s.y = this.arenaTop - 14;
         }
       } else if (b.state === 'telegraph') {
@@ -1488,6 +1498,19 @@ export class PlayScene extends Phaser.Scene {
       if (gone) sh.img.destroy();
       return !gone;
     });
+    this.saws = this.saws.filter((w) => {
+      w.t += edt;
+      w.img.x += w.vx * edt;
+      const r = w.img.displayHeight / 2;
+      w.img.y = this.arenaTop - r - (w.hop ? Math.abs(Math.sin(w.t * 4.2)) * 70 : 0);
+      if (!this.reduced) w.img.rotation += (w.vx * edt) / r; // rolling
+      if (!this.reduced && !w.hop && Math.random() < edt * 20) this.dust(w.img.x - Math.sign(w.vx) * r * 0.6, this.arenaTop, 1, 10, 8, 0.8); // sand kicked up
+      const gone = w.img.x < camX - 100 || w.img.x > camX + W + 100;
+      const dx = body.center.x - w.img.x, dy = body.center.y - w.img.y;
+      if (!gone && Math.abs(dx) < r * 0.75 + 8 && Math.abs(dy) < r * 0.8 + 20) this.hit('enemy');
+      if (gone) w.img.destroy();
+      return !gone;
+    });
     this.bossWaves = this.bossWaves.filter((w) => {
       w.img.x += w.vx * edt;
       let gone = w.img.x < camX - 40 || w.img.x > camX + W + 40;
@@ -1552,6 +1575,21 @@ export class PlayScene extends Phaser.Scene {
       this.sayOnce('ring', 'A ring of shots! Find a gap between them, or jump.');
     } else if (b.attack === 'rain') {
       this.bossRain(b, (enraged ? 5 : 4) + Math.round(tier * 2));
+    } else if (b.attack === 'saw') {
+      // saw blades flung from the bucket wheel, rolling along the floor at Iggy; enraged, a second one bounces after it
+      const d = BossSpine.def('dunes'), k = d?.scale ?? 0.62, sign = s.flipX ? -1 : 1, dir = px > s.x ? 1 : -1;
+      const hx = s.x + (d?.dx ?? 0) + DREDGER_HUB[0] * k * sign;
+      const n = enraged ? 2 : 1;
+      for (let i = 0; i < n; i++) {
+        this.time.delayedCall(i * 650, () => {
+          if (b.state === 'dead' || !s.active) return;
+          const img = this.add.image(hx, this.arenaTop - 42, this.textures.exists('dredger-saw') ? 'dredger-saw' : 'boss-orb').setDepth(9).setDisplaySize(84, 84);
+          this.saws.push({ img, vx: dir * (300 + 110 * tier), t: 0, hop: i === 1 });
+          this.sfx.bossStomp();
+          if (!this.reduced) this.cameras.main.shake(120, 0.005);
+        });
+      }
+      b.cd = Math.max(b.cd, 1.4);
     } else if (b.attack === 'pour') {
       // the ladle (on its far side) flings molten metal over its shoulder, onto where Iggy stands and either side of him
       const sign = s.flipX ? -1 : 1, lx = s.x + 40 * sign + 228 * sign, ly = s.y - 190;
@@ -3791,6 +3829,8 @@ export class PlayScene extends Phaser.Scene {
     this.cameoShots = [];
     this.bossShots.forEach((sh) => sh.img.destroy());
     this.bossWaves.forEach((w) => w.img.destroy());
+    this.saws.forEach((w) => w.img.destroy());
+    this.saws = [];
     this.bossShots = [];
     this.bossWaves = [];
     this.burst(spot.x, spot.top - 30, [0xffffff, 0x4af0ff], 16, 170);

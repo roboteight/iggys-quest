@@ -127,15 +127,19 @@ const BOSSES2 = {
       stunned: [1, 6, (u) => ({ hull: { r: 5 + 1.5 * S(u), y: -6 }, prow: { r: 8 }, turret: { r: 12 + 4 * S(u, 2) }, show: { hatch: 'hatchOpen' } })],
     },
   },
+  // the bucket wheel spins (clockwise, so the buckets scoop up the digging face): the sheet's front-on wheel, squashed a little
+  // by its parent bone to the angle the body is drawn at, turning behind the arm's end plate
   dredger: {
-    bones: [['hull', 'root', 'rest'], ['wheel', 'hull', 'wheel'], ['engine', 'hull', 'engineHot']],
-    slots: [['wheel', 'wheel', 'wheel'], ['rest', 'hull', 'rest'], ['engine', 'engine', null]],
+    bones: [['hull', 'root', 'rest'], ['wheelTilt', 'hull', 'spinWheel'], ['wheelSpin', 'wheelTilt', 'spinWheel'], ['arm', 'hull', 'armFront'], ['engine', 'hull', 'engineHot']],
+    boneScale: { wheelTilt: [0.95, 1] },
+    slots: [['wheel', 'wheelSpin', 'spinWheel'], ['rest', 'hull', 'rest'], ['arm', 'arm', 'armFront'], ['engine', 'engine', null]],
     animations: {
-      idle: [1.6, 8, (u) => ({ hull: { r: 0.4 * S(u), y: 2 * S(u) }, wheel: { r: 6 * S(u) } })],
-      walk: [0.8, 8, (u) => ({ hull: { r: 0.8 * S(u, 2), y: 3 * Math.abs(S(u, 2)) }, wheel: { r: 14 * S(u) } })],
-      // digging: the wheel churns, the hull leans into it
-      charge: [0.4, 6, (u) => ({ hull: { r: -3 + 0.8 * S(u, 2), y: 4 }, wheel: { r: -20 + 16 * S(u, 2) } })],
-      stunned: [1, 6, (u) => ({ hull: { r: 4 + S(u), y: -4 }, wheel: { r: 12 }, show: { engine: 'engineHot' } })],
+      idle: [2.4, 16, (u) => ({ hull: { r: 0.4 * S(u, 2), y: 2 * S(u, 2) }, wheelSpin: { r: ROT(u, 1) } })],
+      walk: [2.4, 24, (u) => ({ hull: { r: 0.8 * S(u, 4), y: 3 * Math.abs(S(u, 4)) }, wheelSpin: { r: ROT(u, 2) } })],
+      // digging: the wheel churns fast, the hull leans into it
+      charge: [0.8, 16, (u) => ({ hull: { r: -3 + 0.8 * S(u, 4), y: 4 }, wheelSpin: { r: ROT(u, 2) } })],
+      // stalled: the wheel stops, the engine shows
+      stunned: [1, 6, (u) => ({ hull: { r: 4 + S(u), y: -4 }, wheelSpin: { r: 0 }, show: { engine: 'engineHot' } })],
     },
   },
   warden: {
@@ -204,6 +208,7 @@ function build2(name) {
       const m = parts[partOfBone[b]], hip = m.pivot[1];
       bone.scaleY = Math.round(((feet[1] - hip) / (m.y + m.h - hip)) * 1000) / 1000;
     }
+    if (cfg.boneScale?.[b]) [bone.scaleX, bone.scaleY] = cfg.boneScale[b]; // (squashing a spinning part to a perspective angle)
     return bone;
   })];
   const slots = cfg.slots.map(([slot, bone, att]) => ({ name: slot, bone, ...(att ? { attachment: att } : {}) }));

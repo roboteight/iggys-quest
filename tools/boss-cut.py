@@ -101,10 +101,14 @@ BOSSES = {
     'dredger': {
         'main': box(100, 45, 870, 640),
         'parts': {
-            # the wheel as the body draws it (at an angle): it rocks as it digs
+            # the arm's end plate and hub cap, in front of the wheel: it stays still while the wheel turns behind it
+            'armFront': ([(238, 442), (262, 436), (300, 425), (348, 405), (348, 500), (300, 498), (262, 490), (238, 484)], (300, 465)),
+            # the wheel as the body draws it: cut out of the body, and replaced in the rig by the spinning one below
             'wheel': ([(100, 330), (330, 330), (348, 420), (340, 600), (100, 600)], (222, 468)),
             'rest': (None, (560, 620)),
             'engineHot': (box(852, 328, 975, 480), (913, 404), {'place': (742, 377), 'scale': 0.82}),
+            # the sheet's separate, front-on drawing of the wheel, laid over the hub to spin (the rig squashes it to the angle)
+            'spinWheel': (box(62, 78, 262, 278), (162, 176), {'place': (232, 465), 'scale': 1.39}),
         },
         'feet': (560, 625),
     },
