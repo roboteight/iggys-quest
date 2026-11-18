@@ -432,6 +432,7 @@ export interface Pose {
   oil?: number; // seconds of oil left: smooth joints and a glossy sheen
   hang?: number; // 1 = hanging from a roof edge by his hands (the edge is in front of him, level with his hands)
   climb?: number; // 0..1 through climbing up from a hang: haul up (to 0.55), then step onto the roof
+  kick?: number; // 1 → 0 just after catching a ledge: his feet scrabble at the wall for a grip
 }
 
 const OUTLINE = 0x2b1710;
@@ -572,7 +573,10 @@ export function drawRobot(g: Phaser.GameObjects.Graphics, suit: Suit, p: Pose) {
     if (hanging) {
       // legs dangle against the wall (swaying a little), tuck up as he hauls himself up, then plant on the roof
       const sw = p.reduced ? 0 : Math.sin(p.t * 2.4 + off) * 1.2 * (1 - pull);
-      const f = off === 0 ? { fx: -1.5 + sw + 3 * pull, fy: 2 - 12 * pull, pitch: 0.2 } : { fx: 4 + sw * 0.6 + 2 * pull, fy: -1 - 9 * pull, pitch: -0.4 };
+      // just caught the edge: each foot scrabbles up the wall and slips back, the two out of step
+      const kk = p.kick ?? 0, ka = p.t * 15 + (off === 0 ? 0 : Math.PI);
+      const kx = kk * 3.5 * Math.sin(ka), ky = kk * (-4 * Math.max(0, Math.sin(ka - 1.1)) + 1.2);
+      const f = off === 0 ? { fx: -1.5 + sw + 3 * pull + kx, fy: 2 - 12 * pull + ky, pitch: 0.2 + kk * 0.3 * Math.sin(ka) } : { fx: 4 + sw * 0.6 + 2 * pull + kx, fy: -1 - 9 * pull + ky, pitch: -0.4 + kk * 0.3 * Math.sin(ka) };
       const idle = { fx: off === 0 ? -2.4 : 2.4, fy: 0, pitch: 0 };
       return { fx: mix(f.fx, idle.fx, stepOn), fy: mix(f.fy, idle.fy, stepOn), pitch: mix(f.pitch, idle.pitch, stepOn) };
     }

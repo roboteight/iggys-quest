@@ -44,6 +44,8 @@ export interface IggyState {
   /** hanging from a roof edge: -1 = not hanging, 0 = just hanging, 0..1 = how far through climbing up */
   climb: number;
   hanging: boolean;
+  /** just caught a ledge: 1 → 0, how hard his feet kick and scrabble at the wall for a grip */
+  kick?: number;
   /** curled up in the double jump */
   tuck: boolean;
   /** the Steel Sentinel's dash and the Night Guardian's ground pound */
@@ -56,13 +58,33 @@ export interface IggyState {
   fire: number;
 }
 
+/** how fast his feet kick while he scrambles for a grip on a ledge (radians a second: a little over two kicks a second) */
+const KICK_RATE = 15;
+
 export class IggySpine {
   private shown = -1;
   /** the gun picture each skeleton is showing ('' = none) */
   private held = new Map<SpineGameObject, string>();
   private lastFire = 0;
   private current = ''; // the animation playing on track 0
-  private constructor(private readonly suits: (SpineGameObject | undefined)[]) {}
+  /** the scrabble on a fresh ledge hang (IggyState.kick), laid over the hang pose's legs */
+  private kick = 0;
+  private constructor(private readonly suits: (SpineGameObject | undefined)[]) {
+    for (const s of suits) {
+      if (!s) continue;
+      const legs = ['thighL', 'shinL', 'thighR', 'shinR'].map((n) => s.skeleton.findBone(n));
+      // after the animation has posed him, before his bones are placed: kick the legs, the two out of step (a scramble)
+      s.beforeUpdateWorldTransforms = () => {
+        if (this.kick <= 0) return;
+        const a = (performance.now() / 1000) * KICK_RATE;
+        const [thL, shL, thR, shR] = legs;
+        if (thL) thL.pose.rotation += this.kick * 22 * Math.sin(a);
+        if (shL) shL.pose.rotation += this.kick * 26 * Math.sin(a - 1.1);
+        if (thR) thR.pose.rotation += this.kick * 22 * Math.sin(a + Math.PI);
+        if (shR) shR.pose.rotation += this.kick * 26 * Math.sin(a + Math.PI - 1.1);
+      };
+    }
+  }
 
   /** One skeleton per suit; a suit whose files didn't load is left out (the drawn robot stands in for it). */
   static create(scene: Phaser.Scene, depth: number): IggySpine | undefined {
@@ -101,6 +123,7 @@ export class IggySpine {
       this.shown = p.suit;
     }
     const climbing = p.hanging && p.climb >= 0;
+    this.kick = p.hanging && !climbing ? (p.kick ?? 0) : 0;
     // (at sprint speed, the high-kneed sprint; the switch has a little give so it doesn't flicker at the edge)
     const sprinting = p.footSpeed > (this.current === 'sprint' ? 280 : 295) && !p.scramble;
     const anim = climbing ? 'climb' : p.hanging ? 'hang' : p.dash ? 'dash' : p.pound ? 'pound' : p.tuck ? 'tuck' : p.duck > 0.5 ? (p.footSpeed > 20 ? 'crawl' : 'duck') : !p.onGround ? (p.vy < 0 ? 'jump' : 'fall') : sprinting ? 'sprint' : p.footSpeed > 25 ? 'run' : 'idle';

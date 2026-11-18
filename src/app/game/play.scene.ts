@@ -246,6 +246,10 @@ const FLY_V = 260, FLY_FUEL = 3, FLY_REFILL = 2;
 const HANG_DROP = 61, HANG_OFF = 14;
 /** seconds to haul himself up; holding toward the wall this long while hanging also climbs */
 const CLIMB_TIME = 0.42, HANG_AUTO = 0.3;
+/** after letting go of a ledge by pressing away from the wall, Jump still kicks off the wall for this long (s) */
+const HANG_KICK_GRACE = 0.15;
+/** for this long (s) after he catches a ledge, his feet kick and scrabble at the wall for a grip */
+const HANG_SCRAMBLE = 0.7;
 /** what each suit can do beyond soaking a hit, by suit index */
 const ABILITY: Record<number, string> = {
   2: 'Dash: press Shoot when you have no gun.',
@@ -411,7 +415,7 @@ export class PlayScene extends Phaser.Scene {
   private wallDir = 0; // direction to kick off in: +1 = right (wall is on his left)
   private wallLock = 0;
   /** Hanging from a roof edge (side +1 = the wall is on his right), and how far through climbing up he is (-1 = not climbing). */
-  private hang: { b: Building; side: number; climb: number; hold: number } | null = null;
+  private hang: { b: Building; side: number; climb: number; hold: number; t?: number } | null = null;
   private hangLock = 0; // after letting go, a moment before he can grab again
   private hangHinted = false;
   private cliffHinted = false;
@@ -4003,6 +4007,7 @@ export class PlayScene extends Phaser.Scene {
     if (h.climb < 0) {
       const toward = h.side > 0 ? right && !left : left && !right, away = h.side > 0 ? left && !right : right && !left;
       h.hold = toward ? h.hold + dt : 0;
+      h.t = (h.t ?? 0) + dt;
       if (this.jumpBuffer > 0 && away) {
         // kick off the wall, like a wall jump
         this.releaseHang();
@@ -4016,9 +4021,15 @@ export class PlayScene extends Phaser.Scene {
         h.climb = 0;
         body.checkCollision.none = true; // he passes over the corner of the roof
         this.sfx.climb(this.looseNow());
-      } else if (duck) {
+      } else if (duck || away) {
+        // let go and drop (pressing away from the wall too: before, he turned round and hung there facing out, in mid-air)
         this.releaseHang();
         this.hangLock = 0.35;
+        if (away) {
+          // a Jump straight after still kicks off the wall (the wall jump below picks this up)
+          this.wallCoyote = HANG_KICK_GRACE;
+          this.wallDir = -h.side;
+        }
       }
       this.jumpBuffer = 0;
       if (this.hang) this.placeHang();
@@ -4034,6 +4045,14 @@ export class PlayScene extends Phaser.Scene {
       return;
     }
     this.placeHang();
+  }
+
+  /** 1 the moment he catches a ledge, fading to 0: how hard his feet scrabble at the wall (none with reduced motion) */
+  private hangKick() {
+    const h = this.hang;
+    if (!h || h.climb >= 0 || this.reduced) return 0;
+    const k = 1 - (h.t ?? 0) / HANG_SCRAMBLE;
+    return k > 0 ? k * k * (3 - 2 * k) : 0;
   }
 
   private grab(b: Building, side: number) {
@@ -4052,7 +4071,7 @@ export class PlayScene extends Phaser.Scene {
     this.debris(wx, b.top, 'spark', this.reduced ? 1 : 3, 0.4);
     if (!this.hangHinted) {
       this.hangHinted = true;
-      this.announce('Iggy is hanging from the edge. Press Jump, or hold toward the wall, to climb up. Press Duck to let go.');
+      this.announce('Iggy is hanging from the edge. Press Jump, or hold toward the wall, to climb up. Press Duck, or the arrow away from the wall, to let go.');
     }
   }
 
@@ -4330,7 +4349,7 @@ export class PlayScene extends Phaser.Scene {
         if (target !== 0) this.facing = Math.sign(target);
         target = Math.sign(target) * Math.min(Math.abs(target), RUN) * CRAWL; // a crouched shuffle, never sprinting
       }
-      if (target !== 0) this.facing = Math.sign(target);
+      if (target !== 0 && !this.hang) this.facing = Math.sign(target); // (hanging, he keeps facing the wall)
       // wall contact: remember which side, with a little grace time after leaving it
       const wallL = !ground && body.touching.left, wallR = !ground && body.touching.right;
       if (wallL || wallR) {
@@ -4728,6 +4747,7 @@ export class PlayScene extends Phaser.Scene {
       duck: this.duckAmt,
       hang: this.hang ? 1 : 0,
       climb: this.hang ? Math.max(0, this.hang.climb) : 0,
+      kick: this.hangKick(),
     });
     // the art test: the Spine Iggy stands in for the drawing, except for what it has no animation (or effect) for yet
     const ig = this.iggySpine;
@@ -4740,7 +4760,7 @@ export class PlayScene extends Phaser.Scene {
         drawPowerFx(this.iggyFx, { t: this.t, star: this.power.star, shield: this.power.shield > 0, reduced: this.reduced });
         ig.show({
           suit: this.suitIdx, gun: this.gun(), fire: this.fireAnim, x: this.robot.x, y: this.robot.y, scaleX: this.robot.scaleX, scaleY: this.robot.scaleY, spin, alpha: this.robot.alpha,
-          onGround: grounded, vx: body.velocity.x, footSpeed: this.footSpeed, scramble: this.scrambling, vy: body.velocity.y, duck: this.duckAmt, hanging: !!this.hang, climb: this.hang?.climb ?? -1, tuck: this.tuckT > 0 && !grounded, dash: this.dashT > 0, pound: this.pounding,
+          onGround: grounded, vx: body.velocity.x, footSpeed: this.footSpeed, scramble: this.scrambling, vy: body.velocity.y, duck: this.duckAmt, hanging: !!this.hang, climb: this.hang?.climb ?? -1, kick: this.hangKick(), tuck: this.tuckT > 0 && !grounded, dash: this.dashT > 0, pound: this.pounding,
         });
       } else ig.hide();
     }
