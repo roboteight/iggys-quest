@@ -259,7 +259,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
           <div>
             <h3>Collect</h3>
             <ul>
-              <li><strong>Breadboards</strong>: every 100 earns a free life. <strong>Rings</strong> upgrade Iggy's suit, and the higher suits learn tricks: <strong>Steel Sentinel</strong> dashes (Shoot when you have no gun), <strong>Night Guardian</strong> ground-pounds (Duck in mid-air) and <strong>Gold Circuit</strong> glides (hold Jump while falling after your double jump). In story mode Iggy keeps the suit he finishes a level in when he starts the next one.</li>
+              <li><strong>Breadboards</strong>: every 100 earns a free life. <strong>Rings</strong> upgrade Iggy's suit, and the higher suits learn tricks: <strong>Steel Sentinel</strong> dashes (Shoot when you have no gun), <strong>Night Guardian</strong> ground-pounds (Duck in mid-air) and <strong>Gold Circuit</strong> flies (after your double jump, keep holding Jump to rise on jets for about three seconds, then glide; landing refuels). In story mode Iggy keeps the suit he finishes a level in when he starts the next one.</li>
               <li><strong>Golden breadboard:</strong> each level hides one high above a gap. It is worth 500 points and needs a double jump.</li>
               <li><strong>Golden rings:</strong> jump through them for bonus points. Rings passed in quick succession build a chain worth more each time, up to 100 points a ring.</li>
               <li><strong>Glowing power-ups:</strong> spring legs, magnet, shield, overclock, the golden star, guns and the oil can. Oil keeps Iggy's joints smooth for 15 seconds: a little faster, no stumbling and no rattling.</li>

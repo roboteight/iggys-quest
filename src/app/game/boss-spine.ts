@@ -40,7 +40,8 @@ const RIGS: Partial<Record<LevelStyle, RigDef>> = {
   // the Dune Dredger: a little over twice the size of the others, drawn in front of the floor with the near corner of its
   // tracks (the sheet's lowest point, a three-quarter view) standing on the sand
   // (tipped nose-up and lowered a little, so the back of its tracks reaches the floor as well as the front corner)
-  dunes: { file: 'dredger', scale: 0.62, footDrop: 16, tilt: 9, facesRight: false, speed: 1, dx: 24, hit: { hw: 165, top: 255, bottom: 0, dx: 0 } },
+  // (shrunk by about a sixth from 0.62, with its hit box and muzzle to match, so it doesn't fill the arena)
+  dunes: { file: 'dredger', scale: 0.52, footDrop: 13, tilt: 9, facesRight: false, speed: 1, dx: 20, hit: { hw: 138, top: 214, bottom: 0, dx: 0 } },
   wind: { file: 'warden', scale: 0.27, footDrop: 2, facesRight: true, speed: 1 },
   // the Brass Kraken: twice the size of the others, rising out of the lock with its tentacles across the walkway
   locks: { file: 'kraken', scale: 0.56, footDrop: 84, facesRight: false, speed: 1, dx: -68, hit: { hw: 80, top: 200, bottom: 10, dx: -40 }, behind: true },

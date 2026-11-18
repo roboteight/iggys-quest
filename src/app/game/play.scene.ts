@@ -211,6 +211,12 @@ const FORGE_LOCKS: [number, number][] = [[394, 440], [445, 438], [523, 437]];
 const FORGE_FEET: [number, number] = [520, 700];
 /** a broken boss shield stays down this long (s); it flickers for the last second before it comes back */
 const SHIELD_DOWN = 6;
+/** Cheat codes, typed as words during a level (key positions, so they're the same keys on any layout): GOLD puts Iggy in the
+ *  best suit, MAGNET gives him the magnet power-up */
+const CHEATS: Record<'gold' | 'magnet', string> = { gold: 'GOLD', magnet: 'MAGNET' };
+const CHEAT_LEN = Math.max(...Object.values(CHEATS).map((w) => w.length));
+/** the clear floor a walking boss always leaves between its body and either arena wall, for Iggy to stand and dodge in */
+const BOSS_ROOM = 110;
 interface BossWave { img: Phaser.GameObjects.Image; vx: number; high?: boolean }
 /** a saw blade from the Dune Dredger's bucket wheel, rolling along the floor (`hop` makes it bounce as it goes) */
 interface Saw { img: Phaser.GameObjects.Image; vx: number; t: number; hop: boolean }
@@ -234,6 +240,8 @@ type Mode = 'story' | 'endless' | 'time';
 const DASH_V = 600, DASH_TIME = 0.22, DASH_COOLDOWN = 1.1;
 const POUND_V = 950, POUND_RADIUS = 120;
 const GLIDE_FALL = 110;
+/** Gold Circuit's flight: climbing speed (px/s), seconds of jet per tankful, and how fast landing refills it (tanks per s ×FLY_FUEL) */
+const FLY_V = 260, FLY_FUEL = 3, FLY_REFILL = 2;
 /** Ledge hang: with his hands on the roof, his feet hang this far below it, and his middle is this far out from the wall. */
 const HANG_DROP = 61, HANG_OFF = 14;
 /** seconds to haul himself up; holding toward the wall this long while hanging also climbs */
@@ -242,7 +250,7 @@ const CLIMB_TIME = 0.42, HANG_AUTO = 0.3;
 const ABILITY: Record<number, string> = {
   2: 'Dash: press Shoot when you have no gun.',
   3: 'Ground pound: press Duck in mid-air.',
-  4: 'Glide: hold Jump while falling after your double jump.',
+  4: 'Fly: after your double jump, keep holding Jump to rise on jets for about three seconds, then glide. Landing refuels.',
 };
 /** how far above the lower roof the secret floats: a plain jump falls short, a double jump (or spring legs) gets there */
 const SECRET_RISE = 230;
@@ -298,7 +306,7 @@ export class PlayScene extends Phaser.Scene {
   /** Level layout randomness: seeded for the daily challenge so everyone gets the same level, plain random otherwise. */
   private rand: () => number = Math.random;
   private seed: number | null = null;
-  // suit abilities: Steel Sentinel dashes, Night Guardian ground-pounds, Gold Circuit glides
+  // suit abilities: Steel Sentinel dashes, Night Guardian ground-pounds, Gold Circuit flies
   private runPhase = 0; // run-cycle phase: advances with distance run so the feet keep pace with the ground
   private dashT = 0;
   private dashCD = 0;
@@ -554,6 +562,11 @@ export class PlayScene extends Phaser.Scene {
     // Keyboard: remappable, so read KeyboardEvent.code ourselves. Keys the player bound are kept from scrolling the page while the game has focus.
     const kb = this.input.keyboard!;
     const onDown = (e: KeyboardEvent) => this.down.add(e.code);
+    // the cheat code, heard on the whole window so it works wherever focus is
+    const onCheat = (e: KeyboardEvent) => { if (!e.repeat && this.scene.isActive()) this.cheatKey(e.code); };
+    window.addEventListener('keydown', onCheat, true);
+    this.events.once('shutdown', () => window.removeEventListener('keydown', onCheat, true));
+    this.events.once('destroy', () => window.removeEventListener('keydown', onCheat, true));
     const onUp = (e: KeyboardEvent) => this.down.delete(e.code);
     const onBlur = () => this.down.clear();
     const stopScroll = (e: KeyboardEvent) => {
@@ -1236,6 +1249,20 @@ export class PlayScene extends Phaser.Scene {
     return { x0: s.x - hw, x1: s.x + hw, y0: s.y - s.displayHeight + 8, y1: s.y };
   }
 
+  /**
+   * How far the boss may walk or lunge across the arena: { lo, hi } for its x. The usual limits, pulled in for a wide boss
+   * (the Dune Dredger) so its body always stops BOSS_ROOM px short of either wall, leaving Iggy room to stand and dodge.
+   */
+  private bossRange(b: BossState): [number, number] {
+    const cam = this.camLock!, s = b.sprite;
+    let lo = cam + 140, hi = cam + W - 90;
+    if (b.def.speed <= 0) return [lo, hi]; // a boss that stays put (the Brass Kraken) keeps its spot
+    const r = this.bossBox(b);
+    lo = Math.max(lo, cam + 26 + (s.x - r.x0) + BOSS_ROOM); // (26: the wall at the arena's left edge)
+    hi = Math.min(hi, cam + W - (r.x1 - s.x) - BOSS_ROOM);
+    return lo <= hi ? [lo, hi] : [(lo + hi) / 2, (lo + hi) / 2];
+  }
+
   private inBossRect(x: number, y: number) {
     if (!this.boss || this.boss.state === 'dead') return false;
     if (this.rc) {
@@ -1245,6 +1272,14 @@ export class PlayScene extends Phaser.Scene {
     }
     const r = this.bossBox(this.boss);
     return x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1;
+  }
+
+  /** whether (x, y) is on the boss's hit box or within `pad` px of it (the Forgemaster: its furnace mouth only) */
+  private nearBossRect(x: number, y: number, pad: number) {
+    if (!this.boss || this.boss.state === 'dead') return false;
+    if (this.rc) return this.inBossRect(x, y);
+    const r = this.bossBox(this.boss);
+    return x > r.x0 - pad && x < r.x1 + pad && y > r.y0 - pad && y < r.y1 + pad;
   }
 
   private bossCombo = 0;
@@ -1384,14 +1419,16 @@ export class PlayScene extends Phaser.Scene {
       s.angle = b.state === 'telegraph' && !this.reduced ? Math.sin(this.t * 70) * 1.4 : 0; // it shudders while it charges
       b.timer -= edt;
       b.touchCD = Math.max(0, b.touchCD - edt);
-      const lo = this.camLock + 140, hi = this.camLock + W - 90;
+      const [lo, hi] = this.bossRange(b);
       const face = px > s.x ? 1 : -1;
       if (b.state === 'intro') {
         if (b.timer <= 0) b.state = 'walk';
       } else if (b.state === 'walk') {
         const dx = px - s.x;
         const box = this.bossBox(b), far = Math.max(0, (box.x1 - box.x0) / 2 - 150); // a boss wider than 300px keeps that much further back
-        const want = Math.abs(dx) > 360 + far ? face : Math.abs(dx) < 250 + far ? -face : 0;
+        // with Iggy backed into a corner it gives him more room, so he isn't pinned against the wall
+        const cornered = px < this.camLock + 26 + BOSS_ROOM + 60 || px > this.camLock + W - BOSS_ROOM - 60;
+        const want = Math.abs(dx) > 360 + far ? face : Math.abs(dx) < (cornered ? 360 : 250) + far ? -face : 0;
         s.x = Phaser.Math.Clamp(s.x + want * b.def.speed * (enraged ? 1.4 : 1) * edt, lo, hi);
         s.y = this.arenaTop + (!this.reduced && want !== 0 ? Math.abs(Math.sin(this.t * 6)) * -3 : 0);
         // the sprite steps (or hovers, or rumbles) while it moves, and breathes between steps
@@ -1577,7 +1614,7 @@ export class PlayScene extends Phaser.Scene {
       this.bossRain(b, (enraged ? 5 : 4) + Math.round(tier * 2));
     } else if (b.attack === 'saw') {
       // saw blades flung from the bucket wheel, rolling along the floor at Iggy; enraged, a second one bounces after it
-      const d = BossSpine.def('dunes'), k = d?.scale ?? 0.62, sign = s.flipX ? -1 : 1, dir = px > s.x ? 1 : -1;
+      const d = BossSpine.def('dunes'), k = d?.scale ?? 0.52, sign = s.flipX ? -1 : 1, dir = px > s.x ? 1 : -1;
       const hx = s.x + (d?.dx ?? 0) + DREDGER_HUB[0] * k * sign;
       const n = enraged ? 2 : 1;
       for (let i = 0; i < n; i++) {
@@ -1610,7 +1647,7 @@ export class PlayScene extends Phaser.Scene {
       this.sfx.bossStomp();
       if (!this.reduced) this.cameras.main.shake(160, 0.006);
     } else if (b.attack === 'charge') {
-      const lo = this.camLock! + 140, hi = this.camLock! + W - 90;
+      const [lo, hi] = this.bossRange(b);
       const dir = px > s.x ? 1 : -1;
       b.dashTo = Phaser.Math.Clamp(s.x + dir * (220 + 80 * tier), lo, hi);
       b.dashV = 420 + 220 * tier;
@@ -2880,6 +2917,50 @@ export class PlayScene extends Phaser.Scene {
     this.items.push({ kind: 'ring', sprite, back, baseY: y, phase: Math.random() * 6 });
   }
 
+  /** Put Iggy in suit `idx`, with the banner, sound, burst of parts and an announcement starting with `lead`. */
+  private wearSuit(idx: number, lead: string) {
+    this.suitIdx = idx;
+    const s = SUITS[idx];
+    this.sfx.suit();
+    this.banner(`New suit: ${s.name}`);
+    this.announce(`${lead}: ${s.name}. ${s.blurb}${ABILITY[idx] ? ' New ability. ' + ABILITY[idx] : ''}`);
+    this.dust(this.body.center.x, this.body.bottom, 8, 50, 40, 1.4);
+    this.debris(this.body.center.x, this.body.center.y, 'cog', 6, 1.2);
+    this.debris(this.body.center.x, this.body.center.y, 'bolt', 6, 1.2);
+    this.burst(this.body.center.x, this.body.center.y, [s.body, s.trim, 0xffffff], 28, 240);
+    if (this.flash && !this.reduced) {
+      this.flash.setAlpha(0.18);
+      this.tweens.add({ targets: this.flash, alpha: 0, duration: 400 });
+    }
+    this.emitHud(true);
+  }
+
+  /** The last few keys pressed, for the cheat code (see onDown in create) */
+  private cheatKeys: string[] = [];
+
+  /** Feed a key press to the cheat codes; when the last keys spell one out, it takes effect. */
+  private cheatKey(code: string) {
+    this.cheatKeys.push(/^Key[A-Z]$/.test(code) ? code.slice(3) : '?');
+    if (this.cheatKeys.length > CHEAT_LEN) this.cheatKeys.shift();
+    const typed = this.cheatKeys.join('');
+    const hit = (Object.keys(CHEATS) as (keyof typeof CHEATS)[]).find((k) => typed.endsWith(CHEATS[k]));
+    if (!hit || this.over) return;
+    this.cheatKeys = [];
+    if (hit === 'gold') {
+      if (this.suitIdx === SUITS.length - 1) return;
+      this.rings = Math.max(this.rings, SUITS[SUITS.length - 1].need); // the suit follows the ring count, so lift that to match
+      this.wearSuit(SUITS.length - 1, 'Cheat code! Suit unlocked');
+    } else {
+      const p = POWER.magnet;
+      this.power.magnet = p.secs ?? 1;
+      this.sfx.power();
+      this.banner(p.label);
+      this.announce(`Cheat code! ${p.text}`);
+      this.debris(this.body.center.x, this.body.center.y, 'spark', this.reduced ? 3 : 10, 1);
+      this.emitHud(true);
+    }
+  }
+
   /** Iggy flew through a ring. Rings passed in quick succession build a chain worth more each time. */
   private passRing(it: Item) {
     it.taken = true;
@@ -2896,20 +2977,8 @@ export class PlayScene extends Phaser.Scene {
     }
     const idx = suitFor(this.rings);
     if (idx !== this.suitIdx) {
-      this.suitIdx = idx;
       if (idx === 4) this.game.events.emit('achieve', 'gold-suit');
-      const s = SUITS[idx];
-      this.sfx.suit();
-      this.banner(`New suit: ${s.name}`);
-      this.announce(`New suit unlocked: ${s.name}. ${s.blurb}${ABILITY[idx] ? ' New ability. ' + ABILITY[idx] : ''}`);
-      this.dust(this.body.center.x, this.body.bottom, 8, 50, 40, 1.4);
-      this.debris(this.body.center.x, this.body.center.y, 'cog', 6, 1.2);
-      this.debris(this.body.center.x, this.body.center.y, 'bolt', 6, 1.2);
-      this.burst(this.body.center.x, this.body.center.y, [s.body, s.trim, 0xffffff], 28, 240);
-      if (this.flash && !this.reduced) {
-        this.flash.setAlpha(0.18);
-        this.tweens.add({ targets: this.flash, alpha: 0, duration: 400 });
-      }
+      this.wearSuit(idx, 'New suit unlocked');
     }
     this.announce(this.ringChain > 1 ? `Ring chain times ${this.ringChain}. Plus ${pts} points.` : `Ring. Plus ${pts} points.`);
   }
@@ -3620,7 +3689,9 @@ export class PlayScene extends Phaser.Scene {
     this.dust(x, y + 10, 8, 50, 26, 1.6);
     if (!this.reduced) this.cameras.main.shake(140, 0.004);
     const bs = this.boss;
-    if (bs && bs.state !== 'dead' && Math.hypot(bs.sprite.x - x, bs.sprite.y - bs.sprite.displayHeight / 2 - y) < radius + 55) this.damageBoss(radius > 100 ? 6 : 3);
+    // near the stand-in picture's middle, or on (or just off) the boss's hit box: a big rig like the Dune Dredger's reaches
+    // well past its picture, and a rocket bursts the moment it touches that box, so the blast must count there too
+    if (bs && bs.state !== 'dead' && (Math.hypot(bs.sprite.x - x, bs.sprite.y - bs.sprite.displayHeight / 2 - y) < radius + 55 || this.nearBossRect(x, y, radius * 0.5))) this.damageBoss(radius > 100 ? 6 : 3);
     for (const it of this.items) {
       if (it.taken || (it.kind !== 'pylon' && it.kind !== 'wall' && it.kind !== 'patrol' && it.kind !== 'flyer' && it.kind !== 'mine' && it.kind !== 'foe')) continue;
       if (Math.hypot(it.sprite.x - x, it.sprite.y - y) < radius) {
@@ -4027,6 +4098,22 @@ export class PlayScene extends Phaser.Scene {
       this.dashT -= dt;
       body.setAllowGravity(false);
       body.setVelocity(this.facing * DASH_V, 0);
+      // dunes: the sand is 8px columns, narrower than a frame of dash, so dashing flat into rising sand buried his feet in each
+      // column and the physics pushed him out the far side, column after column, to the far end of the dune. Ride up over it.
+      if (this.level.style === 'dunes') {
+        const ahead = this.facing * (DASH_V * dt + 4);
+        let top = Infinity;
+        for (let x = Math.min(body.left, body.left + ahead); x <= Math.max(body.right, body.right + ahead); x += DUNE_COL / 2) top = Math.min(top, this.duneTopAt(x) ?? Infinity);
+        const rise = body.bottom - top;
+        if (rise > 0 && rise <= 40) {
+          this.player.y -= rise;
+          body.y -= rise;
+          body.updateCenter();
+        } else if (rise > 40) {
+          this.dashT = 0.0001; // a wall of sand: end the dash here rather than tunnel into it
+          body.setVelocityX(0);
+        }
+      }
       if (this.dashT <= 0) {
         this.dashT = 0;
         body.setAllowGravity(true);
@@ -4048,8 +4135,22 @@ export class PlayScene extends Phaser.Scene {
       }
       return;
     }
-    if (suit >= 4 && !jammed && !ground && jumpDown && this.airJumps === 0 && body.velocity.y > GLIDE_FALL) body.setVelocityY(GLIDE_FALL);
+    // Gold Circuit flies: after the double jump, holding Jump fires its jets and lifts him, until the fuel runs out (then it
+    // glides). The fuel fills back up while he's on the ground.
+    if (ground) this.flyFuel = Math.min(FLY_FUEL, this.flyFuel + dt * FLY_REFILL);
+    const flying = suit >= 4 && !jammed && !ground && jumpDown && this.airJumps === 0;
+    if (flying && this.flyFuel > 0) {
+      this.flyFuel = Math.max(0, this.flyFuel - dt);
+      const vy = body.top < 24 ? 0 : Phaser.Math.Linear(body.velocity.y, -FLY_V, Math.min(1, dt * 8)); // (no flying off the top)
+      body.setVelocityY(vy);
+      if (!this.reduced && Math.random() < dt * 30) this.dust(body.center.x, body.bottom + 4, 1, 8, 30, 0.5); // jet wash
+      this.sayOnce('fly', 'Flying! Keep holding Jump to rise. The jets run for about three seconds, then glide; landing refuels them.');
+      if (this.flyFuel === 0) this.sayOnce('flyout', 'Out of jet fuel: gliding. Land to refuel.');
+    } else if (flying && body.velocity.y > GLIDE_FALL) body.setVelocityY(GLIDE_FALL);
   }
+
+  /** seconds of Gold Circuit jet left */
+  private flyFuel = FLY_FUEL;
 
   /** how worn Iggy's joints are right now: oil takes the rattle out of them */
   private looseNow() {

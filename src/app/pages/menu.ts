@@ -378,7 +378,7 @@ export class MenuPage implements OnInit, OnDestroy {
       does: 'Ground pound: press Duck in mid-air to slam straight down and smash everything nearby. No more tripping or smoke.',
       alt: 'Concept art sheet for Night Guardian Iggy: dark steel night-patrol armour with glowing amber lamps, a searchlight on the shoulder, a caged glass dome, a chain hanging from the belt and heavily weighted impact boots. Smaller drawings show his back, the night-ops blaster and a boot.' },
     { file: 'iggy-gold-circuit', name: 'Gold Circuit', rings: 'Unlocks at 25 rings',
-      does: 'Glide: hold Jump while falling after a double jump to float down slowly. Everything finally works, and nothing rattles.',
+      does: 'Fly: after a double jump, keep holding Jump to rise on jets for about three seconds, then glide down slowly. Landing refuels. Everything finally works, and nothing rattles.',
       alt: 'Concept art sheet for Gold Circuit Iggy: gold and brass armour traced with glowing orange circuit lines, an ornate dome cage with coiled antennas and a beacon, amber lamps, a searchlight and heavy stabilising boots. Smaller drawings show his back, the gold blaster and a boot.' },
   ];
   protected readonly guns = [
@@ -501,7 +501,7 @@ export class MenuPage implements OnInit, OnDestroy {
   protected readonly features: { icon: string; title: string; text: string }[] = [
     { icon: '13', title: 'Thirteen strange worlds', text: 'Rooftops and trenches, ice, glass dunes, a wind-torn gorge, flooded locks, docks in the sky, and the furnace at the end of the road.' },
     { icon: '★', title: 'A boss mech at every end', text: 'Each one attacks differently and has its own music. Power-ups drop from the sky.' },
-    { icon: '↑', title: 'Upgrade the suit', text: 'Jump through rings to earn five suits, then dash, ground-pound and glide.' },
+    { icon: '↑', title: 'Upgrade the suit', text: 'Jump through rings to earn five suits, then dash, ground-pound and fly.' },
     { icon: '?', title: 'Secrets everywhere', text: 'Hidden paths, golden breadboards and perfect-run fireworks for the thorough.' },
     { icon: '⏱', title: 'Play it your way', text: 'A daily challenge, endless mode and time attack with a ghost of your best run.' },
     { icon: '♿', title: 'Made for everyone', text: 'Remappable keys, gamepad, touch, assist options, reduced motion and screen-reader support.' },
