@@ -5,6 +5,7 @@ import { BOSSES, LEVELS } from '../game/levels';
 import { RouterLink } from '@angular/router';
 import { FocusOnLoad } from './focus-heading';
 import { dailyBoard, dailyLevel, todayKey } from '../daily';
+import { ACHIEVEMENTS } from '../achievements';
 
 /** One accent colour per level look, used for the stripe on each level card. */
 const ACCENT: Record<string, string> = {
@@ -141,6 +142,9 @@ const BOSS_ALT: Record<string, string> = {
     .features li { padding: 1rem 1.15rem; border: 1px solid var(--line); background: var(--plate); }
     .features h3 { margin: .1rem 0 .2rem; font-size: 1.08rem; }
     .features p { margin: 0; font-size: .97rem; color: var(--muted); }
+    .ach li.got { border-color: var(--copper); background: var(--plate-2); }
+    .ach .state { margin: 0 0 .25rem; font-family: var(--hand); color: var(--verd); }
+    .ach li.got .state, .ach li.got .ico { color: var(--copper); }
     .ico { display: inline-grid; place-items: center; min-width: 2.1rem; height: 2.1rem; padding: 0 .3rem; box-sizing: border-box; border: 1.5px solid var(--copper); border-radius: 50%; font: 1.05rem/1 var(--hand); color: var(--copper); }
 
     /* levels */
@@ -232,7 +236,7 @@ const BOSS_ALT: Record<string, string> = {
                     <span class="num">Level {{ l.number }}</span>
                     <span class="name">{{ l.name }}</span>
                     <span class="blurb">{{ l.blurb }}</span>
-                    @if (progress.cleared(l.id)) { <span class="status">Cleared ✓ @if (progress.perfected(l.id)) { · Perfect ★ } · best {{ progress.best(l.id) }}</span> }
+                    @if (progress.cleared(l.id)) { <span class="status">Cleared ✓ @if (progress.perfected(l.id)) { · All breadboards collected ★ } @if (progress.flawless(l.id)) { · Perfect run ✦ } · best {{ progress.best(l.id) }}</span> }
                     @else if (progress.best(l.id)) { <span class="status">Best {{ progress.best(l.id) }}</span> }
                     @else if (l.number === 1) { <span class="start">Start here →</span> }
                   </a>
@@ -345,6 +349,21 @@ const BOSS_ALT: Record<string, string> = {
         </ul>
       </section>
 
+      <section aria-labelledby="accomplishments">
+        <div class="head"><span class="sec" aria-hidden="true">§ 07</span><h2 id="accomplishments">Accomplishments</h2></div>
+        <p class="sub">{{ earned() }} of {{ achievements.length }} earned. Accomplishments are getting a site of their own soon; for now, here’s what there is to earn.</p>
+        <ul class="features ach" style="margin-top:1.1rem">
+          @for (a of achievements; track a.id) {
+            <li [class.got]="progress.hasAchievement(a.id)">
+              <span class="ico" aria-hidden="true">{{ progress.hasAchievement(a.id) ? '★' : '☆' }}</span>
+              <h3>{{ a.name }}</h3>
+              <p class="state">{{ progress.hasAchievement(a.id) ? 'Earned' : 'Not earned yet' }}</p>
+              <p>{{ a.how }}</p>
+            </li>
+          }
+        </ul>
+      </section>
+
       <div class="bottom"><a class="btn" routerLink="/scores">High scores and achievements</a><a class="btn" routerLink="/settings">Settings and controls</a></div>
 
       <dialog #viewer class="viewer" aria-labelledby="viewer-title" (click)="backdropClick($event)" (close)="closed()">
@@ -443,6 +462,10 @@ export class MenuPage implements OnInit, OnDestroy {
   protected readonly board = dailyBoard();
   protected readonly levels = LEVELS;
   protected readonly progress = inject(ProgressService);
+  protected readonly achievements = ACHIEVEMENTS;
+  protected earned() {
+    return this.achievements.filter((a) => this.progress.hasAchievement(a.id)).length;
+  }
   protected accent(style: string) {
     return ACCENT[style] ?? '#ffd23f';
   }
@@ -502,7 +525,7 @@ export class MenuPage implements OnInit, OnDestroy {
     { icon: '13', title: 'Thirteen strange worlds', text: 'Rooftops and trenches, ice, glass dunes, a wind-torn gorge, flooded locks, docks in the sky, and the furnace at the end of the road.' },
     { icon: '★', title: 'A boss mech at every end', text: 'Each one attacks differently and has its own music. Power-ups drop from the sky.' },
     { icon: '↑', title: 'Upgrade the suit', text: 'Jump through rings to earn five suits, then dash, ground-pound and fly.' },
-    { icon: '?', title: 'Secrets everywhere', text: 'Hidden paths, golden breadboards and perfect-run fireworks for the thorough.' },
+    { icon: '?', title: 'Secrets everywhere', text: 'Hidden paths, golden breadboards and fireworks for collecting all breadboards.' },
     { icon: '⏱', title: 'Play it your way', text: 'A daily challenge, endless mode and time attack with a ghost of your best run.' },
     { icon: '♿', title: 'Made for everyone', text: 'Remappable keys, gamepad, touch, assist options, reduced motion and screen-reader support.' },
   ];

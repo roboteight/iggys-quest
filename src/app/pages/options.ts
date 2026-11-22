@@ -54,7 +54,7 @@ import { ACTIONS, Action, RESERVED_KEYS, SettingsService, keyLabel, keySpoken } 
 
     <fieldset>
       <legend>Assist options</legend>
-      <p class="hint">Make the game gentler. Your score is not changed, and every level can still be cleared and perfected.</p>
+      <p class="hint">Make the game gentler. Your score is not changed, and every level can still be cleared with all breadboards collected.</p>
       <label for="lives">Starting lives
         <select id="lives" (change)="svc.update({ startLives: +$any($event.target).value })">
           @for (n of [3, 5, 7, 9]; track n) { <option [value]="n" [selected]="s().startLives === n">{{ n }}</option> }

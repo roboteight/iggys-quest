@@ -17,6 +17,8 @@ export interface Progress {
   completed: string[];
   /** ids of levels cleared with every breadboard collected */
   perfect: string[];
+  /** ids of levels finished with a Perfect run: every breadboard (secret ones too) and the golden one, never hit */
+  flawless: string[];
   /** ids of levels whose golden breadboard has been found */
   secrets: string[];
   /** ids of achievements earned */
@@ -33,9 +35,9 @@ export const MAX_SCORES = 5;
 function load(): Progress {
   try {
     const p = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    return { completed: Array.isArray(p.completed) ? p.completed : [], perfect: Array.isArray(p.perfect) ? p.perfect : [], secrets: Array.isArray(p.secrets) ? p.secrets : [], achievements: Array.isArray(p.achievements) ? p.achievements : [], scores: p.scores && typeof p.scores === 'object' ? p.scores : {}, suits: p.suits && typeof p.suits === 'object' ? p.suits : {} };
+    return { completed: Array.isArray(p.completed) ? p.completed : [], perfect: Array.isArray(p.perfect) ? p.perfect : [], flawless: Array.isArray(p.flawless) ? p.flawless : [], secrets: Array.isArray(p.secrets) ? p.secrets : [], achievements: Array.isArray(p.achievements) ? p.achievements : [], scores: p.scores && typeof p.scores === 'object' ? p.scores : {}, suits: p.suits && typeof p.suits === 'object' ? p.suits : {} };
   } catch {
-    return { completed: [], perfect: [], secrets: [], achievements: [], scores: {}, suits: {} };
+    return { completed: [], perfect: [], flawless: [], secrets: [], achievements: [], scores: {}, suits: {} };
   }
 }
 
@@ -114,6 +116,8 @@ export class ProgressService {
     if (p.completed.length >= n) ids.push('all-bosses');
     if (p.perfect.length >= 1) ids.push('perfect-1');
     if (p.perfect.length >= n) ids.push('perfect-all');
+    if (p.flawless.length >= 1) ids.push('flawless-1');
+    if (p.flawless.length >= n) ids.push('flawless-all');
     if (p.secrets.length >= 1) ids.push('secret-1');
     if (this.goldenFound() >= this.goldenNeeded()) ids.push('secret-all'); // the 13 that open the secret level
     return this.award(...ids);
@@ -123,18 +127,24 @@ export class ProgressService {
     return this.progress().perfect.includes(levelId);
   }
 
+  /** a Perfect run on this level: everything collected and never hit */
+  flawless(levelId: string): boolean {
+    return this.progress().flawless.includes(levelId);
+  }
+
   /** best score on a board (for time boards: the fastest time in ms, 0 if none) */
   best(levelId: string): number {
     return this.progress().scores[levelId]?.[0]?.score ?? 0;
   }
 
   /** Records a finished run. Returns the 1-based place on that level's board, or null if it did not make the top five. */
-  record(levelId: string, name: string, score: number, cleared: boolean, perfect = false, board = levelId): number | null {
+  record(levelId: string, name: string, score: number, cleared: boolean, perfect = false, board = levelId, flawless = false): number | null {
     let rank: number | null = null;
     this.progress.update((p) => {
       const own = board === levelId; // the daily challenge has its own board and doesn't unlock or star levels
       const completed = own && cleared && !p.completed.includes(levelId) ? [...p.completed, levelId] : p.completed;
       const perfects = own && perfect && !p.perfect.includes(levelId) ? [...p.perfect, levelId] : p.perfect;
+      const flawlesses = own && flawless && !p.flawless.includes(levelId) ? [...p.flawless, levelId] : p.flawless;
       const list = [...(p.scores[board] ?? [])];
       const entry: ScoreEntry = { name: name.trim() || 'Iggy', score, cleared, date: new Date().toISOString().slice(0, 10) };
       if (score > 0) {
@@ -151,12 +161,12 @@ export class ProgressService {
       // keep only the last week of daily boards
       const days = Object.keys(scores).filter((k) => k.startsWith('daily:')).sort().reverse();
       for (const k of days.slice(7)) delete scores[k];
-      return { ...p, completed, perfect: perfects, scores };
+      return { ...p, completed, perfect: perfects, flawless: flawlesses, scores };
     });
     return rank;
   }
 
   reset() {
-    this.progress.set({ completed: [], perfect: [], secrets: [], achievements: [], scores: {}, suits: {} });
+    this.progress.set({ completed: [], perfect: [], flawless: [], secrets: [], achievements: [], scores: {}, suits: {} });
   }
 }

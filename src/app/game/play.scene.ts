@@ -32,6 +32,7 @@ export interface HudState {
   lives: number;
   nextLifeIn: number; // breadboards until the next free life
   perfect: boolean; // every breadboard so far has been collected
+  flawless: boolean; // still on for a Perfect run (everything collected so far, never hit)
   suit: string;
   nextSuit: string | null;
   nextSuitNeed: number;
@@ -48,6 +49,8 @@ export interface GameOverState {
   best: number;
   newBest: boolean;
   perfect: boolean;
+  /** a Perfect run: every breadboard (secret-road bonus ones too) and the golden breadboard, and never hit once */
+  flawless: boolean;
   /** the boss fight ended without Iggy being hit */
   untouched: boolean;
   mode: 'story' | 'endless' | 'time';
@@ -212,11 +215,13 @@ const FORGE_FEET: [number, number] = [520, 700];
 /** a broken boss shield stays down this long (s); it flickers for the last second before it comes back */
 const SHIELD_DOWN = 6;
 /** Cheat codes, typed as words during a level (key positions, so they're the same keys on any layout): GOLD puts Iggy in the
- *  best suit, MAGNET gives him the magnet power-up */
-const CHEATS: Record<'gold' | 'magnet', string> = { gold: 'GOLD', magnet: 'MAGNET' };
+ *  best suit, MAGNET gives him the magnet power-up, UNSTOPPABLE turns invincibility on (and off again) for the rest of the level */
+const CHEATS: Record<'gold' | 'magnet' | 'unstoppable', string> = { gold: 'GOLD', magnet: 'MAGNET', unstoppable: 'UNSTOPPABLE' };
 const CHEAT_LEN = Math.max(...Object.values(CHEATS).map((w) => w.length));
 /** the clear floor a walking boss always leaves between its body and either arena wall, for Iggy to stand and dodge in */
 const BOSS_ROOM = 110;
+/** points for a Perfect run (on top of the all-breadboards bonus) */
+const PERFECT_BONUS = 5000;
 interface BossWave { img: Phaser.GameObjects.Image; vx: number; high?: boolean }
 /** a saw blade from the Dune Dredger's bucket wheel, rolling along the floor (`hop` makes it bounce as it goes) */
 interface Saw { img: Phaser.GameObjects.Image; vx: number; t: number; hop: boolean }
@@ -396,6 +401,10 @@ export class PlayScene extends Phaser.Scene {
   private bbCollected = 0; // required breadboards only: bonus ones (the hidden path) don't count
 
   private bbMissed = false;
+  /** why the Perfect run (everything collected, never hit) is off, or null while it's still on */
+  private flawlessLost: string | null = null;
+  /** the UNSTOPPABLE cheat: nothing hurts him, and a fall puts him back at the checkpoint for free (this level only) */
+  private unstoppable = false;
   private lives = 3;
   private suitIdx = 0;
   private rings = 0;
@@ -618,6 +627,8 @@ export class PlayScene extends Phaser.Scene {
     this.bbSpawned = 0;
     this.bbCollected = 0;
     this.bbMissed = false;
+    this.flawlessLost = null;
+    this.unstoppable = false;
     this.lives = this.live().startLives;
     // story mode: he starts in the suit he finished the last level in
     this.rings = Math.max(0, Math.floor((this.registry.get('startRings') as number | undefined) ?? 0));
@@ -933,7 +944,7 @@ export class PlayScene extends Phaser.Scene {
   /** A one-way platform floating in a wide gap: sliding sideways, or crumbling a moment after Iggy lands on it. */
   /**
    * Level 1's hidden sky layer. Landing on a brass button set into a rooftop reveals a staircase of golden slabs leading to a high
-   * road of bonus breadboards and a star. None of it is needed to finish the level, and its breadboards don't count against a perfect run.
+   * road of bonus breadboards and a star. None of it is needed to finish the level, and its breadboards don't count against collecting all breadboards.
    */
   private addSwitch(x: number, top: number, sd?: number) {
     const sprite = this.add.image(x, top - 8, 'switch-off').setDepth(6);
@@ -945,7 +956,7 @@ export class PlayScene extends Phaser.Scene {
     it.sprite.setTexture('switch-on');
     this.sfx.secret();
     this.banner('Click! A hidden path appears.');
-    if (it.sd === undefined) this.announce('Click! A hidden path has appeared high above, to the right. A staircase of golden slabs leads up to it. Breadboards in that stretch are now optional bonus, so skipping them keeps a perfect run alive.');
+    if (it.sd === undefined) this.announce('Click! A hidden path has appeared high above, to the right. A staircase of golden slabs leads up to it. Breadboards in that stretch are bonus: skip them and you can still collect all breadboards, but a perfect run needs them.');
     this.burst(it.sprite.x, it.sprite.y - 6, [0x4dff88, 0xffd23a, 0xffffff], 22, 220);
     if (it.sd === undefined) {
       const x0 = it.sprite.x + 330;
@@ -1007,7 +1018,7 @@ export class PlayScene extends Phaser.Scene {
     const prizes: PowerId[] = sd < 0.5 ? ['star', 'spring', 'shield'] : ['star', 'gun', 'shield', 'turbo'];
     this.addItem('pu', road[road.length - 1], y - 48, prizes[Math.floor(this.rand() * prizes.length)]);
     const tricky = sd >= 0.65 ? ' Some steps drift, and the top slabs crumble: keep moving.' : sd >= 0.4 ? ' The top slabs crumble a moment after you land: keep moving.' : '';
-    this.announce(`Click! A secret staircase of golden slabs has appeared ahead, climbing to a high road of bonus breadboards and a power-up.${tricky} Skipping it keeps a perfect run alive.`);
+    this.announce(`Click! A secret staircase of golden slabs has appeared ahead, climbing to a high road of bonus breadboards and a power-up.${tricky} Its breadboards are bonus: skip it and you can still collect all breadboards, but a perfect run needs them.`);
   }
 
   /** What the next secret will be. Level 1 has its own staircase, and the sky docks and locks have no room under the ground. */
@@ -1356,17 +1367,26 @@ export class PlayScene extends Phaser.Scene {
       });
     }
     this.tweens.add({ targets: b.sprite, alpha: 0, duration: 400, delay: 1500 });
-    const perfect = this.isPerfect();
+    const perfect = this.isPerfect(), flawless = this.isFlawless();
     if (perfect) {
       this.bonus += 2500;
       this.time.delayedCall(1400, () => {
-        this.banner('PERFECT RUN!');
-        this.announce(`Perfect run! You collected all ${this.bbSpawned} breadboards. Plus 2500 points.`);
+        this.banner('ALL BREADBOARDS COLLECTED!');
+        this.announce(`All breadboards collected! You got all ${this.bbSpawned} of them. Plus 2500 points.`);
         this.sfx.perfect();
       });
     }
+    if (flawless) {
+      this.bonus += PERFECT_BONUS;
+      this.time.delayedCall(4200, () => {
+        this.banner('PERFECT RUN!');
+        this.announce(`Perfect run! Every breadboard, the secret ones and the golden breadboard, and Iggy was never hit once. Plus ${PERFECT_BONUS} points.`);
+        this.sfx.perfect();
+      });
+      this.fireworks(30, 4000, 160);
+    }
     if (perfect) this.fireworks(22, 1300, 230);
-    this.time.delayedCall(perfect ? 6200 : 2000, () => {
+    this.time.delayedCall(flawless ? 9200 : perfect ? 6200 : 2000, () => {
       if (!this.over) this.endRun(true);
     });
   }
@@ -1374,6 +1394,30 @@ export class PlayScene extends Phaser.Scene {
   /** Every breadboard that appeared in the level was collected. */
   private isPerfect() {
     return !this.bbMissed && this.bbSpawned > 0 && this.bbCollected >= this.bbSpawned;
+  }
+
+  /** What leaving this item behind costs the Perfect run, if anything: a golden or secret-road breadboard, or a secret
+   *  switch passed without pressing it (so the road and its breadboards never appeared). */
+  private perfectMiss(it: Item): string | undefined {
+    if (it.kind === 'secret') return 'the golden breadboard was missed';
+    if (it.kind === 'bb' && it.bonus) return 'a secret breadboard was missed';
+    if (it.kind === 'switch' && !it.pressed) return 'a secret switch was passed';
+    return undefined;
+  }
+
+  /** The Perfect run is off: say why, the first time. */
+  private losePerfect(why?: string) {
+    if (this.flawlessLost) return;
+    this.flawlessLost = why ?? 'a breadboard was missed';
+    if (why) this.announce(`No perfect run this time: ${why}.`);
+    this.emitHud(true);
+  }
+
+  /** A Perfect run: every breadboard, every secret one and the golden breadboard collected, and Iggy never hit. */
+  private isFlawless() {
+    if (!this.isPerfect() || this.flawlessLost) return false;
+    // anything still lying about behind him counts too (it hasn't scrolled away yet)
+    return !this.items.some((it) => !it.taken && this.perfectMiss(it) && it.sprite.x < this.body.center.x);
   }
 
   /** Rockets rise from below the view and burst into coloured sprays. With reduced motion they just pop in place, fewer and softer. */
@@ -2571,7 +2615,7 @@ export class PlayScene extends Phaser.Scene {
             it.taken = true;
             if ((f.carriedReal ?? 0) > 0 && !this.bbMissed) {
               this.bbMissed = true;
-              this.announce('The Magpie Drone got away with your breadboards. No perfect run this time.');
+              this.announce('The Magpie Drone got away with your breadboards. Not all breadboards collected this time.');
               this.emitHud(true);
             }
           }
@@ -2950,6 +2994,20 @@ export class PlayScene extends Phaser.Scene {
     const hit = (Object.keys(CHEATS) as (keyof typeof CHEATS)[]).find((k) => typed.endsWith(CHEATS[k]));
     if (!hit || this.over) return;
     this.cheatKeys = [];
+    if (hit === 'unstoppable') {
+      this.unstoppable = !this.unstoppable;
+      this.sfx.suit();
+      this.banner(this.unstoppable ? 'Unstoppable!' : 'Unstoppable off');
+      this.announce(this.unstoppable
+        ? 'Cheat code! Unstoppable: nothing can hurt Iggy, and falling just puts him back at the last checkpoint. No perfect run with it on. Type it again to turn it off.'
+        : 'Unstoppable is off. Iggy can be hurt again.');
+      if (this.unstoppable) {
+        this.flawlessLost = 'Unstoppable is on'; // (quietly: it was just announced)
+        this.emitHud(true);
+        if (!this.reduced) this.burst(this.body.center.x, this.body.center.y, [0xffffff, 0xffe14a, 0x4af0ff], 28, 240);
+      }
+      return;
+    }
     if (hit === 'gold') {
       if (this.suitIdx === SUITS.length - 1) return;
       this.rings = Math.max(this.rings, SUITS[SUITS.length - 1].need); // the suit follows the ring count, so lift that to match
@@ -3191,7 +3249,8 @@ export class PlayScene extends Phaser.Scene {
     if (this.level.style !== 'plant' && !forge) return;
     const cam = this.cameras.main;
     // time for it to appear: the Reclaimer every 4500-6000 px; the Forgemaster just after the start, to stay. Never in the arena.
-    if (!this.cameo && !this.over && this.arenaX === null && this.mode !== 'time' && this.maxX > (forge ? 400 : this.nextCameoX)) {
+    // (in every mode, time attack included)
+    if (!this.cameo && !this.over && this.arenaX === null && this.maxX > (forge ? 400 : this.nextCameoX)) {
       const lift = this.add.graphics().setScrollFactor(0).setDepth(-82);
       let spine: SpineGameObject | undefined, play: Cameo['play'] = () => undefined;
       if (forge) {
@@ -3438,9 +3497,12 @@ export class PlayScene extends Phaser.Scene {
       if (it.taken || it.sprite.x < left) {
         if (it.kind === 'bb' && !it.bonus && !it.taken && !this.bbMissed) {
           this.bbMissed = true;
-          this.announce('A breadboard got away. No perfect run this time.');
+          this.announce('A breadboard got away. Not all breadboards collected this time.');
+          this.losePerfect();
           this.emitHud(true);
         }
+        const why = this.perfectMiss(it);
+        if (why && !it.taken) this.losePerfect(why);
         it.sprite.destroy();
         it.back?.destroy();
         it.hz?.gfx.destroy();
@@ -3817,8 +3879,15 @@ export class PlayScene extends Phaser.Scene {
   private hit(reason: 'pylon' | 'enemy' | 'blast' | 'fall') {
     if (this.over) return;
     if (reason === 'fall') this.setDucked(false);
+    if (this.unstoppable) {
+      // the cheat: shrug off hits; a fall costs nothing, it just puts him back at the checkpoint
+      if (reason === 'fall') this.announce(`Unstoppable: Iggy is back on his feet. ${this.respawn()}`);
+      return;
+    }
+    if (reason === 'fall') this.losePerfect('Iggy fell');
     if (reason !== 'fall') {
       if (this.invuln > 0 || this.power.star > 0 || this.dashT > 0) return;
+      this.losePerfect('Iggy was hit'); // (even if a shield takes it)
       if (this.boss && this.boss.state !== 'dead') this.bossHurtIggy = true;
       if (this.power.shield > 0) {
         this.power.shield = 0;
@@ -3939,7 +4008,7 @@ export class PlayScene extends Phaser.Scene {
       best = score;
       try { localStorage.setItem(bestKey, String(best)); } catch { /* ignore */ }
     }
-    const state: GameOverState = { level: this.level.id, score, breadboards: this.breadboards, distance: Math.floor(this.maxX / 10), suit: SUITS[this.suitIdx].name, rings: this.rings, best, newBest, perfect: won && this.isPerfect(), untouched: won && !this.bossHurtIggy, mode: this.mode, time: Math.round(this.runTime * 1000), trace: won && this.mode === 'time' ? this.trace : undefined };
+    const state: GameOverState = { level: this.level.id, score, breadboards: this.breadboards, distance: Math.floor(this.maxX / 10), suit: SUITS[this.suitIdx].name, rings: this.rings, best, newBest, perfect: won && this.isPerfect(), flawless: won && this.isFlawless(), untouched: won && !this.bossHurtIggy, mode: this.mode, time: Math.round(this.runTime * 1000), trace: won && this.mode === 'time' ? this.trace : undefined };
     this.game.events.emit(won ? 'complete' : 'gameover', state);
   }
 
@@ -4224,6 +4293,7 @@ export class PlayScene extends Phaser.Scene {
       lives: this.lives,
       nextLifeIn: LIFE_EVERY - (this.breadboards % LIFE_EVERY),
       perfect: !this.bbMissed,
+      flawless: !this.flawlessLost,
       suit: SUITS[this.suitIdx].name,
       nextSuit: next?.name ?? null,
       nextSuitNeed: next ? next.need - this.rings : 0,

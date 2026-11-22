@@ -144,7 +144,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
         <li class="lvl"><span class="label">Level</span><b>{{ hud().level }}</b></li>
         <li><span class="label">Score</span><b>{{ hud().score }}</b><span class="sub">@switch (hud().mode) { @case ('endless') { Endless: no boss, the pace creeps up } @case ('time') { Time attack: race to the boss } @default { of {{ hud().goal }} to reach the boss } }</span></li>
         @if (hud().mode === 'time') { <li><span class="label">Time</span><b>{{ fmt(hud().time * 1000) }}</b><span class="sub">{{ hasGhost() ? 'Ghost of your best run' : 'No ghost yet' }}</span></li> }
-        <li><span class="label">Breadboards</span><b>{{ hud().breadboards }}</b><span class="sub">{{ hud().nextLifeIn }} to a free life · {{ hud().perfect ? 'Perfect run alive' : 'Perfect run lost' }}</span></li>
+        <li><span class="label">Breadboards</span><b>{{ hud().breadboards }}</b><span class="sub">{{ hud().nextLifeIn }} to a free life · {{ hud().perfect ? 'All breadboards collected' : 'A breadboard was missed' }} · {{ hud().flawless ? 'Perfect run on' : 'Perfect run off' }}</span></li>
         <li><span class="label">Lives</span><b>{{ hud().lives }}</b></li>
         <li><span class="label">Suit</span><b>{{ hud().suit }}</b>
           @if (hud().nextSuit) { <span class="sub">{{ hud().nextSuitNeed }} {{ hud().nextSuitNeed === 1 ? 'ring' : 'rings' }} to {{ hud().nextSuit }}</span> }
@@ -175,7 +175,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
               @if (overlay() === 'intro') { <p>{{ story().intro }}</p> }
               @if (overlay() === 'complete' && gameMode() === 'story' && !isDaily()) {
                 <p>{{ story().outro }}</p>
-                @if (!nextLevel()) { <p><strong>The end.</strong> Every boss mech is scrap, Iggy is in his best suit and the road home is open. Thank you for playing. You can still chase perfect runs, secrets, the daily challenge and the time attack boards.</p>
+                @if (!nextLevel()) { <p><strong>The end.</strong> Every boss mech is scrap, Iggy is in his best suit and the road home is open. Thank you for playing. You can still chase collecting all breadboards, secrets, the daily challenge and the time attack boards.</p>
                   @if (!progress.unlocked('foundry')) { <p>Something is still buried under the plant. Find the golden breadboard on every level to open it: {{ progress.goldenFound() }} of {{ progress.goldenNeeded() }} found so far.</p> }
                 }
               }
@@ -183,7 +183,8 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
                 <dl class="stats">
                   @if (o.mode === 'time' && overlay() === 'complete') { <dt>Time</dt><dd>{{ fmt(o.time) }}</dd> }
                   <dt>Score</dt><dd>{{ o.score }}</dd>
-                  <dt>Breadboards</dt><dd>{{ o.breadboards }}@if (o.perfect) { – Perfect run! ★ }</dd>
+                  <dt>Breadboards</dt><dd>{{ o.breadboards }}@if (o.perfect) { – All breadboards collected! ★ }</dd>
+                  @if (o.flawless) { <dt>Perfect run</dt><dd>Everything collected, never hit ✦</dd> }
                   <dt>Distance</dt><dd>{{ o.distance }} m</dd>
                   <dt>Final suit</dt><dd>{{ o.suit }}</dd>
                   <dt>{{ gameMode() === 'time' ? 'Best time' : isDaily() ? 'Best today' : 'Best' }}</dt><dd>{{ gameMode() === 'time' ? fmt(progress.best(board(o.level))) : progress.best(board(o.level)) }}@if (rank() === 1) { – new best! }</dd>
@@ -386,7 +387,7 @@ export class PlayPage implements OnDestroy {
     const next = i >= 0 ? LEVELS[i + 1] : undefined;
     return next && this.progress.unlocked(next.id) ? next : undefined; // (the secret level only once it's open)
   });
-  protected readonly hud = signal<HudState>({ level: '', goal: 5000, score: 0, breadboards: 0, lives: 3, nextLifeIn: 100, perfect: true, mode: 'story', time: 0, suit: 'Rusty Original', nextSuit: 'Patchwork', nextSuitNeed: 3, powerUps: [], boss: null });
+  protected readonly hud = signal<HudState>({ level: '', goal: 5000, score: 0, breadboards: 0, lives: 3, nextLifeIn: 100, perfect: true, flawless: true, mode: 'story', time: 0, suit: 'Rusty Original', nextSuit: 'Patchwork', nextSuitNeed: 3, powerUps: [], boss: null });
   private readonly touch: TouchInput = { left: false, right: false, jump: false, fire: false, duck: false };
   /** show the on-screen controls on touch devices, or anywhere with ?controls=1 in the address */
   protected readonly touchUi = signal(false);
@@ -446,7 +447,7 @@ export class PlayPage implements OnDestroy {
             if (r === 1 && s.trace) {
               try { localStorage.setItem(this.ghostKey(s.level), JSON.stringify(s.trace)); } catch { /* the ghost is a nicety */ }
             }
-          } else this.rank.set(this.progress.record(s.level, this.settings.settings().playerName, s.score, true, s.perfect, this.board(s.level)));
+          } else this.rank.set(this.progress.record(s.level, this.settings.settings().playerName, s.score, true, s.perfect, this.board(s.level), s.flawless));
           const earned = [...this.progress.milestones()];
           if (s.untouched) earned.push(...this.progress.award('untouched'));
           if (s.mode === 'time') earned.push(...this.progress.award('time'));
