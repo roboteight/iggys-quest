@@ -263,7 +263,7 @@ const BOSS_ALT: Record<string, string> = {
 
       <section aria-labelledby="suits">
         <div class="head"><span class="sec" aria-hidden="true">§ 02</span><h2 id="suits">Iggy’s suits</h2></div>
-        <p class="sub">Jump through rings to earn a better suit, and keep it from one level to the next in story mode. Every suit after the first takes a hit for him, dropping him back one suit instead of costing a life, and keeps the abilities of the suits before it.</p>
+        <p class="sub">Jump through rings to earn a better suit, and keep it from one level to the next in story mode. Every suit after the first takes a hit or a fall for him, dropping him back one suit instead of costing a life (he keeps his spare rings, so a few more win it back), and keeps the abilities of the suits before it. The Gold Circuit's plating takes one hit before it drops.</p>
         <ul class="plates">
           @for (x of suits; track x.file; let i = $index) {
             <li>
@@ -387,16 +387,16 @@ export class MenuPage implements OnInit, OnDestroy {
     { file: 'iggy', name: 'Rusty Original', rings: 'Starting suit',
       does: 'No special ability, and he is at his clumsiest: he trips, sheds bolts and puffs smoke. A hit in this suit costs a life.',
       alt: 'Concept art sheet for Iggy in his Rusty Original suit: a tall retro robot in cream and weathered teal metal with copper bands, a glass dome helmet holding a little green alien robot, a spring antenna with a bulb, a chest panel of dials, a tool belt and a raygun holster. Smaller drawings show his back, the raygun and the chest meter.' },
-    { file: 'iggy-patchwork', name: 'Patchwork', rings: 'Unlocks at 3 rings',
+    { file: 'iggy-patchwork', name: 'Patchwork', rings: 'Unlocks at 2 rings',
       does: 'Takes a hit for him. Steadier on his feet, though he still trips and sheds parts now and then.',
       alt: 'Concept art sheet for Patchwork Iggy: mismatched welded armour in rust, teal and brass, a ribbed brass shoulder plate, a reinforced dome cage with two antennae and a headlamp, a scrap battery, a scavenger tool strapped to one arm and tread boots. Smaller drawings show his back, the shoulder plate, the dome and the gauge cluster.' },
-    { file: 'iggy-steel-sentinel', name: 'Steel Sentinel', rings: 'Unlocks at 8 rings',
+    { file: 'iggy-steel-sentinel', name: 'Steel Sentinel', rings: 'Unlocks at 5 rings',
       does: 'Dash: press Shoot when he has no gun for a burst forward that smashes pylons, walls and enemies. Hardly rattles.',
       alt: 'Concept art sheet for Steel Sentinel Iggy: heavy riveted steel armour with bulky shoulder plates, a caged glass dome with a coiled transceiver, a shield plate on one forearm, a blaster arm with a copper coil and heavy hydraulic stomping boots. Smaller drawings show his back, the Sentinel blaster and a boot.' },
-    { file: 'iggy-night-guardian', name: 'Night Guardian', rings: 'Unlocks at 15 rings',
+    { file: 'iggy-night-guardian', name: 'Night Guardian', rings: 'Unlocks at 9 rings',
       does: 'Ground pound: press Duck in mid-air to slam straight down and smash everything nearby. No more tripping or smoke.',
       alt: 'Concept art sheet for Night Guardian Iggy: dark steel night-patrol armour with glowing amber lamps, a searchlight on the shoulder, a caged glass dome, a chain hanging from the belt and heavily weighted impact boots. Smaller drawings show his back, the night-ops blaster and a boot.' },
-    { file: 'iggy-gold-circuit', name: 'Gold Circuit', rings: 'Unlocks at 25 rings',
+    { file: 'iggy-gold-circuit', name: 'Gold Circuit', rings: 'Unlocks at 14 rings',
       does: 'Fly: after a double jump, keep holding Jump to rise on jets for about three seconds, then glide down slowly. Landing refuels. Everything finally works, and nothing rattles.',
       alt: 'Concept art sheet for Gold Circuit Iggy: gold and brass armour traced with glowing orange circuit lines, an ornate dome cage with coiled antennas and a beacon, amber lamps, a searchlight and heavy stabilising boots. Smaller drawings show his back, the gold blaster and a boot.' },
   ];

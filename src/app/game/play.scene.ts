@@ -36,6 +36,8 @@ export interface HudState {
   suit: string;
   nextSuit: string | null;
   nextSuitNeed: number;
+  /** in the Gold Circuit: whether its plating can still take a hit (null in any other suit) */
+  goldPlate: boolean | null;
   powerUps: { id: string; label: string; detail: string }[];
 }
 export interface GameOverState {
@@ -216,8 +218,8 @@ const FORGE_FEET: [number, number] = [520, 700];
 const SHIELD_DOWN = 6;
 /** Cheat codes, typed as words during a level (key positions, so they're the same keys on any layout): GOLD puts Iggy in the
  *  best suit, MAGNET gives him the magnet power-up, UNSTOPPABLE turns invincibility on (and off again) for the rest of the level */
-const CHEATS: Record<'gold' | 'magnet' | 'unstoppable', string> = { gold: 'GOLD', magnet: 'MAGNET', unstoppable: 'UNSTOPPABLE' };
-const CHEAT_LEN = Math.max(...Object.values(CHEATS).map((w) => w.length));
+const CHEATS: Record<'gold' | 'magnet' | 'unstoppable', string[]> = { gold: ['GOLD'], magnet: ['MAGNET'], unstoppable: ['UNSTOPPABLE'] };
+const CHEAT_LEN = Math.max(...Object.values(CHEATS).flat().map((w) => w.length));
 /** the clear floor a walking boss always leaves between its body and either arena wall, for Iggy to stand and dodge in */
 const BOSS_ROOM = 110;
 /** points for a Perfect run (on top of the all-breadboards bonus) */
@@ -259,7 +261,7 @@ const HANG_SCRAMBLE = 0.7;
 const ABILITY: Record<number, string> = {
   2: 'Dash: press Shoot when you have no gun.',
   3: 'Ground pound: press Duck in mid-air.',
-  4: 'Fly: after your double jump, keep holding Jump to rise on jets for about three seconds, then glide. Landing refuels.',
+  4: 'Gold plating: it takes one hit before the suit drops. Fly: after your double jump, keep holding Jump to rise on jets for about three seconds, then glide. Landing refuels.',
 };
 /** how far above the lower roof the secret floats: a plain jump falls short, a double jump (or spring legs) gets there */
 const SECRET_RISE = 230;
@@ -407,6 +409,8 @@ export class PlayScene extends Phaser.Scene {
   private unstoppable = false;
   private lives = 3;
   private suitIdx = 0;
+  /** the Gold Circuit's plating is still whole: it takes one hit before the suit drops (renewed each time he puts the suit on) */
+  private goldPlate = true;
   private rings = 0;
   private maxX = 0;
   private invuln = 0;
@@ -633,6 +637,7 @@ export class PlayScene extends Phaser.Scene {
     // story mode: he starts in the suit he finished the last level in
     this.rings = Math.max(0, Math.floor((this.registry.get('startRings') as number | undefined) ?? 0));
     this.suitIdx = suitFor(this.rings);
+    this.goldPlate = true;
     this.maxX = 0;
     this.invuln = 0;
     this.coyote = 0;
@@ -1547,7 +1552,7 @@ export class PlayScene extends Phaser.Scene {
           this.banner('Head stomp!');
           if (b.shield?.up) this.breakShield(b); // a stomp smashes straight through the shield
           this.damageBoss(5);
-        } else if (this.power.star > 0) {
+        } else if (this.invincible()) {
           if (b.touchCD <= 0) {
             b.touchCD = 0.4;
             this.damageBoss(1);
@@ -2120,7 +2125,7 @@ export class PlayScene extends Phaser.Scene {
         rc.rig?.play(rc.phase === 3 ? 'crawl' : 'intake', true);
         this.windLines(g, mawX, mawY, 1);
         const sheltered = rc.blocks.some((k) => k.landed && k.x > px && k.x - px < 70);
-        if (!sheltered && !this.over && this.power.star <= 0) {
+        if (!sheltered && !this.over && !this.invincible()) {
           const grace = this.live().longGrace;
           const pull = ground ? (grace ? 190 : 280) : (grace ? 280 : 400); // about half of this survives the physics step: roughly 140 px/s on the ground, Iggy runs 250
           body.x += pull * edt;
@@ -2373,7 +2378,7 @@ export class PlayScene extends Phaser.Scene {
 
   /** Iggy touches a mite: no damage, but his gun and suit tricks jam for a while. */
   private jam(secs: number) {
-    if (this.power.star > 0) return;
+    if (this.invincible()) return;
     const was = this.jamT > 0;
     this.jamT = Math.max(this.jamT, secs * (this.live().longGrace ? 0.6 : 1));
     this.charge = 0;
@@ -2904,7 +2909,7 @@ export class PlayScene extends Phaser.Scene {
     this.glue = this.glue.filter((g) => {
       g.life -= edt;
       g.gfx.setAlpha(Math.min(1, g.life));
-      if (ground && Math.abs(body.center.x - g.x) < g.w / 2 + 6 && Math.abs(body.bottom - g.top) < 4 && this.power.star <= 0) {
+      if (ground && Math.abs(body.center.x - g.x) < g.w / 2 + 6 && Math.abs(body.bottom - g.top) < 4 && !this.invincible()) {
         const first = this.glueT <= 0;
         this.slowT = Math.max(this.slowT, this.live().longGrace ? 1.2 : 2);
         this.glueT = this.slowT;
@@ -2968,6 +2973,7 @@ export class PlayScene extends Phaser.Scene {
   /** Put Iggy in suit `idx`, with the banner, sound, burst of parts and an announcement starting with `lead`. */
   private wearSuit(idx: number, lead: string) {
     this.suitIdx = idx;
+    if (idx === SUITS.length - 1) this.goldPlate = true;
     const s = SUITS[idx];
     this.sfx.suit();
     this.banner(`New suit: ${s.name}`);
@@ -2991,7 +2997,7 @@ export class PlayScene extends Phaser.Scene {
     this.cheatKeys.push(/^Key[A-Z]$/.test(code) ? code.slice(3) : '?');
     if (this.cheatKeys.length > CHEAT_LEN) this.cheatKeys.shift();
     const typed = this.cheatKeys.join('');
-    const hit = (Object.keys(CHEATS) as (keyof typeof CHEATS)[]).find((k) => typed.endsWith(CHEATS[k]));
+    const hit = (Object.keys(CHEATS) as (keyof typeof CHEATS)[]).find((k) => CHEATS[k].some((w) => typed.endsWith(w)));
     if (!hit || this.over) return;
     this.cheatKeys = [];
     if (hit === 'unstoppable') {
@@ -2999,7 +3005,7 @@ export class PlayScene extends Phaser.Scene {
       this.sfx.suit();
       this.banner(this.unstoppable ? 'Unstoppable!' : 'Unstoppable off');
       this.announce(this.unstoppable
-        ? 'Cheat code! Unstoppable: nothing can hurt Iggy, and falling just puts him back at the last checkpoint. No perfect run with it on. Type it again to turn it off.'
+        ? 'Cheat code! Unstoppable: nothing can hurt Iggy, he smashes every enemy he touches and hurts the boss on contact, and falling just puts him back at the last checkpoint. No perfect run with it on. Type it again to turn it off.'
         : 'Unstoppable is off. Iggy can be hurt again.');
       if (this.unstoppable) {
         this.flawlessLost = 'Unstoppable is on'; // (quietly: it was just announced)
@@ -3171,7 +3177,7 @@ export class PlayScene extends Phaser.Scene {
       const off = x < cam.scrollX - 80 || x > cam.scrollX + W + 80;
       const hitsIggy = body.right > x - 7 && body.left < x + 7 && body.bottom > b.y - 3 && body.top < b.y + 3;
       if (hitsIggy) {
-        if (this.smashing() || this.power.star > 0) this.burst(x, b.y, [0xffffff, 0xffe27a], 6, 140);
+        if (this.smashing()) this.burst(x, b.y, [0xffffff, 0xffe27a], 6, 140);
         else this.hit('enemy');
       }
       if (hitsIggy || wall || off) {
@@ -3898,22 +3904,47 @@ export class PlayScene extends Phaser.Scene {
         this.emitHud(true);
         return;
       }
-      // a hit knocks the suit down one level instead of costing a life; only the plain starting suit has nothing left to lose
-      if (this.suitIdx > 0) {
-        this.releaseHang();
-        this.suitIdx--;
-        this.rings = SUITS[this.suitIdx].need; // the suit comes from the ring count, so drop to exactly that suit's threshold
-        this.sfx.hurt();
+    }
+    const fell = reason === 'fall';
+    const ouch = fell ? 'Iggy fell' : `${this.hitWord(reason)}!`;
+    // the Gold Circuit's plating takes the first hit (or fall) itself, before the suit drops
+    if (this.suitIdx === SUITS.length - 1 && this.goldPlate) {
+      this.goldPlate = false;
+      this.releaseHang();
+      this.sfx.hurt();
+      this.invuln = this.grace();
+      this.debris(this.body.center.x, this.body.center.y, 'spark', this.reduced ? 3 : 10, 1.4);
+      this.debris(this.body.center.x, this.body.center.y, 'bolt', 3, 1.2);
+      const where = fell ? ` ${this.respawn()}` : '';
+      if (!fell) this.body.setVelocity(-this.facing * 220, -320);
+      this.announce(`${fell ? ouch + '.' : ouch} The gold plating took it and is dented: the next hit drops the suit.${where}`);
+      this.emitHud(true);
+      return;
+    }
+    // a hit or a fall knocks the suit down one level instead of costing a life; only the plain starting suit has nothing left to lose
+    if (this.suitIdx > 0) {
+      const from = SUITS[this.suitIdx];
+      this.releaseHang();
+      this.suitIdx--;
+      // the suit comes from the ring count: he keeps the rings he had past the lost suit's threshold, but stays short of it
+      this.rings = Math.min(from.need - 1, SUITS[this.suitIdx].need + Math.max(0, this.rings - from.need));
+      this.sfx.hurt();
+      this.invuln = this.grace();
+      this.debris(this.body.center.x, this.body.center.y, 'bolt', 5, 1.4);
+      this.debris(this.body.center.x, this.body.center.y, 'cog', 4, 1.3);
+      this.debris(this.body.center.x, this.body.center.y, 'spark', this.reduced ? 3 : 8, 1.4);
+      const left = from.need - this.rings;
+      const back = ` ${left} ${left === 1 ? 'ring wins' : 'rings win'} it back.`;
+      if (fell) {
+        const where = this.respawn();
+        this.announce(`${ouch}. Suit downgraded to ${SUITS[this.suitIdx].name}.${back} ${where}`);
+      } else {
         this.stumble = 1;
-        this.invuln = this.grace();
-        this.debris(this.body.center.x, this.body.center.y, 'bolt', 5, 1.4);
-        this.debris(this.body.center.x, this.body.center.y, 'cog', 4, 1.3);
-        this.debris(this.body.center.x, this.body.center.y, 'spark', this.reduced ? 3 : 8, 1.4);
         this.body.setVelocity(-this.facing * 280, -380);
-        this.announce(`${this.hitWord(reason)}! Suit downgraded to ${SUITS[this.suitIdx].name}.`);
-        this.emitHud(true);
-        return;
+        this.announce(`${ouch} Suit downgraded to ${SUITS[this.suitIdx].name}.${back}`);
       }
+      this.emitHud(true);
+      return;
     }
     this.lives--;
     this.sfx.hurt();
@@ -4021,9 +4052,14 @@ export class PlayScene extends Phaser.Scene {
     return (this.registry.get('settings') as Settings | undefined) ?? this.settings;
   }
 
+  /** The golden star, or the UNSTOPPABLE cheat: Iggy smashes whatever he touches and nothing slows or snags him. */
+  private invincible() {
+    return this.power.star > 0 || this.unstoppable;
+  }
+
   /** Touching things smashes them while invincible, dashing or ground-pounding. */
   private smashing() {
-    return this.power.star > 0 || this.dashT > 0 || this.pounding || this.sliding;
+    return this.invincible() || this.dashT > 0 || this.pounding || this.sliding;
   }
 
   private poundLand() {
@@ -4297,6 +4333,7 @@ export class PlayScene extends Phaser.Scene {
       suit: SUITS[this.suitIdx].name,
       nextSuit: next?.name ?? null,
       nextSuitNeed: next ? next.need - this.rings : 0,
+      goldPlate: this.suitIdx === SUITS.length - 1 ? this.goldPlate : null,
       powerUps: [
         ...(Object.keys(this.power) as PowerId[])
           .filter((k) => this.power[k] > 0)
@@ -4691,9 +4728,9 @@ export class PlayScene extends Phaser.Scene {
 
       // speed trail behind Iggy while overclocked or invincible
       this.trailT -= dt;
-      if (!this.reduced && this.trailT <= 0 && (this.power.turbo > 0 || this.power.star > 0 || this.dashT > 0)) {
+      if (!this.reduced && this.trailT <= 0 && (this.power.turbo > 0 || this.invincible() || this.dashT > 0)) {
         this.trailT = 0.045;
-        const col = this.power.star > 0 ? Phaser.Display.Color.HSVToRGB((this.t * 1.5) % 1, 0.6, 1).color : this.dashT > 0 ? 0xffffff : 0x4af0ff;
+        const col = this.invincible() ? Phaser.Display.Color.HSVToRGB((this.t * 1.5) % 1, 0.6, 1).color : this.dashT > 0 ? 0xffffff : 0x4af0ff;
         const streak = this.add.rectangle(body.center.x - this.facing * 12, body.center.y + Phaser.Math.Between(-18, 18), 14, 4, col).setDepth(9);
         this.tweens.add({ targets: streak, x: streak.x - this.facing * 40, alpha: 0, scaleX: 0.3, duration: 320, onComplete: () => streak.destroy() });
       }
@@ -4809,7 +4846,7 @@ export class PlayScene extends Phaser.Scene {
       spin,
       shield: this.power.shield > 0,
       turbo: this.power.turbo > 0,
-      star: this.power.star,
+      star: this.unstoppable ? Math.max(this.power.star, 10) : this.power.star,
       oil: this.power.oil,
       reduced: this.reduced,
       gun: this.gun(),
@@ -4827,7 +4864,7 @@ export class PlayScene extends Phaser.Scene {
       this.iggyFx.clear();
       if (useSpine) {
         this.iggyFx.setPosition(this.robot.x, this.robot.y).setScale(1.15).setAlpha(this.robot.alpha);
-        drawPowerFx(this.iggyFx, { t: this.t, star: this.power.star, shield: this.power.shield > 0, reduced: this.reduced });
+        drawPowerFx(this.iggyFx, { t: this.t, star: this.unstoppable ? Math.max(this.power.star, 10) : this.power.star, shield: this.power.shield > 0, reduced: this.reduced });
         ig.show({
           suit: this.suitIdx, gun: this.gun(), fire: this.fireAnim, x: this.robot.x, y: this.robot.y, scaleX: this.robot.scaleX, scaleY: this.robot.scaleY, spin, alpha: this.robot.alpha,
           onGround: grounded, vx: body.velocity.x, footSpeed: this.footSpeed, scramble: this.scrambling, vy: body.velocity.y, duck: this.duckAmt, hanging: !!this.hang, climb: this.hang?.climb ?? -1, kick: this.hangKick(), tuck: this.tuckT > 0 && !grounded, dash: this.dashT > 0, pound: this.pounding,

@@ -48,13 +48,13 @@ export interface Suit {
 export const SUITS: Suit[] = [
   { name: 'Rusty Original', blurb: 'Dented, leaking and held together by hope.', need: 0,
     body: 0xe4d8b8, trim: 0x7fb3a3, dark: 0x4a3a2c, eye: 0x6fe6c8, loose: 1, cape: false, ears: false, glow: false, plates: false },
-  { name: 'Patchwork', blurb: 'Mismatched welded scrap, a headlamp and a scavenger tool for an arm.', need: 3,
+  { name: 'Patchwork', blurb: 'Mismatched welded scrap, a headlamp and a scavenger tool for an arm.', need: 2,
     body: 0xdccaa0, trim: 0xb5793e, dark: 0x3c2a20, eye: 0x6fe6c8, loose: 0.65, cape: false, ears: false, glow: false, plates: false },
-  { name: 'Steel Sentinel', blurb: 'Riveted steel plating. Hardly rattles.', need: 8,
+  { name: 'Steel Sentinel', blurb: 'Riveted steel plating. Hardly rattles.', need: 5,
     body: 0xaab5be, trim: 0x6a8c9c, dark: 0x1f2735, eye: 0x1aa7c8, loose: 0.35, cape: false, ears: false, glow: false, plates: true },
-  { name: 'Night Guardian', blurb: 'Dark steel night-patrol armour with amber lamps and a searchlight.', need: 15,
+  { name: 'Night Guardian', blurb: 'Dark steel night-patrol armour with amber lamps and a searchlight.', need: 9,
     body: 0x2f3547, trim: 0x59627a, dark: 0x0d1017, eye: 0xffc44a, loose: 0.15, cape: false, ears: false, glow: false, plates: true },
-  { name: 'Gold Circuit', blurb: 'Gold and brass plating with glowing circuits. Everything finally works.', need: 25,
+  { name: 'Gold Circuit', blurb: 'Gold and brass plating with glowing circuits. Everything finally works.', need: 14,
     body: 0xe2b53c, trim: 0xfff0a8, dark: 0x5a3d0a, eye: 0x25b866, loose: 0.02, cape: false, ears: false, glow: true, plates: true },
 ];
 

@@ -147,7 +147,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
         <li><span class="label">Breadboards</span><b>{{ hud().breadboards }}</b><span class="sub">{{ hud().nextLifeIn }} to a free life · {{ hud().perfect ? 'All breadboards collected' : 'A breadboard was missed' }} · {{ hud().flawless ? 'Perfect run on' : 'Perfect run off' }}</span></li>
         <li><span class="label">Lives</span><b>{{ hud().lives }}</b></li>
         <li><span class="label">Suit</span><b>{{ hud().suit }}</b>
-          @if (hud().nextSuit) { <span class="sub">{{ hud().nextSuitNeed }} {{ hud().nextSuitNeed === 1 ? 'ring' : 'rings' }} to {{ hud().nextSuit }}</span> }
+          @if (hud().nextSuit) { <span class="sub">{{ hud().nextSuitNeed }} {{ hud().nextSuitNeed === 1 ? 'ring' : 'rings' }} to {{ hud().nextSuit }}</span> } @else if (hud().goldPlate !== null) { <span class="sub">{{ hud().goldPlate ? 'Gold plating whole: it takes one hit' : 'Gold plating dented: the next hit drops the suit' }}</span> }
         </li>
         @if (hud().boss; as boss) {
           <li class="boss"><span class="label">Boss: {{ boss.name }}</span>
@@ -260,7 +260,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
           <div>
             <h3>Collect</h3>
             <ul>
-              <li><strong>Breadboards</strong>: every 100 earns a free life. <strong>Rings</strong> upgrade Iggy's suit, and the higher suits learn tricks: <strong>Steel Sentinel</strong> dashes (Shoot when you have no gun), <strong>Night Guardian</strong> ground-pounds (Duck in mid-air) and <strong>Gold Circuit</strong> flies (after your double jump, keep holding Jump to rise on jets for about three seconds, then glide; landing refuels). In story mode Iggy keeps the suit he finishes a level in when he starts the next one.</li>
+              <li><strong>Breadboards</strong>: every 100 earns a free life. <strong>Rings</strong> upgrade Iggy's suit, and the higher suits learn tricks: <strong>Steel Sentinel</strong> dashes (Shoot when you have no gun), <strong>Night Guardian</strong> ground-pounds (Duck in mid-air) and <strong>Gold Circuit</strong> flies (after your double jump, keep holding Jump to rise on jets for about three seconds, then glide; landing refuels). A hit or a fall drops Iggy back one suit instead of costing a life, but he keeps any rings he had beyond that suit, so a few more win it back. The Gold Circuit's plating takes one hit before it drops. In story mode Iggy keeps the suit he finishes a level in when he starts the next one.</li>
               <li><strong>Golden breadboard:</strong> each level hides one high above a gap. It is worth 500 points and needs a double jump.</li>
               <li><strong>Golden rings:</strong> jump through them for bonus points. Rings passed in quick succession build a chain worth more each time, up to 100 points a ring.</li>
               <li><strong>Glowing power-ups:</strong> spring legs, magnet, shield, overclock, the golden star, guns and the oil can. Oil keeps Iggy's joints smooth for 15 seconds: a little faster, no stumbling and no rattling.</li>
@@ -276,7 +276,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
               <li><strong>Roof hazards</strong> run on timers and beep before they strike: falling debris (city, hollow and wasteland levels), scalding steam vents (drowned city) and laser beams you must jump over (neon void and spore garden). Move out of the way or time your jump.</li>
               <li><strong>Skeletons and crawlers</strong> patrol the rooftops. Touching one from the side knocks Iggy’s suit down a level (or costs a life if he is already in the Rusty Original). Land on top of them to stomp them, or shoot them.</li>
               <li><strong>Flying enemies</strong> (death-rays in the drowned city and gearbats in the neon void and spore garden) hover above the roofs. When one flashes red it is about to dive at you. Land on top of it to stomp it and bounce, or shoot it.</li>
-              <li><strong>Gaps</strong> between buildings cost a life. So does a hit while Iggy wears the Rusty Original. Losing a life sends him back to the last checkpoint in the Rusty Original suit.</li>
+              <li><strong>Gaps</strong> between buildings knock Iggy's suit down a level and send him back to the last checkpoint. In the Rusty Original, a fall or a hit costs a life. Losing a life sends him back to the last checkpoint in the Rusty Original suit.</li>
             </ul>
           </div>
         </div>
@@ -387,7 +387,7 @@ export class PlayPage implements OnDestroy {
     const next = i >= 0 ? LEVELS[i + 1] : undefined;
     return next && this.progress.unlocked(next.id) ? next : undefined; // (the secret level only once it's open)
   });
-  protected readonly hud = signal<HudState>({ level: '', goal: 5000, score: 0, breadboards: 0, lives: 3, nextLifeIn: 100, perfect: true, flawless: true, mode: 'story', time: 0, suit: 'Rusty Original', nextSuit: 'Patchwork', nextSuitNeed: 3, powerUps: [], boss: null });
+  protected readonly hud = signal<HudState>({ level: '', goal: 5000, score: 0, breadboards: 0, lives: 3, nextLifeIn: 100, perfect: true, flawless: true, mode: 'story', time: 0, suit: 'Rusty Original', nextSuit: 'Patchwork', nextSuitNeed: 2, goldPlate: null, powerUps: [], boss: null });
   private readonly touch: TouchInput = { left: false, right: false, jump: false, fire: false, duck: false };
   /** show the on-screen controls on touch devices, or anywhere with ?controls=1 in the address */
   protected readonly touchUi = signal(false);
