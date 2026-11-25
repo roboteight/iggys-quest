@@ -6,7 +6,7 @@ One sheet per suit (rusty, patchwork, steel, night, gold; the four upgrades are 
 <out>/images/<part>.png and <out>/parts.json (each part's box and pivot, in sheet pixels), and a cutout-preview.png.
 The paper is removed by flood-filling the light, unsaturated background in from the edges (the ink outline stops it), keeping
 only the figure itself, and trimming the pale anti-aliased rim so no paper colour fringes the edges. Each part is then the
-figure inside a hand-placed polygon. Polygons overlap a little at the joints so no gaps open when the parts turn.
+figure inside a hand-placed polygon. Suits whose boots are cut separately (footL/footR) can flex their ankles. Polygons overlap a little at the joints so no gaps open when the parts turn.
 """
 import json
 from pathlib import Path
@@ -21,16 +21,24 @@ BASE = ROOT / 'art-src/spine/iggy'
 # polygons (sheet pixels) and the pivot each part turns around (where it joins its parent)
 RUSTY = {
     'head':      ([(150, 30), (400, 30), (400, 300), (150, 300)], (275, 300)),
-    'torso':     ([(96, 288), (445, 288), (445, 330), (398, 330), (398, 512), (177, 512), (177, 330), (96, 330)], (285, 500)),
+    # the chest is the cream drum, cut along its own outline: down at the sides, up round the notch over the grey abdomen. The
+    # abdomen is its own piece (the waist), drawn under the chest and over the pelvis, so he can bend there
+    'torso':     ([(96, 288), (445, 288), (445, 330), (398, 330), (398, 512), (392, 510), (386, 504), (377, 491), (366, 481),
+                   (286, 481), (273, 488), (263, 500), (254, 508), (177, 510), (177, 330), (96, 330)], (328, 481)),
+    'belly':     ([(284, 462), (368, 462), (368, 481), (377, 491), (386, 504), (392, 514), (254, 514), (263, 500), (273, 488),
+                   (284, 481)], (328, 505)),  # (just the notch, plus a hidden lip up under the chest)
     'pelvis':    ([(138, 492), (393, 492), (393, 522), (401, 522), (401, 600), (384, 612), (346, 642), (292, 658), (238, 642), (210, 614), (210, 728), (163, 728), (163, 650), (138, 650)], (285, 600)),
     'upperArmL': ([(25, 326), (177, 326), (177, 410), (128, 522), (25, 522)], (150, 372)),
     'foreArmL':  ([(25, 498), (137, 498), (137, 650), (163, 650), (163, 800), (25, 800)], (75, 508)),
     'upperArmR': ([(398, 326), (452, 326), (456, 522), (394, 522)], (414, 372)),
     'foreArmR':  ([(400, 500), (512, 500), (512, 775), (400, 775)], (422, 505)),
     'thighL':    ([(210, 598), (280, 598), (268, 772), (160, 778), (165, 728), (210, 728)], (238, 618)),
-    'shinL':     ([(150, 742), (262, 742), (258, 905), (205, 930), (200, 982), (124, 982), (126, 900)], (206, 762)),
+    'shinL':     ([(150, 742), (262, 742), (262, 915), (124, 915)], (206, 762)),
+    # the near boot faces us: cut at the cuff (the boot covers the shin's end); the far boot is side-on, cut under the ankle disc
+    'footL':     ([(124, 895), (262, 895), (262, 985), (124, 985)], (206, 905)),
     'thighR':    ([(288, 598), (392, 598), (398, 772), (300, 778)], (340, 618)),
-    'shinR':     ([(300, 748), (402, 748), (420, 860), (446, 890), (446, 950), (300, 950)], (350, 766)),
+    'shinR':     ([(300, 748), (402, 748), (412, 860), (398, 893), (360, 906), (300, 906)], (350, 766)),
+    'footR':     ([(300, 893), (352, 893), (362, 880), (400, 884), (446, 890), (446, 950), (300, 950)], (338, 888)),
 }
 PATCHWORK = {
     'head':      ([(170, 50), (400, 50), (400, 300), (170, 300)], (280, 300)),

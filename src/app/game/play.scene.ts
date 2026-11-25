@@ -217,8 +217,9 @@ const FORGE_FEET: [number, number] = [520, 700];
 /** a broken boss shield stays down this long (s); it flickers for the last second before it comes back */
 const SHIELD_DOWN = 6;
 /** Cheat codes, typed as words during a level (key positions, so they're the same keys on any layout): GOLD puts Iggy in the
- *  best suit, MAGNET gives him the magnet power-up, UNSTOPPABLE turns invincibility on (and off again) for the rest of the level */
-const CHEATS: Record<'gold' | 'magnet' | 'unstoppable', string[]> = { gold: ['GOLD'], magnet: ['MAGNET'], unstoppable: ['UNSTOPPABLE'] };
+ *  best suit, MAGNET gives him the magnet power-up, UNSTOPPABLE turns invincibility on (and off again) for the rest of the level,
+ *  ARMED gives him a blaster, and each time again upgrades it like picking up another gun */
+const CHEATS: Record<'gold' | 'magnet' | 'unstoppable' | 'armed', string[]> = { gold: ['GOLD'], magnet: ['MAGNET'], unstoppable: ['UNSTOPPABLE'], armed: ['ARMED'] };
 const CHEAT_LEN = Math.max(...Object.values(CHEATS).flat().map((w) => w.length));
 /** the clear floor a walking boss always leaves between its body and either arena wall, for Iggy to stand and dodge in */
 const BOSS_ROOM = 110;
@@ -3014,6 +3015,12 @@ export class PlayScene extends Phaser.Scene {
       }
       return;
     }
+    if (hit === 'armed') {
+      this.gainGun('Cheat code! ');
+      this.debris(this.body.center.x, this.body.center.y, 'spark', this.reduced ? 3 : 10, 1);
+      this.emitHud(true);
+      return;
+    }
     if (hit === 'gold') {
       if (this.suitIdx === SUITS.length - 1) return;
       this.rings = Math.max(this.rings, SUITS[SUITS.length - 1].need); // the suit follows the ring count, so lift that to match
@@ -3846,32 +3853,37 @@ export class PlayScene extends Phaser.Scene {
     this.emitHud(true);
   }
 
+  /** Iggy gets a gun: a blaster if he has none, or the next gun up (then faster fire) if he has one, plus ammo */
+  private gainGun(prefix = '') {
+    // a second gun while the first is still active upgrades it
+    const active = this.power.gun > 0 && this.gunLevel > 0;
+    const prev = this.gunLevel, prevRate = this.gunRate;
+    this.gunLevel = active ? Math.min(GUN_MAX, prev + 1) : 1;
+    if (!active) this.gunRate = 0;
+    else if (prev >= GUN_MAX) this.gunRate = Math.min(GUN_RATE_MAX, this.gunRate + 1); // the strongest gun fires faster instead
+    this.power.gun = Math.min(GUN_AMMO_MAX, this.power.gun + GUN_AMMO);
+    const name = GUN_NAMES[this.gunLevel];
+    const faster = this.gunRate > prevRate;
+    this.banner(!active ? name : faster ? `${name}: faster fire ${this.gunRate} of ${GUN_RATE_MAX}` : `Gun upgrade: ${name}`);
+    this.announce(prefix + (
+      !active
+        ? `${name} with ${this.power.gun} shots! Tap X or F to shoot, or hold it to charge a big piercing shot and let go to fire. Ammo doesn't run out over time, so you can save it. Grab another gun to upgrade this one.`
+        : faster
+          ? `${name} fires faster: speed boost ${this.gunRate} of ${GUN_RATE_MAX}. ${this.power.gun} shots.`
+          : prev >= GUN_MAX
+            ? `${name} is already as fast as it goes. Ammo topped up to ${this.power.gun} shots.`
+            : `Gun upgraded to ${name}, level ${this.gunLevel} of ${GUN_MAX}. ${this.power.gun} shots.${this.gunLevel === GUN_MAX ? ' More guns from now on make it fire faster.' : ''}`
+    ));
+    if (active && (prev < GUN_MAX || faster)) this.sfx.suit();
+    else this.sfx.power();
+  }
+
   private collectPower(it: Item) {
     it.taken = true;
     const id = it.power!;
     const p = POWER[id];
     if (id === 'gun') {
-      // a second gun while the first is still active upgrades it
-      const active = this.power.gun > 0 && this.gunLevel > 0;
-      const prev = this.gunLevel, prevRate = this.gunRate;
-      this.gunLevel = active ? Math.min(GUN_MAX, prev + 1) : 1;
-      if (!active) this.gunRate = 0;
-      else if (prev >= GUN_MAX) this.gunRate = Math.min(GUN_RATE_MAX, this.gunRate + 1); // the strongest gun fires faster instead
-      this.power.gun = Math.min(GUN_AMMO_MAX, this.power.gun + GUN_AMMO);
-      const name = GUN_NAMES[this.gunLevel];
-      const faster = this.gunRate > prevRate;
-      this.banner(!active ? name : faster ? `${name}: faster fire ${this.gunRate} of ${GUN_RATE_MAX}` : `Gun upgrade: ${name}`);
-      this.announce(
-        !active
-          ? `${name} with ${this.power.gun} shots! Tap X or F to shoot, or hold it to charge a big piercing shot and let go to fire. Ammo doesn't run out over time, so you can save it. Grab another gun to upgrade this one.`
-          : faster
-            ? `${name} fires faster: speed boost ${this.gunRate} of ${GUN_RATE_MAX}. ${this.power.gun} shots.`
-            : prev >= GUN_MAX
-              ? `${name} is already as fast as it goes. Ammo topped up to ${this.power.gun} shots.`
-              : `Gun upgraded to ${name}, level ${this.gunLevel} of ${GUN_MAX}. ${this.power.gun} shots.${this.gunLevel === GUN_MAX ? ' More guns from now on make it fire faster.' : ''}`,
-      );
-      if (active && (prev < GUN_MAX || faster)) this.sfx.suit();
-      else this.sfx.power();
+      this.gainGun();
     } else {
       this.power[id] = p.secs ?? 1;
       this.sfx.power();
@@ -4867,7 +4879,7 @@ export class PlayScene extends Phaser.Scene {
         drawPowerFx(this.iggyFx, { t: this.t, star: this.unstoppable ? Math.max(this.power.star, 10) : this.power.star, shield: this.power.shield > 0, reduced: this.reduced });
         ig.show({
           suit: this.suitIdx, gun: this.gun(), fire: this.fireAnim, x: this.robot.x, y: this.robot.y, scaleX: this.robot.scaleX, scaleY: this.robot.scaleY, spin, alpha: this.robot.alpha,
-          onGround: grounded, vx: body.velocity.x, footSpeed: this.footSpeed, scramble: this.scrambling, vy: body.velocity.y, duck: this.duckAmt, hanging: !!this.hang, climb: this.hang?.climb ?? -1, kick: this.hangKick(), tuck: this.tuckT > 0 && !grounded, dash: this.dashT > 0, pound: this.pounding,
+          onGround: grounded, vx: body.velocity.x, footSpeed: this.footSpeed, scramble: this.scrambling, vy: body.velocity.y, duck: this.duckAmt, hanging: !!this.hang, climb: this.hang?.climb ?? -1, kick: this.hangKick(), tuck: this.tuckT > 0 && !grounded, dash: this.dashT > 0, pound: this.pounding, fidget: !this.reduced, sway: !this.reduced,
         });
       } else ig.hide();
     }
