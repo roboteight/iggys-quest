@@ -28,7 +28,7 @@ export const BOSS_SCORE = 4000;
  *  pour: a ladle of molten metal lobbed onto the floor, which burns for a few seconds. sweep: the hammer swung flat across
  *  the arena, low (jump it) or high (duck under it). volley: aimed shots. spread: a fan. mortar: lobbed shells. stomp: a shockwave, then it kneels (stomp its head).
  *  charge: a lunge forward (back off). ring: shots in every direction, with gaps. rain: shells falling on marked spots. */
-export type BossAttack = 'volley' | 'spread' | 'mortar' | 'stomp' | 'charge' | 'ring' | 'rain' | 'pour' | 'sweep' | 'saw';
+export type BossAttack = 'volley' | 'spread' | 'mortar' | 'stomp' | 'charge' | 'ring' | 'rain' | 'pour' | 'sweep' | 'saw' | 'harpoon';
 export interface BossDef {
   name: string;
   blurb: string;
@@ -42,6 +42,9 @@ export interface BossDef {
   shield?: number;
   /** the shield is held up by this many locks: each break smashes one for good, and with none left it's gone */
   locks?: number;
+  /** a nudge to how pushy it is (1 = as its place in the game makes it; see bossAggression in play.scene.ts), below 1 for a
+   *  boss that would otherwise crowd Iggy too much (the Dune Dredger) */
+  aggression?: number;
   /** the attacks once its locks are gone, and once it's down to a third of its health (its fight gets harder in stages) */
   phase2?: BossAttack[];
   phase3?: BossAttack[];
@@ -49,14 +52,14 @@ export interface BossDef {
 
 export const BOSSES: Record<LevelStyle, BossDef> = {
   city: { name: 'Enforcer Nine', blurb: 'A hunched, bird-legged peacekeeper with cannons for arms.', hp: 24, speed: 50, attacks: ['volley', 'volley', 'stomp'], muzzle: [-90, -120] },
-  hollow: { name: 'Grandfather Gloom', blurb: 'A crooked clockwork giant on striped stilts that lobs exploding music-box gifts.', hp: 26, speed: 40, attacks: ['mortar', 'mortar', 'volley', 'stomp'], muzzle: [-38, -164] },
+  hollow: { name: 'Grandfather Gloom', blurb: 'A crooked clockwork giant on bird-like legs that lobs exploding music-box gifts and fires a harpoon on a cable.', hp: 26, speed: 40, attacks: ['harpoon', 'harpoon', 'mortar', 'mortar', 'volley', 'stomp'], muzzle: [-38, -164] },
   wastes: { name: 'Dust Scorpion', blurb: 'A four-legged walker with a cannon on its tail.', hp: 28, speed: 60, attacks: ['spread', 'volley', 'charge', 'stomp'], muzzle: [34, -128] },
   drowned: { name: 'Deep Diver', blurb: 'A diving-suit mech with a glass dome and heavy claws.', hp: 30, speed: 35, attacks: ['volley', 'mortar', 'charge', 'stomp'], muzzle: [-70, -92] },
   void: { name: 'Neon Warden', blurb: 'A hovering sentinel on a ring of light.', hp: 32, speed: 70, attacks: ['spread', 'ring', 'volley', 'stomp'], shield: 4, muzzle: [-72, -86] },
   war: { name: 'Iron Marshal', blurb: 'A rolling siege tank with a long gun, the one that has been shelling the trenches.', hp: 36, speed: 38, attacks: ['mortar', 'rain', 'volley', 'spread', 'stomp'], muzzle: [-108, -122] },
   spores: { name: 'Spore Mother', blurb: 'A tripod walker under a giant mushroom cap.', hp: 34, speed: 30, attacks: ['mortar', 'rain', 'spread', 'stomp'], muzzle: [-58, -108] },
   ice: { name: 'Icebreaker', blurb: 'An armoured icebreaker hull on spiked tracks, with a ram prow and frost-cannon turrets.', hp: 40, speed: 70, attacks: ['charge', 'volley', 'spread', 'ring', 'stomp'], shield: 5, muzzle: [-60, -120] },
-  dunes: { name: 'Dune Dredger', blurb: 'A colossal mining dredge with a bucket wheel that reshapes the sand.', hp: 43, speed: 40, attacks: ['saw', 'mortar', 'rain', 'saw', 'charge', 'spread', 'stomp'], muzzle: [-84, -102] },
+  dunes: { name: 'Dune Dredger', blurb: 'A colossal mining dredge with a bucket wheel that reshapes the sand.', hp: 43, speed: 40, aggression: 0.95, attacks: ['saw', 'mortar', 'rain', 'saw', 'charge', 'spread', 'stomp'], muzzle: [-84, -102] },
   wind: { name: 'Gale Warden', blurb: 'A towering turbine mech whose chest is a giant fan.', hp: 46, speed: 30, attacks: ['spread', 'ring', 'volley', 'charge', 'stomp'], shield: 6, muzzle: [-10, -110] },
   locks: { name: 'Brass Kraken', blurb: 'A mechanical squid lurking in the flooded lock, all brass tentacles and porthole eyes.', hp: 48, speed: 0, attacks: ['mortar', 'volley', 'rain', 'ring', 'stomp'], muzzle: [-30, -120] },
   sky: { name: 'Iron Albatross', blurb: 'A flying fortress airship with a gun turret and a bridge window that glows.', hp: 52, speed: 45, attacks: ['mortar', 'rain', 'volley', 'ring', 'spread'], shield: 7, muzzle: [-40, -40] },

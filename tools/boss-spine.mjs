@@ -15,37 +15,85 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const r2 = (n) => Math.round(n * 100) / 100;
 const S = (u, k = 1, ph = 0) => Math.sin((u * k + ph) * Math.PI * 2);
 const C = (u, k = 1, ph = 0) => Math.cos((u * k + ph) * Math.PI * 2);
+/** a fixed shake for tick `i` of an animation (the same every time it is built), between -1 and 1 */
+const jitter = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return 2 * (v - Math.floor(v)) - 1; };
+/** One bird leg at phase p (0 to 1) of its stride (fwd: -1 when the sheet faces left, 1 when it faces right): planted and sweeping back for the first 60%, then folded and
+ *  swung forward. Turns in degrees (forward is negative); `lift` 0 to 1 while the foot is off the ground; `toe` curls the claw. */
+const birdLeg = (p, fwd = -1) => {
+  const f = (o) => ({ thigh: -fwd * o.thigh, shin: -fwd * o.shin, toe: -fwd * o.toe, lift: o.lift });
+  if (p < 0.6) { const s = p / 0.6; return f({ thigh: -18 + 34 * s, shin: 4 + 6 * Math.sin(Math.PI * s), toe: 0, lift: 0 }); }
+  const s = (p - 0.6) / 0.4, e = 0.5 - 0.5 * Math.cos(Math.PI * s), up = Math.sin(Math.PI * s);
+  return f({ thigh: 16 - 34 * e - 10 * up, shin: 4 + 58 * up, toe: 28 * up, lift: up });
+};
+/** thigh and shin turns, plus foot turns that keep each foot level with the ground (feet hang from the shins) */
+const flatFeet = (l) => ({ thighL: { r: l.thighL }, shinL: { r: l.shinL }, footL: { r: -(l.thighL + l.shinL) },
+  thighR: { r: l.thighR }, shinR: { r: l.shinR }, footR: { r: -(l.thighR + l.shinR) } });
 
 const BOSSES = {
-  // Grandfather Gloom: faces left. A forward (leftward) swing of a hanging limb is a clockwise turn, so negative.
+  // Grandfather Gloom: the sheet faces right (his claws point right), so a forward swing of a hanging limb is positive.
+  // A rickety old clock: every animation is stepped (each key holds, then snaps to the next, like an escapement letting go a
+  // tooth), with a little jitter on each tick so no two clicks look alike. The pendulum tick-tocks, the fob swings on its
+  // chain, the key winds in clicks and the claw feet stay flat however the legs lurch.
   gloom: {
     feet: [350, 990],
-    bones: [['body', 'root'], ['cannonUpper', 'body'], ['cannonFore', 'cannonUpper'], ['keyUpper', 'body'], ['keyFore', 'keyUpper'],
-      ['thighL', 'root'], ['shinL', 'thighL'], ['thighR', 'root'], ['shinR', 'thighR']],
-    order: ['keyUpper', 'keyFore', 'thighR', 'shinR', 'body', 'thighL', 'shinL', 'cannonUpper', 'cannonFore'],
-    stretch: { thigh: 'thighR', shin: 'shinR' }, // the far leg is drawn higher: stretch it from the hip to the ground
+    bones: [['body', 'root'], ['head', 'body'], ['pendulum', 'body'], ['fob', 'body'],
+      ['cannonUpper', 'body'], ['cannonFore', 'cannonUpper'], ['keyUpper', 'body'], ['keyFore', 'keyUpper'],
+      ['thighL', 'root'], ['shinL', 'thighL'], ['footL', 'shinL'], ['thighR', 'root'], ['shinR', 'thighR'], ['footR', 'shinR']],
+    order: ['keyUpper', 'keyFore', 'footR', 'thighR', 'shinR', 'body', 'pendulum', 'fob', 'head', 'footL', 'thighL', 'shinL', 'cannonUpper', 'cannonFore'],
+    stretch: { thigh: 'thighR', shin: 'shinR', foot: 'footR' }, // the far leg is drawn higher: stretch it from the hip to the ground
+    stepped: true,
     animations: {
-      idle: [2.4, 12, (u) => ({
-        body: { r: 1.2 * S(u), y: -3 + 3 * C(u) },
-        cannonUpper: { r: 3 * S(u, 1, 0.2) }, cannonFore: { r: 2 * S(u, 1, 0.4) },
-        keyUpper: { r: -3 * S(u, 1, 0.1) }, keyFore: { r: 10 * S(u, 2) }, // the key keeps turning
-      })],
-      walk: [1.1, 12, (u) => {
-        const hipL = -20 * S(u), hipR = 20 * S(u);
+      idle: [2.4, 16, (u) => {
+        const tick = Math.round(u * 16), tock = tick % 2 ? 1 : -1, j = (k) => jitter(tick, k);
         return {
-          body: { r: 2 * S(u, 2), y: -10 * Math.abs(S(u)) },
-          thighL: { r: hipL }, shinL: { r: 34 * Math.max(0, C(u)) }, thighR: { r: hipR }, shinR: { r: 34 * Math.max(0, -C(u)) },
-          cannonUpper: { r: 6 * S(u) }, cannonFore: { r: 4 * S(u, 1, 0.2) },
-          keyUpper: { r: -6 * S(u) }, keyFore: { r: 12 * S(u, 2) },
+          body: { r: 1.2 * Math.sign(S(u)) + 0.6 * j(1), y: -2 + 1.5 * tock },
+          head: { r: 2.5 * tock + 1.5 * j(2) },
+          pendulum: { r: 13 * tock }, fob: { r: -8 * tock + 4 * j(3) },
+          cannonUpper: { r: 3 * S(u, 1, 0.2) + 1.5 * j(4) }, cannonFore: { r: 2 * S(u, 1, 0.4) + 2 * j(5) },
+          keyUpper: { r: -2 * S(u) }, keyFore: { r: -45 * tick }, // the key clicks round an eighth of a turn each tick
+          ...flatFeet({ thighL: 0, shinL: 0, thighR: 0, shinR: 0 }),
         };
       }],
-      // the wind-up: leans back, cannon raised to lob, the key winding fast
-      charge: [0.5, 6, (u) => ({
-        body: { r: -5, y: 6 + 2 * S(u, 2) },
-        cannonUpper: { r: -34 + 2 * S(u, 2) }, cannonFore: { r: -22 },
-        keyUpper: { r: 8 }, keyFore: { r: 40 * S(u, 2) },
-        thighL: { r: -6 }, shinL: { r: 10 }, thighR: { r: 6 }, shinR: { r: 6 },
-      })],
+      // a bird's walk: each leg plants and sweeps back under the body, then the knee folds, the claw lifts with its toes curled
+      // under, swings forward and opens to land flat; the head pecks forward and holds on every step
+      walk: [1.4, 14, (u) => {
+        const tick = Math.round(u * 14), tock = tick % 2 ? 1 : -1, j = (k) => jitter(tick, k);
+        const L = birdLeg(u, 1), R = birdLeg((u + 0.5) % 1, 1); // (the sheet faces right)
+        const legs = { thighL: L.thigh + 2 * j(1), shinL: L.shin + 3 * j(2), thighR: R.thigh + 2 * j(3), shinR: R.shin + 3 * j(4) };
+        const ff = flatFeet(legs);
+        ff.footL.r += L.toe; ff.footR.r += R.toe;
+        return {
+          body: { r: 2.5 * S(u, 2) + 1.5 * j(5), y: -8 * Math.max(L.lift, R.lift) + 2 * j(6) },
+          head: { r: -6 * Math.max(0, S(u, 2)) + 2.5 * tock + 2 * j(7) },
+          pendulum: { r: 18 * tock + 4 * j(8) }, fob: { r: -16 * S(u, 1, 0.15) + 6 * j(9) },
+          cannonUpper: { r: 7 * S(u) + 2 * j(10) }, cannonFore: { r: 5 * S(u, 1, 0.2) + 3 * j(11) },
+          keyUpper: { r: -6 * S(u) }, keyFore: { r: -45 * tick },
+          ...ff,
+        };
+      }],
+      // levelling the harpoon cannon at Iggy: it ratchets up in four clicks (the barrel ends level, pointing forward), then holds
+      // with a shiver while he braces; the game fires the harpoon from the barrel's tip (see boss-spine.ts GLOOM_HARPOON)
+      aim: [1, 10, (u) => {
+        const tick = Math.round(u * 10), up = Math.min(tick, 4) / 4, j = (k) => jitter(tick, k);
+        return {
+          body: { r: -3 * up + 0.8 * j(1), y: 4 * up }, head: { r: 3 * (tick % 2 ? 1 : -1) + 1.5 * j(2) },
+          pendulum: { r: 16 * (tick % 2 ? 1 : -1) }, fob: { r: 9 * (tick % 2 ? 1 : -1) + 4 * j(3) },
+          cannonUpper: { r: 40 * up + (tick > 4 ? 1.2 * j(4) : 0) }, cannonFore: { r: 20 * up + (tick > 4 ? 1.2 * j(5) : 0) },
+          keyUpper: { r: 6 }, keyFore: { r: -45 * tick },
+          ...flatFeet({ thighL: 8 * up, shinL: -6 * up, thighR: -4 * up, shinR: 4 * up }),
+        };
+      }],
+      // the wind-up: the cannon ratchets up to lob, the key winds fast, the whole case shudders
+      charge: [0.6, 8, (u) => {
+        const tick = Math.round(u * 8), tock = tick % 2 ? 1 : -1, j = (k) => jitter(tick, k);
+        return {
+          body: { r: -5 + 1.2 * tock, y: 6 + 2 * j(1) },
+          head: { r: 4 * tock + 2 * j(2) }, pendulum: { r: 24 * tock }, fob: { r: 12 * tock + 5 * j(3) },
+          cannonUpper: { r: -30 - 4 * (tick % 3) + 2 * j(4) }, cannonFore: { r: -22 + 3 * j(5) },
+          keyUpper: { r: 8 }, keyFore: { r: -90 * tick },
+          ...flatFeet({ thighL: -6, shinL: 10, thighR: 6, shinR: 6 }),
+        };
+      }],
     },
   },
 };
@@ -55,80 +103,32 @@ const BOSSES = {
 // bones: [bone, parent, part whose pivot it sits on]. slots: [slot, bone, attachment shown at rest (null = hidden)].
 // An animation pose can also set { show: { slot: attachment | null } } to swap pieces (the hatch opening, the eyes shutting).
 const ROT = (u, turns = 1) => -360 * turns * u; // a continuous spin (clockwise on screen)
-// (the Deep Diver's back leg is stretched from the hip instead of moved: see `stretch` below)
-const BACK = { r: 0, x: 0, y: 0 };
 const BOSSES2 = {
   // the level 4 to 7 bosses: all drawn facing right (or front-on). A positive turn swings a hanging limb forward (right).
   diver: {
-    stretch: ['legR'], // its back leg is drawn higher up the sheet (perspective): stretched from the hip so its boot reaches the ground
-    bones: [['body', 'root', 'rest'], ['gunArm', 'body', 'gunArm'], ['clawArm', 'body', 'clawArm'], ['legL', 'root', 'legL'], ['legR', 'root', 'legR']],
-    slots: [['clawArm', 'clawArm', 'clawArm'], ['legR', 'legR', 'legR'], ['rest', 'body', 'rest'], ['legL', 'legL', 'legL'], ['gunArm', 'gunArm', 'gunArm']],
+    // its back leg is drawn higher up the sheet (perspective): stretched evenly from the hip so its boot reaches the ground, the
+    // boot itself kept at its own size
+    stretch: { thighR: 'footR' }, unstretch: ['footR'],
+    bones: [['body', 'root', 'rest'], ['gunArm', 'body', 'gunArm'], ['clawArm', 'body', 'clawArm'],
+      ['thighL', 'root', 'thighL'], ['shinL', 'thighL', 'shinL'], ['footL', 'shinL', 'footL'],
+      ['thighR', 'root', 'thighR'], ['shinR', 'thighR', 'shinR'], ['footR', 'shinR', 'footR']],
+    slots: [['clawArm', 'clawArm', 'clawArm'], ['footR', 'footR', 'footR'], ['shinR', 'shinR', 'shinR'], ['thighR', 'thighR', 'thighR'],
+      ['rest', 'body', 'rest'], ['footL', 'footL', 'footL'], ['shinL', 'shinL', 'shinL'], ['thighL', 'thighL', 'thighL'], ['gunArm', 'gunArm', 'gunArm']],
     animations: {
-      idle: [2.2, 12, (u) => ({ legR: BACK, body: { r: 0.6 * S(u), y: 3 * S(u) }, gunArm: { r: 3 * S(u, 1, 0.2) }, clawArm: { r: -4 * S(u, 1, 0.4) } })],
-      walk: [1.2, 12, (u) => ({ body: { r: 1.5 * S(u, 2), y: -6 * Math.abs(S(u)) }, legL: { r: 12 * S(u) }, legR: { r: -12 * S(u), y: BACK.y }, gunArm: { r: -5 * S(u) }, clawArm: { r: 6 * S(u) } })],
-      charge: [0.5, 6, (u) => ({ legR: BACK, body: { r: 3, y: 4 }, gunArm: { r: 20 + 2 * S(u, 3) }, clawArm: { r: 12 } })], // the harpoon comes up
-      stunned: [1, 6, (u) => ({ legR: BACK, body: { r: -5 + S(u), y: -10 }, gunArm: { r: -14 }, clawArm: { r: -12 } })],
+      idle: [2.2, 12, (u) => ({ body: { r: 0.6 * S(u), y: -2 + 2 * S(u) }, gunArm: { r: 3 * S(u, 1, 0.2) }, clawArm: { r: -4 * S(u, 1, 0.4) },
+        ...flatFeet({ thighL: 1.5 * S(u), shinL: -2 * S(u), thighR: -1.5 * S(u), shinR: 2 * S(u) }) })],
+      // the same bird walk as Grandfather Gloom's, heavy in diving boots: plant, sweep back, fold the knee, swing through
+      walk: [1.3, 16, (u) => {
+        const L = birdLeg(u, 1), R = birdLeg((u + 0.5) % 1, 1);
+        const ff = flatFeet({ thighL: L.thigh * 0.8, shinL: L.shin * 0.8, thighR: R.thigh * 0.8, shinR: R.shin * 0.8 });
+        ff.footL.r += L.toe * 0.6; ff.footR.r += R.toe * 0.6;
+        return { body: { r: 1.5 * S(u, 2), y: -7 * Math.max(L.lift, R.lift) - 2 * Math.abs(S(u)) }, gunArm: { r: -5 * S(u) }, clawArm: { r: 6 * S(u) }, ...ff };
+      }],
+      // the harpoon comes up; it sinks onto bent knees to brace
+      charge: [0.5, 6, (u) => ({ body: { r: 3, y: -6 }, gunArm: { r: 20 + 2 * S(u, 3) }, clawArm: { r: 12 }, ...flatFeet({ thighL: 10, shinL: -18, thighR: 10, shinR: -18 }) })],
+      stunned: [1, 6, (u) => ({ body: { r: -5 + S(u), y: -14 }, gunArm: { r: -14 }, clawArm: { r: -12 }, ...flatFeet({ thighL: 14, shinL: -26 + 3 * S(u), thighR: 8, shinR: -20 }) })],
     },
   },
-  nwarden: {
-    bones: [['body', 'root', 'rest'], ['gunArm', 'body', 'gunArm'], ['clawArm', 'body', 'clawArm']],
-    slots: [['clawArm', 'clawArm', 'clawArm'], ['rest', 'body', 'rest'], ['gunArm', 'gunArm', 'gunArm']],
-    animations: {
-      // a spinning top: it wobbles on its point
-      idle: [1.2, 12, (u) => ({ body: { r: 2.5 * S(u), y: 3 * S(u, 2) }, gunArm: { r: 4 * S(u, 1, 0.3) }, clawArm: { r: -4 * S(u, 1, 0.3) } })],
-      walk: [0.6, 12, (u) => ({ body: { r: 4 * S(u), y: 4 * S(u, 2) }, gunArm: { r: 6 * S(u, 2) }, clawArm: { r: -6 * S(u, 2) } })],
-      charge: [0.4, 6, (u) => ({ body: { r: 1.5 * S(u, 3), y: 10 }, gunArm: { r: 22 }, clawArm: { r: 16 } })],
-      stunned: [1, 6, (u) => ({ body: { r: -9 + 2 * S(u), y: -8 }, gunArm: { r: -16 }, clawArm: { r: -14 } })],
-    },
-  },
-  spore: {
-    bones: [['body', 'root', 'rest'], ['cap', 'body', 'cap'], ['gunArm', 'body', 'gunArm'], ['clawArm', 'body', 'clawArm'], ['legL', 'root', 'legL'], ['legR', 'root', 'legR']],
-    slots: [['legR', 'legR', 'legR'], ['clawArm', 'clawArm', 'clawArm'], ['rest', 'body', 'rest'], ['legL', 'legL', 'legL'], ['gunArm', 'gunArm', 'gunArm'], ['cap', 'cap', 'cap']],
-    animations: {
-      idle: [2.6, 12, (u) => ({ body: { r: 0.5 * S(u), y: 3 * S(u) }, cap: { r: 1.5 * S(u, 1, 0.3), y: 2 * S(u, 2) }, gunArm: { r: 4 * S(u, 1, 0.2) }, clawArm: { r: -4 * S(u, 1, 0.5) } })],
-      walk: [1.4, 12, (u) => ({ body: { r: 1.2 * S(u, 2), y: -6 * Math.abs(S(u)) }, cap: { r: 2.5 * S(u, 2, 0.2) }, legL: { r: 9 * S(u) }, legR: { r: -9 * S(u) }, gunArm: { r: 6 * S(u) }, clawArm: { r: -6 * S(u) } })],
-      // gathering spores: the cap lifts and shudders, the spore gun rises
-      charge: [0.5, 6, (u) => ({ body: { r: 2, y: 4 }, cap: { r: -3 + 2 * S(u, 4), y: 14 }, gunArm: { r: 22 }, clawArm: { r: 10 } })],
-      stunned: [1, 6, (u) => ({ body: { r: -4 + S(u), y: -10 }, cap: { r: 9, y: -8 }, gunArm: { r: -14 }, clawArm: { r: -12 } })],
-    },
-  },
-  marshal: {
-    bones: [['body', 'root', 'rest'], ['cannon', 'body', 'cannon'], ['head', 'body', 'head'], ['clawArm', 'body', 'clawArm']],
-    slots: [['rest', 'body', 'rest'], ['head', 'head', 'head'], ['clawArm', 'clawArm', 'clawArm'], ['cannon', 'cannon', 'cannon']],
-    animations: {
-      idle: [1.4, 8, (u) => ({ body: { y: 1.5 * Math.abs(S(u, 2)) }, cannon: { r: 1 * S(u) }, head: { r: 3 * S(u, 1, 0.3) }, clawArm: { r: -3 * S(u, 1, 0.5) } })],
-      walk: [0.5, 6, (u) => ({ body: { r: 0.6 * S(u, 2), y: 2.5 * Math.abs(S(u, 2)) }, cannon: { r: 1.5 * S(u, 2) }, head: { r: 2 * S(u, 2) }, clawArm: { r: 5 * S(u) } })],
-      // the long gun comes up to aim
-      charge: [0.5, 6, (u) => ({ body: { r: 1, y: 2 }, cannon: { r: 8, x: -4 * S(u, 4) }, head: { r: 5 }, clawArm: { r: 10 } })],
-      stunned: [1, 6, (u) => ({ body: { r: -2, y: -6 }, cannon: { r: -12 }, head: { r: -9 + 2 * S(u) }, clawArm: { r: -14 } })],
-    },
-  },
-  // Dust Scorpion: faces right. Its tail sways and coils to strike; its pincers snap.
-  scorpion: {
-    bones: [['body', 'root', 'rest'], ['tail', 'body', 'tail'], ['clawNear', 'body', 'clawNear'], ['clawFar', 'body', 'clawFar']],
-    slots: [['clawFar', 'clawFar', 'clawFar'], ['tail', 'tail', 'tail'], ['rest', 'body', 'rest'], ['clawNear', 'clawNear', 'clawNear']],
-    animations: {
-      idle: [2, 12, (u) => ({ body: { r: 0.6 * S(u), y: 3 * S(u) }, tail: { r: 4 * S(u, 1, 0.2) }, clawNear: { r: 3 * S(u, 1, 0.4) }, clawFar: { r: -3 * S(u, 1, 0.1) } })],
-      // a scuttle: the body bobs fast, claws swing alternately
-      walk: [0.6, 8, (u) => ({ body: { r: 1.2 * S(u, 2), y: 4 * Math.abs(S(u, 2)) }, tail: { r: 3 * S(u, 1, 0.3) }, clawNear: { r: 7 * S(u) }, clawFar: { r: -7 * S(u) } })],
-      // the tail coils back, ready to fire; pincers raised
-      charge: [0.5, 6, (u) => ({ body: { r: -2, y: 4 }, tail: { r: 14 + 2 * S(u, 3) }, clawNear: { r: 16 }, clawFar: { r: 12 } })],
-      stunned: [1, 6, (u) => ({ body: { r: 3 + S(u), y: -10 }, tail: { r: -18 }, clawNear: { r: -14 }, clawFar: { r: -10 } })],
-    },
-  },
-  icebreaker: {
-    bones: [['hull', 'root', 'rest'], ['prow', 'hull', 'prow'], ['turret', 'hull', 'turret'], ['hatch', 'hull', 'hatchOpen']],
-    slots: [['rest', 'hull', 'rest'], ['turret', 'turret', 'turret'], ['hatch', 'hatch', null], ['prow', 'prow', 'prow']],
-    animations: {
-      idle: [1.2, 8, (u) => ({ hull: { r: 0.4 * S(u), y: 2 * Math.abs(S(u, 2)) }, prow: { r: 1 * S(u) }, turret: { r: 4 * S(u, 1, 0.3) } })],
-      // rolling (the charge): tracks rumble, the hull pitches, the prow ploughs
-      walk: [0.5, 6, (u) => ({ hull: { r: 1.2 * S(u, 2), y: 4 * Math.abs(S(u, 2)) }, prow: { r: -3 + 2 * S(u, 2) }, turret: { r: -6 } })],
-      charge: [0.5, 6, (u) => ({ hull: { r: -4 + 0.6 * S(u, 4), y: 6 }, prow: { r: 6 }, turret: { r: -14 } })], // rears back before a ram
-      stunned: [1, 6, (u) => ({ hull: { r: 5 + 1.5 * S(u), y: -6 }, prow: { r: 8 }, turret: { r: 12 + 4 * S(u, 2) }, show: { hatch: 'hatchOpen' } })],
-    },
-  },
-  // the bucket wheel spins (clockwise, so the buckets scoop up the digging face): the sheet's front-on wheel, squashed a little
-  // by its parent bone to the angle the body is drawn at, turning behind the arm's end plate
   dredger: {
     bones: [['hull', 'root', 'rest'], ['wheelTilt', 'hull', 'spinWheel'], ['wheelSpin', 'wheelTilt', 'spinWheel'], ['arm', 'hull', 'armFront'], ['engine', 'hull', 'engineHot']],
     boneScale: { wheelTilt: [0.95, 1] },
@@ -142,16 +142,49 @@ const BOSSES2 = {
       stunned: [1, 6, (u) => ({ hull: { r: 4 + S(u), y: -4 }, wheelSpin: { r: 0 }, show: { engine: 'engineHot' } })],
     },
   },
+  // Front-on, so its walk is a heavy side-to-side stomp: the hips shift over the planted boot and the other boot lifts, the knees
+  // bowing out (leg() works the thigh and shin angles out so each boot lands where it is told and stays flat). The arms swing on
+  // shoulder and elbow, the forearm a beat behind, and the head counters the body's roll.
   warden: {
-    bones: [['body', 'root', 'rest'], ['armL', 'body', 'armL'], ['armR', 'body', 'armR'], ['rotor', 'body', 'rotor']],
-    slots: [['armR', 'armR', 'armR'], ['rest', 'body', 'rest'], ['rotor', 'rotor', 'rotor'], ['armL', 'armL', 'armL']],
+    bones: [['hips', 'root', 'pelvis'], ['torso', 'hips', 'rest'], ['head', 'torso', 'head'], ['rotor', 'torso', 'rotor'],
+      ['upperL', 'torso', 'upperL'], ['foreL', 'upperL', 'foreL'], ['upperR', 'torso', 'upperR'], ['foreR', 'upperR', 'foreR'],
+      ['thighL', 'hips', 'thighL'], ['shinL', 'thighL', 'shinL'], ['footL', 'shinL', 'footL'],
+      ['thighR', 'hips', 'thighR'], ['shinR', 'thighR', 'shinR'], ['footR', 'shinR', 'footR']],
+    legs: { L: ['thighL', 'shinL', 'footL', -1], R: ['thighR', 'shinR', 'footR', 1] }, // the last number: which way the knee bows
+    slots: [['footL', 'footL', 'footL'], ['footR', 'footR', 'footR'], ['shinL', 'shinL', 'shinL'], ['shinR', 'shinR', 'shinR'],
+      ['thighL', 'thighL', 'thighL'], ['thighR', 'thighR', 'thighR'], ['pelvis', 'hips', 'pelvis'], ['head', 'head', 'head'],
+      ['upperL', 'upperL', 'upperL'], ['upperR', 'upperR', 'upperR'], ['rest', 'torso', 'rest'], ['rotor', 'rotor', 'rotor'],
+      ['foreL', 'foreL', 'foreL'], ['foreR', 'foreR', 'foreR']],
     animations: {
-      idle: [0.6, 12, (u) => ({ body: { r: 0.5 * S(u), y: 2 * S(u) }, rotor: { r: ROT(u, 1) }, armL: { r: 3 * S(u) }, armR: { r: -3 * S(u) } })],
-      walk: [1.1, 12, (u) => ({ body: { r: 2 * S(u), y: 6 * Math.abs(S(u)) }, rotor: { r: ROT(u, 2) }, armL: { r: 10 * S(u) }, armR: { r: 10 * S(u) } })],
-      // the gale: arms thrown back, the rotor screaming
-      charge: [0.3, 6, (u) => ({ body: { r: 2, y: -4 }, rotor: { r: ROT(u, 1.5) }, armL: { r: -40 }, armR: { r: 40 } })],
-      // overload: the blades jam, the motor shows
-      stunned: [1, 6, (u) => ({ body: { r: 3 * S(u), y: -10 }, armL: { r: 18 }, armR: { r: -18 }, show: { rotor: 'motor' } })],
+      // breathing in the knees, a slow look around, the rotor idling
+      idle: [2.4, 16, (u, { legs }) => {
+        const hips = { y: -3 + 3 * C(u), r: 0.6 * S(u) };
+        return { hips, ...legs(hips, {}, {}), torso: { r: -0.4 * S(u, 1, 0.1), y: 1.5 * S(u, 2) }, head: { r: 3 * S(u, 1, 0.3) },
+          rotor: { r: ROT(u, 4) }, upperL: { r: -2 * S(u, 1, 0.2) }, foreL: { r: -3 * S(u, 1, 0.35) }, upperR: { r: 2 * S(u, 1, 0.2) }, foreR: { r: 3 * S(u, 1, 0.35) } };
+      }],
+      walk: [1.3, 24, (u, { legs }) => {
+        const s = S(u), liftL = Math.max(0, s), liftR = Math.max(0, -s);
+        // weight over the planted boot: the hips slide to it and roll so the lifted side rises; they sink as each boot lands
+        const hips = { x: 9 * s, y: -7 + 6 * Math.abs(s), r: -3.5 * s };
+        return {
+          hips, ...legs(hips, { x: -5 * liftL, y: 26 * liftL ** 1.4, tilt: 5 * liftL }, { x: 5 * liftR, y: 26 * liftR ** 1.4, tilt: -5 * liftR }),
+          torso: { r: 2.5 * S(u, 1, 0.08), y: 1.5 * Math.abs(S(u, 1, 0.1)) }, head: { r: 2 * S(u, 1, 0.16) }, rotor: { r: ROT(u, 2) },
+          upperL: { r: 6 * S(u, 1, 0.12) }, foreL: { r: 9 * S(u, 1, 0.26) }, upperR: { r: 6 * S(u, 1, 0.12) }, foreR: { r: 9 * S(u, 1, 0.26) },
+        };
+      }],
+      // the gale: a wide braced crouch, arms flung out with the turbines roaring, the rotor screaming
+      charge: [0.6, 12, (u, { legs }) => {
+        const hips = { y: -16 + 1.5 * S(u, 3), r: 0.8 * S(u, 4) };
+        return { hips, ...legs(hips, { x: -6 }, { x: 6 }), torso: { r: 0.6 * S(u, 4), y: -2 }, head: { r: 1.2 * S(u, 5) }, rotor: { r: ROT(u, 2) },
+          upperL: { r: -48 + 2 * S(u, 4) }, foreL: { r: -24 + 3 * S(u, 4, 0.2) }, upperR: { r: 48 - 2 * S(u, 4) }, foreR: { r: 24 - 3 * S(u, 4, 0.2) } };
+      }],
+      // overload: the blades jam, the motor shows, the knees buckle and it lists, arms hanging slack
+      stunned: [1.4, 14, (u, { legs }) => {
+        const hips = { x: -3, y: -24 + 2 * S(u), r: 3 + 1.2 * S(u) };
+        return { hips, ...legs(hips, { x: -3 }, { x: 4, y: 3 * Math.max(0, S(u, 1, 0.3)) }), torso: { r: 5 + 2 * S(u, 1, 0.1), y: -3 },
+          head: { r: -12 + 3 * S(u, 1, 0.25) }, upperL: { r: 8 + 3 * S(u, 1, 0.2) }, foreL: { r: 14 + 5 * S(u, 1, 0.35) },
+          upperR: { r: -4 + 3 * S(u, 1, 0.2) }, foreR: { r: -10 + 5 * S(u, 1, 0.35) }, show: { rotor: 'motor' } };
+      }],
     },
   },
   kraken: {
@@ -204,9 +237,13 @@ function build2(name) {
   const bones = [{ name: 'root' }, ...cfg.bones.map(([b, parent]) => {
     const [x, y] = world(b), [px, py] = world(parent);
     const bone = { name: b, parent, x: r2(x - px), y: r2(y - py) };
-    if (cfg.stretch?.includes(b)) {
-      const m = parts[partOfBone[b]], hip = m.pivot[1];
+    if (cfg.stretch?.[b]) { // stretched from this bone's pivot down to the bottom of the named part (its foot)
+      const m = parts[cfg.stretch[b]], hip = parts[partOfBone[b]].pivot[1];
       bone.scaleY = Math.round(((feet[1] - hip) / (m.y + m.h - hip)) * 1000) / 1000;
+    }
+    if (cfg.unstretch?.includes(b)) { // drawn at its own size again under a stretched bone
+      const [sb, foot] = Object.entries(cfg.stretch)[0], hip = parts[partOfBone[sb]].pivot[1], m = parts[foot];
+      bone.scaleY = Math.round(((m.y + m.h - hip) / (feet[1] - hip)) * 1000) / 1000;
     }
     if (cfg.boneScale?.[b]) [bone.scaleX, bone.scaleY] = cfg.boneScale[b]; // (squashing a spinning part to a perspective angle)
     return bone;
@@ -215,7 +252,8 @@ function build2(name) {
   // every attachment a slot can show: its rest one and any an animation swaps in
   const shows = {};
   for (const [slot, , att] of cfg.slots) if (att) (shows[slot] ??= new Set()).add(att);
-  for (const [, , pose] of Object.values(cfg.animations)) for (const k of [0, 0.5]) for (const [slot, att] of Object.entries(pose(k).show ?? {})) if (att) (shows[slot] ??= new Set()).add(att);
+  const ctx0 = { legs: () => ({}), leg: () => ({}) };
+  for (const [, , pose] of Object.values(cfg.animations)) for (const k of [0, 0.5]) for (const [slot, att] of Object.entries(pose(k, ctx0).show ?? {})) if (att) (shows[slot] ??= new Set()).add(att);
   const attachments = {};
   for (const [slot, bone] of cfg.slots) {
     for (const att of shows[slot] ?? []) {
@@ -227,8 +265,29 @@ function build2(name) {
       (attachments[slot] ??= {})[att] = { x: r2(cx - bx), y: r2(cy - by), ...(sc !== 1 ? { scaleX: sc, scaleY: sc } : {}), width: m.w, height: m.h };
     }
   }
+  // legs(hips, footL, footR): thigh, shin and foot turns that put each boot where it is asked (moved from its rest place by x, y,
+  // tilted by `tilt`) while the hips bone is moved and turned by `hips`. Two-bone, solved here and baked into the keys.
+  const D = 180 / Math.PI;
+  const rotAbout = ([x, y], [cx, cy], deg) => { const a = deg / D, dx = x - cx, dy = y - cy; return [cx + dx * Math.cos(a) - dy * Math.sin(a), cy + dx * Math.sin(a) + dy * Math.cos(a)]; };
+  const leg = (thigh, shin, foot, bow, hips, f = {}) => {
+    const hipBone = cfg.bones.find(([b]) => b === thigh)[1];
+    const P = world(hipBone), H0 = world(thigh), K0 = world(shin), A0 = world(foot);
+    const rh = hips.r ?? 0, H = rotAbout(H0, P, rh).map((v, i) => v + [(hips.x ?? 0), (hips.y ?? 0)][i]);
+    const l1 = Math.hypot(K0[0] - H0[0], K0[1] - H0[1]), l2 = Math.hypot(A0[0] - K0[0], A0[1] - K0[1]);
+    const T = [A0[0] + (f.x ?? 0), A0[1] + (f.y ?? 0)];
+    const d = Math.min(Math.hypot(T[0] - H[0], T[1] - H[1]), l1 + l2 - 0.01);
+    const alpha = Math.acos(Math.max(-1, Math.min(1, (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d)))) * D;
+    const base = Math.atan2(T[1] - H[1], T[0] - H[0]) * D;
+    const t1 = base + bow * alpha, K = [H[0] + l1 * Math.cos(t1 / D), H[1] + l1 * Math.sin(t1 / D)];
+    const t2 = Math.atan2(T[1] - K[1], T[0] - K[0]) * D;
+    const a1 = t1 - Math.atan2(K0[1] - H0[1], K0[0] - H0[0]) * D - rh, a2 = t2 - Math.atan2(A0[1] - K0[1], A0[0] - K0[0]) * D - rh - a1;
+    const wrap = (v) => ((v + 540) % 360) - 180;
+    return { [thigh]: { r: wrap(a1) }, [shin]: { r: wrap(a2) }, [foot]: { r: wrap((f.tilt ?? 0) - rh - a1 - a2) } };
+  };
+  const ctx = { legs: (hips, fL, fR) => ({ ...(cfg.legs.L ? leg(...cfg.legs.L, hips, fL) : {}), ...(cfg.legs.R ? leg(...cfg.legs.R, hips, fR) : {}) }), leg };
   const animations = {};
-  for (const [anim, [dur, n, pose]] of Object.entries(cfg.animations)) {
+  for (const [anim, [dur, n, pose0]] of Object.entries(cfg.animations)) {
+    const pose = (u) => pose0(u, ctx);
     const bonesAnim = {}, slotsAnim = {};
     for (let i = 0; i <= n; i++) {
       const time = r2((dur * i) / n), p = pose(i / n); // not wrapped: continuous spins keep turning
@@ -264,15 +323,18 @@ function build(name) {
   // stretch: how much longer the far leg must be (hip to the lowest point of its shin) to reach the ground
   let far = 1;
   if (cfg.stretch) {
-    const hip = meta[cfg.stretch.thigh].pivot[1], m = meta[cfg.stretch.shin];
+    const hip = meta[cfg.stretch.thigh].pivot[1], m = meta[cfg.stretch.foot ?? cfg.stretch.shin]; // (the foot, when it has one)
     far = (cfg.feet[1] - hip) / (m.y + m.h - hip);
   }
   const stretched = new Set(cfg.stretch ? [cfg.stretch.thigh, cfg.stretch.shin] : []);
-  const sy = (b) => (stretched.has(b) ? far : 1);
+  // the stretch is even from the hip down (positions and pictures alike), so the leg's pieces stay joined
+  const sy = () => 1;
   const bones = [{ name: 'root' }, ...cfg.bones.map(([b, parent]) => {
     const [x, y] = world(b), [px, py] = world(parent);
     const bone = { name: b, parent, x: r2(x - px), y: r2((y - py) / sy(parent)) };
     if (cfg.stretch && b === cfg.stretch.thigh) bone.scaleY = Math.round(far * 1000) / 1000;
+    // a foot under the stretched leg: carried down with the stretch to the ground, but drawn at its own size
+    if (cfg.stretch && b === cfg.stretch.foot) bone.scaleY = Math.round((1 / far) * 1000) / 1000;
     return bone;
   })];
   const slots = cfg.order.map((k) => ({ name: k, bone: k, attachment: k }));
@@ -288,9 +350,9 @@ function build(name) {
     for (let i = 0; i <= n; i++) {
       const time = r2((dur * i) / n), p = pose((i % n) / n);
       for (const [b, v] of Object.entries(p)) {
-        const t = (bonesAnim[b] ??= {});
-        (t.rotate ??= []).push({ time, value: r2(v.r ?? 0) });
-        if ('y' in v || 'x' in v) (t.translate ??= []).push({ time, x: r2(v.x ?? 0), y: r2(v.y ?? 0) });
+        const t = (bonesAnim[b] ??= {}), step = cfg.stepped ? { curve: 'stepped' } : {};
+        (t.rotate ??= []).push({ time, value: r2(v.r ?? 0), ...step });
+        if ('y' in v || 'x' in v) (t.translate ??= []).push({ time, x: r2(v.x ?? 0), y: r2(v.y ?? 0), ...step });
       }
     }
     for (const t of Object.values(bonesAnim)) for (const tl of Object.values(t)) for (const k of tl) if (k.time === 0) delete k.time;

@@ -25,6 +25,9 @@ spec.loader.exec_module(iggy_cut)
 
 # (polygon, pivot) in sheet pixels, in cutting order; whatever is left over is the body
 PARTS = {
+    # the claw feet, cut off at the ankle so they can stay flat on the ground while the legs work
+    'footL': ([(112, 934), (250, 934), (256, 1000), (112, 1000)], (182, 940)),
+    'footR': ([(440, 896), (522, 893), (596, 906), (596, 968), (440, 968)], (482, 902)),
     'cannonFore': ([(60, 430), (210, 430), (218, 485), (252, 560), (300, 612), (318, 632), (380, 800), (338, 812), (280, 740), (252, 690), (240, 645), (150, 655), (60, 612)], (150, 455)),
     'cannonUpper': ([(205, 285), (300, 285), (300, 330), (255, 380), (205, 450), (192, 482), (108, 482), (108, 420), (150, 370), (205, 330)], (255, 330)),
     'keyFore': ([(470, 455), (742, 455), (742, 602), (470, 602)], (500, 482)),
@@ -33,10 +36,16 @@ PARTS = {
     'shinR': ([(410, 728), (542, 728), (522, 880), (584, 898), (584, 962), (428, 962)], (495, 735)),
     'thighL': ([(225, 652), (322, 652), (302, 760), (242, 805), (178, 805), (178, 720)], (290, 665)),
     'thighR': ([(400, 658), (470, 658), (540, 705), (536, 765), (472, 775), (405, 690)], (425, 665)),
+    # the clock hood (his head), the pendulum in the trunk's window and the watch fob on its chain under the gearbox
+    'head': ([(262, 92), (482, 92), (512, 150), (512, 215), (482, 262), (476, 332), (268, 332), (262, 300)], (372, 330)),
+    'pendulum': ([(382, 390), (403, 390), (405, 462), (419, 474), (419, 524), (354, 524), (354, 474), (379, 462)], (392, 394)),
+    'fob': ([(352, 650), (402, 650), (402, 762), (352, 762)], (377, 655)),
 }
 # parts that something in front of them hides a piece of: the hidden piece is filled in from the part's own nearest pixels, so no
 # hole shows when the thing in front moves away (the near thigh and the hip, behind the cannon)
-FILL_BEHIND = {'thighL': None, 'body': [(232, 592), (338, 592), (338, 708), (232, 708)]}  # part -> area to fill (None = all of it)
+FILL_BEHIND = {'thighL': None, 'body': [[(232, 592), (338, 592), (338, 708), (232, 708)],  # part -> areas to fill (None = all of it)
+                                         [(350, 386), (424, 386), (424, 528), (350, 528)],  # the pendulum's window
+                                         [(262, 300), (482, 300), (482, 336), (262, 336)]]}  # under the hood's rim, where it tilts
 BODY = ([(150, 40), (565, 40), (565, 600), (470, 690), (300, 690), (250, 600), (150, 600)], (350, 620))
 
 
@@ -58,12 +67,16 @@ def main():
             hidden = inside & ~m  # covered by a part cut earlier
             if FILL_BEHIND[name]:
                 lim = Image.new('L', (x1 - x0, y1 - y0), 0)
-                ImageDraw.Draw(lim).polygon([(x - x0, y - y0) for x, y in FILL_BEHIND[name]], fill=255)
+                for area in FILL_BEHIND[name]:
+                    ImageDraw.Draw(lim).polygon([(x - x0, y - y0) for x, y in area], fill=255)
                 hidden &= np.array(lim) > 0
             if hidden.any():
                 _, (iy, ix) = ndimage.distance_transform_edt(~m, return_indices=True)
                 src = rgb.copy()
                 src[hidden] = rgb[iy[hidden], ix[hidden]]
+                # smeared edge pixels make streaks: blur the fill and darken it a little, so it reads as machinery in shadow
+                soft = np.stack([ndimage.gaussian_filter(src[..., c].astype(float), 5) for c in range(3)], -1) * 0.8
+                src[hidden] = soft[hidden].astype(np.uint8)
                 m = m | hidden
         ys, xs = np.nonzero(m)
         bx0, by0, bx1, by1 = xs.min(), ys.min(), xs.max() + 1, ys.max() + 1

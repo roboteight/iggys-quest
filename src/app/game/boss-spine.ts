@@ -99,14 +99,31 @@ export class BossSpine {
     }
   }
 
+  /** An animation to play instead of the one the image's texture picks (null: back to normal), if the rig has it. It plays
+   *  once and holds its last pose, for a wind-up held until the attack is over (Grandfather Gloom levelling his harpoon). */
+  force(anim: string | null) {
+    this.forced = anim && this.spine.skeleton.data.findAnimation(anim) ? anim : null;
+  }
+  private forced: string | null = null;
+
+  /** Where a point on one of the skeleton's bones (in the bone's own units) is in the game, or undefined without that bone. */
+  point(bone: string, x: number, y: number): { x: number; y: number } | undefined {
+    const b = this.spine.active ? this.spine.skeleton.findBone(bone) : null;
+    if (!b) return undefined;
+    const v = { x, y };
+    b.appliedPose.localToWorld(v as never);
+    this.spine.skeletonToGame(v);
+    return v;
+  }
+
   /** Copy the image's state onto the skeleton. `speed` scales the animation (the slower-enemies assist). */
   sync(speed: number) {
     const { img, spine, def } = this;
     if (!spine.active) return;
     const k = img.texture.key;
-    const anim = /-w\d$/.test(k) ? 'walk' : k.endsWith('-b') ? 'charge' : 'idle';
+    const anim = this.forced ?? (/-w\d$/.test(k) ? 'walk' : k.endsWith('-b') ? 'charge' : 'idle');
     const cur = spine.animationState.getTrack(0);
-    if (cur?.animation?.name !== anim) spine.animationState.setAnimation(0, anim, true);
+    if (cur?.animation?.name !== anim) spine.animationState.setAnimation(0, anim, anim !== this.forced);
     spine.animationState.timeScale = def.speed * speed;
     // the image faces left unless flipped
     const left = !img.flipX;

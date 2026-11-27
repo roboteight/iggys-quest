@@ -36,11 +36,17 @@ BOSSES = {
         'parts': {
             'gunArm': ([(38, 330), (242, 330), (252, 420), (302, 470), (408, 598), (384, 628), (290, 604), (150, 562), (38, 504)], (215, 342)),
             'clawArm': ([(470, 400), (562, 400), (652, 458), (738, 458), (738, 578), (560, 524), (470, 474)], (492, 432)),
-            'legL': ([(150, 604), (322, 604), (332, 892), (128, 892)], (250, 612)),
-            'legR': ([(400, 604), (572, 604), (588, 832), (395, 832)], (482, 612)),
+            # each leg in three, like Enforcer Nine's: thigh and knee, shin (with the hock spring), boot
+            'footL': ([(110, 834), (330, 834), (330, 912), (110, 912)], (215, 836)),
+            'footR': ([(384, 790), (520, 790), (525, 766), (608, 766), (608, 845), (384, 845)], (470, 792)),
+            'shinL': ([(110, 648), (352, 648), (352, 834), (110, 834)], (240, 652)),
+            'shinR': ([(380, 645), (600, 645), (600, 766), (525, 766), (520, 790), (384, 790)], (470, 648)),
+            'thighL': ([(130, 604), (340, 604), (352, 648), (110, 648)], (250, 612)),
+            'thighR': ([(392, 604), (590, 604), (600, 645), (380, 645)], (482, 612)),
             'rest': (None, (360, 880)),
         },
         'feet': (360, 880),
+        'clean': 1500,  # (each part's own paper removal differs a little, which leaves slivers along the new cuts)
     },
     'nwarden': {
         'main': box(55, 40, 738, 822),
@@ -113,15 +119,28 @@ BOSSES = {
         'feet': (560, 625),
     },
     'warden': {
-        'main': box(268, 52, 795, 702),
+        'main': box(262, 52, 802, 712),
         'parts': {
-            'armL': (box(268, 255, 400, 565), (355, 290)),
-            'armR': (box(640, 255, 795, 565), (660, 290)),
-            'rest': (None, (532, 698)),
-            'rotor': (box(58, 338, 238, 505), (148, 420), {'place': (503, 257), 'scale': 0.98}),
-            'motor': (box(800, 325, 965, 505), (875, 415), {'place': (503, 257), 'scale': 1.05}),
+            # front-on: head on the neck, two-piece arms (upper arm under the pauldron, turbine forearm from the elbow hinge),
+            # and legs in three (thigh with its knee pad, shin, boot) under a separate pelvis, so it can stomp and crouch
+            'head': ([(490, 76), (556, 76), (560, 150), (486, 150)], (523, 146)),
+            'foreL': (box(262, 352, 402, 522), (335, 352)),
+            'foreR': ([(634, 344), (722, 344), (802, 378), (802, 512), (634, 512)], (672, 346)),
+            'upperL': (box(262, 255, 402, 352), (360, 282)),
+            'upperR': (box(634, 255, 802, 344), (664, 284)),
+            'footL': (box(366, 660, 482, 712), (428, 664)),
+            'footR': (box(546, 656, 684, 712), (612, 660)),
+            'shinL': (box(366, 566, 496, 660), (432, 568)),
+            'shinR': (box(546, 562, 674, 656), (612, 564)),
+            'thighL': ([(392, 398), (455, 398), (464, 420), (488, 440), (492, 566), (392, 566)], (440, 408)),
+            'thighR': ([(552, 440), (574, 416), (584, 398), (648, 398), (664, 562), (546, 562)], (602, 408)),
+            'pelvis': (box(440, 372, 604, 478), (522, 392)),
+            'rest': (None, (522, 388)),
+            'rotor': (box(58, 338, 238, 505), (148, 420), {'place': (543, 260), 'scale': 0.98}),
+            'motor': (box(800, 325, 965, 505), (875, 415), {'place': (543, 260), 'scale': 1.05}),
         },
-        'feet': (532, 698),
+        'feet': (532, 704),
+        'clean': True,
     },
     'kraken': {
         'main': box(68, 72, 822, 738),
@@ -258,6 +277,11 @@ def cut(name):
                 if n > 1:
                     sizes = ndimage.sum(m, lab, range(1, n + 1))
                     m = np.isin(lab, 1 + np.nonzero(sizes >= 250)[0])
+            if cfg.get('clean') and part == 'rest':  # slivers left along the joins between neighbouring parts
+                lab, n = ndimage.label(m)
+                if n > 1:
+                    sizes = ndimage.sum(m, lab, range(1, n + 1))
+                    m = np.isin(lab, 1 + np.nonzero(sizes >= (250 if cfg['clean'] is True else cfg['clean']))[0])
             taken[bx[1]:bx[3], bx[0]:bx[2]] |= m
             seg[bx[1]:bx[3], bx[0]:bx[2]][m] = (*cols[i % len(cols)], 150)
         yy, xx = np.nonzero(m)

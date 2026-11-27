@@ -199,6 +199,8 @@ interface BossState {
   def: BossDef; sprite: Phaser.GameObjects.Image; hp: number; max: number;
   state: 'intro' | 'walk' | 'telegraph' | 'stagger' | 'charge' | 'dead';
   timer: number; cd: number; attack: BossAttack; stomped: boolean; touchCD: number; said: number;
+  /** an attack it follows up with straight after this one (Grandfather Gloom stomps on Iggy once he has reeled him in) */
+  next?: BossAttack;
   /** the lunge in progress: where it stops and how fast it goes */
   dashTo?: number; dashV?: number;
   /** its energy shield, if it has one: hits left, whether it's up, and seconds until it comes back */
@@ -218,8 +220,8 @@ const FORGE_FEET: [number, number] = [520, 700];
 const SHIELD_DOWN = 6;
 /** Cheat codes, typed as words during a level (key positions, so they're the same keys on any layout): GOLD puts Iggy in the
  *  best suit, MAGNET gives him the magnet power-up, UNSTOPPABLE turns invincibility on (and off again) for the rest of the level,
- *  ARMED gives him a blaster, and each time again upgrades it like picking up another gun */
-const CHEATS: Record<'gold' | 'magnet' | 'unstoppable' | 'armed', string[]> = { gold: ['GOLD'], magnet: ['MAGNET'], unstoppable: ['UNSTOPPABLE'], armed: ['ARMED'] };
+ *  ARMED gives him a blaster, and each time again upgrades it like picking up another gun, IMBORING takes him straight to the boss */
+const CHEATS: Record<'gold' | 'magnet' | 'unstoppable' | 'armed' | 'boss', string[]> = { gold: ['GOLD'], magnet: ['MAGNET'], unstoppable: ['UNSTOPPABLE'], armed: ['ARMED'], boss: ['IMBORING'] };
 const CHEAT_LEN = Math.max(...Object.values(CHEATS).flat().map((w) => w.length));
 /** the clear floor a walking boss always leaves between its body and either arena wall, for Iggy to stand and dodge in */
 const BOSS_ROOM = 110;
@@ -228,6 +230,13 @@ const PERFECT_BONUS = 5000;
 interface BossWave { img: Phaser.GameObjects.Image; vx: number; high?: boolean }
 /** a saw blade from the Dune Dredger's bucket wheel, rolling along the floor (`hop` makes it bounce as it goes) */
 interface Saw { img: Phaser.GameObjects.Image; vx: number; t: number; hop: boolean }
+/** Grandfather Gloom's harpoon on its cable: `back` once it is being reeled in, `hit` once it has struck Iggy, `hooked` while it
+ *  is dragging him in (for at most `hookT` more seconds) */
+interface Harpoon { img: Phaser.GameObjects.Image; vx: number; vy: number; out: number; back: boolean; hit: boolean; hooked: boolean; hookT: number; rope: Phaser.GameObjects.Graphics }
+/** a hooked Iggy is let go this far (game px) from Gloom's middle, so he lands in front of him rather than in him */
+const HARPOON_LET_GO = 150;
+/** the harpoon's point and the back of its head on Gloom's cannon, in the cannonFore bone's units (sheet px from its pivot) */
+const GLOOM_HARPOON = { tip: [370 - 150, 455 - 800], tail: [296 - 150, 455 - 714] } as const;
 /** the Dune Dredger's bucket wheel, where its saws come from: sheet px from its feet (560, 625) to the hub (232, 465) */
 const DREDGER_HUB: [number, number] = [232 - 560, 465 - 625];
 interface Flag { x: number; top: number; sprite: Phaser.GameObjects.Image; on: boolean }
@@ -312,6 +321,7 @@ export class PlayScene extends Phaser.Scene {
   private slag: Slag[] = [];
   private bossWaves: BossWave[] = [];
   private saws: Saw[] = [];
+  private harpoons: Harpoon[] = [];
   private bossAmmoT = 8;
   private nextX = 0;
   private lastTop = 400;
@@ -475,6 +485,7 @@ export class PlayScene extends Phaser.Scene {
     for (const k of [...Array.from({ length: 6 }, (_, i) => `f${i}`), 'glide']) this.load.image(`foe-magpie-${k}`, `foes/magpie-${k}.png`); // its wingbeat (tools/magpie-cut.py)
     this.load.image('foe-bomb', 'foes/bomb.png');
     if (levelById(this.registry.get('level')).style === 'dunes') this.load.image('dredger-saw', 'foes/dredger-saw.png'); // its bucket wheel, as a flung saw
+    if (levelById(this.registry.get('level')).style === 'hollow') this.load.image('gloom-harpoon', 'foes/gloom-harpoon.png'); // the head of his harpoon (tools/gloom-harpoon.py)
     this.load.image('foe-copycat-down', 'foes/copycat-down.png');
     const style = levelById(this.registry.get('level')).style;
     if (style === 'city') preloadEnforcerRig(this);
@@ -621,6 +632,7 @@ export class PlayScene extends Phaser.Scene {
     this.bossShots = [];
     this.bossWaves = [];
     this.saws = [];
+    this.harpoons = [];
     this.slag = [];
     this.bossAmmoT = 8;
     this.layers = [];
@@ -1357,6 +1369,7 @@ export class PlayScene extends Phaser.Scene {
     this.bossWaves.forEach((w) => w.img.destroy());
     this.saws.forEach((w) => w.img.destroy());
     this.saws = [];
+    this.clearHarpoons();
     this.bossShots = [];
     this.bossWaves = [];
     this.sfx.bossDown();
@@ -1455,6 +1468,110 @@ export class PlayScene extends Phaser.Scene {
     this.bossShots.push({ img, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, g: 0, mortar: false });
   }
 
+  /** The end of Grandfather Gloom's cannon right now (where the harpoon leaves and is reeled back to), in game px. */
+  private harpoonMuzzle(b: BossState) {
+    const tip = b.spine?.point('cannonFore', ...GLOOM_HARPOON.tip), tail = b.spine?.point('cannonFore', ...GLOOM_HARPOON.tail);
+    if (tip && tail) return { tip, tail };
+    const s = b.sprite, x = s.x + (s.flipX ? -b.def.muzzle[0] : b.def.muzzle[0]), y = s.y - 70; // (no rig: from its chest)
+    return { tip: { x, y }, tail: { x: x - (s.flipX ? -20 : 20), y } };
+  }
+
+  /** The harpoon leaves the cannon's tip at Iggy (kept within 35 degrees of level), trailing its cable. */
+  private fireHarpoon(b: BossState, tier: number) {
+    const { tip } = this.harpoonMuzzle(b), body = this.body;
+    const dir = body.center.x >= tip.x ? 1 : -1;
+    const a = Phaser.Math.Clamp(Math.atan2(body.center.y - tip.y, Math.abs(body.center.x - tip.x)), -0.6, 0.6);
+    const v = 520 + 140 * tier;
+    const key = this.textures.exists('gloom-harpoon') ? 'gloom-harpoon' : 'boss-orb';
+    const vx = dir * Math.cos(a) * v, vy = Math.sin(a) * v;
+    // (pointing along its flight: the picture points right, so turned half round when it flies left; origin near the point)
+    const img = this.add.image(tip.x, tip.y, key).setDepth(9).setOrigin(0.85, 0.5).setScale(0.36).setRotation(Math.atan2(vy, vx));
+    this.harpoons.push({ img, vx, vy, out: 0, back: false, hit: false, hooked: false, hookT: 0, rope: this.add.graphics().setDepth(8) });
+    this.sfx.bossFire();
+    if (!this.reduced) this.cameras.main.shake(90, 0.004);
+    b.cd = Math.max(b.cd, 1.5);
+  }
+
+  /** Harpoons fly out until they strike Iggy, the floor or the edge of the screen, then reel back in to the cannon. */
+  private updateHarpoons(edt: number) {
+    const b = this.boss;
+    if (!this.harpoons.length) {
+      if (b?.spine && !(b.state === 'telegraph' && b.attack === 'harpoon')) b.spine.force(null); // (also if the wind-up was cut short)
+      return;
+    }
+    const body = this.body, camX = this.cameras.main.scrollX;
+    const from = b && b.state !== 'dead' ? this.harpoonMuzzle(b).tip : null;
+    this.harpoons = this.harpoons.filter((h) => {
+      const img = h.img;
+      if (!h.back) {
+        img.x += h.vx * edt;
+        img.y += h.vy * edt;
+        h.out += Math.hypot(h.vx, h.vy) * edt;
+        if (h.out > 1000 || img.y >= this.arenaTop - 6 || img.x < camX + 10 || img.x > camX + W - 10) {
+          h.back = true;
+          this.sfx.bossStomp();
+          this.debris(img.x, img.y, 'spark', this.reduced ? 2 : 6, 0.8);
+        }
+      } else if (from) {
+        const dx = from.x - img.x, dy = from.y - img.y, d = Math.hypot(dx, dy), step = (h.hooked ? 560 : 820) * edt; // (slower with him on the end)
+        if (d <= step + 4) { this.unhook(h); img.destroy(); h.rope.destroy(); return false; }
+        img.x += (dx / d) * step;
+        img.y += (dy / d) * step;
+        if (h.hooked) {
+          // dragged along behind the barbs, boots scraping, until he is close in front of Gloom (or the pull runs out)
+          h.hookT -= edt;
+          const toward = Math.sign(b!.sprite.x - body.center.x);
+          if (h.hookT <= 0 || Math.abs(b!.sprite.x - body.center.x) <= HARPOON_LET_GO || this.over) {
+            this.unhook(h);
+            // reeled in: it follows up with a stomp at once (its wind-up still gives him time to jump clear)
+            if (b && b.state === 'walk') { b.next = 'stomp'; b.cd = Math.min(b.cd, 0.25); }
+          }
+          else {
+            body.setVelocity(Phaser.Math.Clamp((img.x - body.center.x) / Math.max(edt, 1 / 120), -900, 900) || toward * 300, body.blocked.down ? 0 : body.velocity.y);
+            if (!this.reduced && body.blocked.down && Math.random() < edt * 30) this.dust(body.center.x, body.bottom, 1, 10, 6, 0.6);
+          }
+        }
+      }
+      if (!from && h.back) { this.unhook(h); img.destroy(); h.rope.destroy(); return false; }
+      // the barbed head hurts on the way out and on the way back (once per throw)
+      const cx = Math.cos(img.rotation), cy = Math.sin(img.rotation), hx = img.x + cx * 6, hy = img.y + cy * 6;
+      if (!h.hit && Math.abs(hx - body.center.x) < 24 && Math.abs(hy - body.center.y) < body.height / 2 + 4) {
+        h.hit = true;
+        h.back = true;
+        const lives = this.lives, safe = this.invuln > 0 || this.power.star > 0 || this.dashT > 0 || this.unstoppable;
+        this.hit('enemy');
+        // it hooks him (unless it passed through him harmlessly, or the hit cost a life and sent him back to the arena door)
+        if (!safe && this.lives === lives && !this.over && b && b.state !== 'dead') {
+          h.hooked = true;
+          h.hookT = 1.2;
+          this.releaseHang();
+          this.sayOnce('harpooned', `Harpooned! ${b.def.name} reels Iggy in close. He is let go just in front of it: get clear.`);
+        }
+      }
+      // the cable, from the cannon to the back of the head
+      const bx = img.x - cx * img.displayWidth * 0.85, by = img.y - cy * img.displayWidth * 0.85;
+      h.rope.clear();
+      if (from) {
+        h.rope.lineStyle(this.hc ? 4 : 3, this.hc ? 0xffffff : 0x1a1410, 1).lineBetween(from.x, from.y, bx, by);
+        if (!this.hc) h.rope.lineStyle(1, 0x8a7a60, 1).lineBetween(from.x, from.y - 1, bx, by - 1);
+      }
+      return true;
+    });
+  }
+
+  /** Let go of Iggy if this harpoon has him. */
+  private unhook(h: Harpoon) {
+    if (!h.hooked) return;
+    h.hooked = false;
+    this.body.setVelocity(this.body.velocity.x * 0.15, this.body.velocity.y);
+  }
+
+  private clearHarpoons() {
+    this.harpoons.forEach((h) => { this.unhook(h); h.img.destroy(); h.rope.destroy(); });
+    this.harpoons = [];
+    this.boss?.spine?.force(null);
+  }
+
   private lobBossShot(x: number, y: number, tx: number) {
     const T = 0.95, g = 900;
     const img = this.add.image(x, y, 'boss-orb').setDepth(9).setScale(1.3);
@@ -1482,8 +1599,10 @@ export class PlayScene extends Phaser.Scene {
         const box = this.bossBox(b), far = Math.max(0, (box.x1 - box.x0) / 2 - 150); // a boss wider than 300px keeps that much further back
         // with Iggy backed into a corner it gives him more room, so he isn't pinned against the wall
         const cornered = px < this.camLock + 26 + BOSS_ROOM + 60 || px > this.camLock + W - BOSS_ROOM - 60;
-        const want = Math.abs(dx) > 360 + far ? face : Math.abs(dx) < (cornered ? 360 : 250) + far ? -face : 0;
-        s.x = Phaser.Math.Clamp(s.x + want * b.def.speed * (enraged ? 1.4 : 1) * edt, lo, hi);
+        // a pushy boss closes in further before it stops, and only backs off when Iggy is right under it
+        const aggr = this.bossAggression(b), near = 360 - 90 * (aggr - 1), close = 250 - 70 * (aggr - 1);
+        const want = Math.abs(dx) > near + far ? face : Math.abs(dx) < (cornered ? 360 : close) + far ? -face : 0;
+        s.x = Phaser.Math.Clamp(s.x + want * b.def.speed * aggr * (enraged ? 1.4 : 1) * edt, lo, hi);
         s.y = this.arenaTop + (!this.reduced && want !== 0 ? Math.abs(Math.sin(this.t * 6)) * -3 : 0);
         // the sprite steps (or hovers, or rumbles) while it moves, and breathes between steps
         const style = this.level.style, moving = want !== 0;
@@ -1492,7 +1611,8 @@ export class PlayScene extends Phaser.Scene {
         b.cd -= edt;
         if (b.cd <= 0) {
           const list = (b.phase === 3 && b.def.phase3) || (b.phase === 2 && b.def.phase2) || b.def.attacks;
-          b.attack = list[Math.floor(Math.random() * list.length)];
+          b.attack = b.next ?? list[Math.floor(Math.random() * list.length)];
+          b.next = undefined;
           if (b.attack === 'sweep') {
             b.sweepHigh = Math.random() < 0.5;
             this.banner(b.sweepHigh ? 'High sweep: duck!' : 'Low sweep: jump!');
@@ -1507,6 +1627,11 @@ export class PlayScene extends Phaser.Scene {
           if (b.attack === 'charge') this.sayOnce('ram', `${b.def.name} is rearing back to ram you. Back away!`);
           if (b.attack === 'saw') this.sayOnce('saw', `${b.def.name} is revving its bucket wheel! It flings spinning saw blades along the floor: jump them.`);
           if (b.attack === 'stomp') s.y = this.arenaTop - 14;
+          if (b.attack === 'harpoon') {
+            b.timer = 0.9 - 0.1 * tier; // (the cannon takes four clicks to come level)
+            b.spine?.force('aim');
+            this.sayOnce('harpoon', `${b.def.name} is levelling its cannon: a harpoon on a cable shoots straight at you. If it hits, it drags you in close. Get out of its line: jump over it or drop under it.`);
+          }
         }
       } else if (b.state === 'telegraph') {
         if (b.timer <= 0) this.bossAttack(b, enraged);
@@ -1589,6 +1714,7 @@ export class PlayScene extends Phaser.Scene {
       if (gone) sh.img.destroy();
       return !gone;
     });
+    this.updateHarpoons(edt);
     this.saws = this.saws.filter((w) => {
       w.t += edt;
       w.img.x += w.vx * edt;
@@ -1643,7 +1769,7 @@ export class PlayScene extends Phaser.Scene {
     b.state = 'walk';
     // each boss is harder than the last: quicker between attacks, faster shots, more of them
     const tier = this.bossTier(), more = Math.round(tier * 2), fast = 1 + 0.35 * tier;
-    b.cd = (enraged ? 1.1 : 1.8) * (1 - 0.35 * tier - 0.1 * this.late());
+    b.cd = ((enraged ? 1.1 : 1.8) * (1 - 0.35 * tier - 0.1 * this.late())) / this.bossAggression(b);
     if (b.phase === 3 && Math.random() < 0.45) b.cd = 0.35; // the last stage: often a second attack straight after the first
     if (b.attack === 'volley') {
       const n = (enraged ? 3 : 2) + more;
@@ -1681,6 +1807,8 @@ export class PlayScene extends Phaser.Scene {
         });
       }
       b.cd = Math.max(b.cd, 1.4);
+    } else if (b.attack === 'harpoon') {
+      this.fireHarpoon(b, tier);
     } else if (b.attack === 'pour') {
       // the ladle (on its far side) flings molten metal over its shoulder, onto where Iggy stands and either side of him
       const sign = s.flipX ? -1 : 1, lx = s.x + 40 * sign + 228 * sign, ly = s.y - 190;
@@ -1727,6 +1855,13 @@ export class PlayScene extends Phaser.Scene {
   }
 
   /** How far through the game this boss is: 0 for the first, 1 for the last (the Sky Docks); its attacks scale with it. */
+  /** How pushy this boss is: each one more than the last, from 1.1 for the first to 1.5 for the last (and the secret one), times
+   *  its own nudge. It rests that much less between attacks, walks that much faster and crowds Iggy closer; its wind-ups
+   *  stay the same length, so there's always the same time to react to an attack. */
+  private bossAggression(b: BossState) {
+    return (1.1 + 0.4 * this.bossTier()) * (b.def.aggression ?? 1);
+  }
+
   private bossTier() {
     return Phaser.Math.Clamp((this.level.number - 1) / 11, 0, 1);
   }
@@ -2993,6 +3128,22 @@ export class PlayScene extends Phaser.Scene {
   /** The last few keys pressed, for the cheat code (see onDown in create) */
   private cheatKeys: string[] = [];
 
+  /** The IMBORING cheat: open the boss arena now (whatever the score) and put Iggy at its door, where the boss wakes up. */
+  private skipToBoss() {
+    if (this.camLock !== null) return; // already at the boss
+    if (this.arenaX === null) this.openArena();
+    if (this.hang) this.releaseHang();
+    const x = this.arenaX! + 160, top = this.arenaTop;
+    this.body.reset(x, top - this.body.height / 2 - 2);
+    this.checkpoint = { x, top, flag: true }; // a lost life restarts here, not back down the road
+    this.cameras.main.scrollX = Math.max(this.cameras.main.scrollX, x - 330);
+    this.flawlessLost = 'skipped to the boss';
+    this.sfx.suit();
+    this.banner('Straight to the boss!');
+    this.announce('Cheat code! Iggy skips the rest of the road and lands at the boss arena. No perfect run this time.');
+    if (!this.reduced) this.burst(this.body.center.x, this.body.center.y, [0xffffff, 0xffe14a, 0x4af0ff], 28, 240);
+  }
+
   /** Feed a key press to the cheat codes; when the last keys spell one out, it takes effect. */
   private cheatKey(code: string) {
     this.cheatKeys.push(/^Key[A-Z]$/.test(code) ? code.slice(3) : '?');
@@ -3013,6 +3164,10 @@ export class PlayScene extends Phaser.Scene {
         this.emitHud(true);
         if (!this.reduced) this.burst(this.body.center.x, this.body.center.y, [0xffffff, 0xffe14a, 0x4af0ff], 28, 240);
       }
+      return;
+    }
+    if (hit === 'boss') {
+      this.skipToBoss();
       return;
     }
     if (hit === 'armed') {
@@ -4018,6 +4173,7 @@ export class PlayScene extends Phaser.Scene {
     this.bossWaves.forEach((w) => w.img.destroy());
     this.saws.forEach((w) => w.img.destroy());
     this.saws = [];
+    this.clearHarpoons();
     this.bossShots = [];
     this.bossWaves = [];
     this.burst(spot.x, spot.top - 30, [0xffffff, 0x4af0ff], 16, 170);
