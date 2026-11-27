@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { SettingsService } from '../settings.service';
 import { ProgressService } from '../progress.service';
+import { AnalyticsService } from '../analytics.service';
 import { FocusOnLoad } from './focus-heading';
 import { OptionsPanel } from './options';
 
@@ -32,6 +33,14 @@ import { OptionsPanel } from './options';
                (input)="svc.update({ playerName: $any($event.target).value })" />
       </fieldset>
 
+      @if (analytics.available) {
+        <fieldset>
+          <legend>Privacy</legend>
+          <label><input type="checkbox" [checked]="analytics.consent() === 'granted'" (change)="analytics.set($any($event.target).checked ? 'granted' : 'denied')" /> Allow analytics cookies</label>
+          <p class="hint">Google Analytics counts visits and which levels are played. It is never used for ads. Turning it off removes its cookies.</p>
+        </fieldset>
+      }
+
       <fieldset>
         <legend>Saved progress</legend>
         <p class="hint">Cleared levels and high scores are saved in this browser only.</p>
@@ -52,6 +61,7 @@ export class SettingsPage {
   protected readonly svc = inject(SettingsService);
   protected readonly s = this.svc.settings;
   private readonly progress = inject(ProgressService);
+  protected readonly analytics = inject(AnalyticsService);
   protected readonly confirmReset = signal(false);
   protected reset() {
     this.progress.reset();

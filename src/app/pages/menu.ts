@@ -1,5 +1,4 @@
-import { Component, ElementRef, OnDestroy, OnInit, inject, signal, viewChild } from '@angular/core';
-import { SettingsService } from '../settings.service';
+import { Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { ProgressService } from '../progress.service';
 import { BOSSES, LEVELS } from '../game/levels';
 import { RouterLink } from '@angular/router';
@@ -125,7 +124,6 @@ const BOSS_ALT: Record<string, string> = {
     .suit-now strong { font-size: 1.15rem; }
     .suit-now .r { color: var(--muted); font-size: .95rem; }
     .suit-ctl { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
-    .suit-ctl .btn { min-width: 6.5rem; min-height: 40px; padding: .3rem .8rem; font-size: .9rem; }
     .dots { list-style: none; display: flex; gap: .4rem; margin: 0; padding: 0; }
     .dot { min-width: 40px; min-height: 40px; padding: 0 .4rem; font: 1rem/1 var(--hand); color: var(--muted); background: transparent; border: 1px solid var(--line-2); border-radius: 2px; cursor: pointer; }
     .dot:hover { color: var(--cream); border-color: var(--verd); }
@@ -210,7 +208,7 @@ const BOSS_ALT: Record<string, string> = {
             <li>13 worlds</li><li>16 kinds of enemy</li><li>13 boss mechs</li><li>5 suits</li><li>4 guns</li><li>Keyboard, gamepad and touch</li><li>Works offline</li>
           </ul>
         </div>
-        <figure class="plate wide" (mouseenter)="hold = true" (mouseleave)="hold = false" (focusin)="hold = true" (focusout)="hold = false">
+        <figure class="plate wide">
           <p class="fig" aria-hidden="true"><span>Fig. 01: On the road</span><span>Scene {{ scene() + 1 }} / {{ scenes.length }}</span></p>
           <a class="stack" [href]="promo(scenes[scene()].file)" aria-haspopup="dialog" (click)="show($event, promo(scenes[scene()].file), scenes[scene()].alt, scenes[scene()].name)">
             @for (x of scenes; track x.file; let i = $index) {
@@ -219,9 +217,8 @@ const BOSS_ALT: Record<string, string> = {
             <span class="visually-hidden">View the full-size painting: {{ scenes[scene()].name }}</span>
           </a>
           <figcaption>
-            <p class="suit-now" [attr.aria-live]="playing() ? 'off' : 'polite'"><span class="n">Scene {{ scene() + 1 }} of {{ scenes.length }}</span> <strong>{{ scenes[scene()].name }}</strong> <span class="r">{{ scenes[scene()].note }}</span></p>
+            <p class="suit-now" aria-live="polite"><span class="n">Scene {{ scene() + 1 }} of {{ scenes.length }}</span> <strong>{{ scenes[scene()].name }}</strong> <span class="r">{{ scenes[scene()].note }}</span></p>
             <div class="suit-ctl">
-              <button type="button" class="btn" (click)="togglePlay()">{{ playing() ? 'Pause' : 'Play' }}<span class="visually-hidden"> the slideshow of scenes</span></button>
               <ul class="dots" aria-label="Show a scene">
                 @for (x of scenes; track x.file; let i = $index) {
                   <li><button type="button" class="dot" [attr.aria-pressed]="i === scene()" (click)="pick(i)"><span aria-hidden="true">{{ i + 1 }}</span><span class="visually-hidden">{{ x.name }}</span></button></li>
@@ -400,9 +397,8 @@ const BOSS_ALT: Record<string, string> = {
     </main>
   `,
 })
-export class MenuPage implements OnInit, OnDestroy {
+export class MenuPage {
   private readonly viewer = viewChild.required<ElementRef<HTMLDialogElement>>('viewer');
-  private readonly settings = inject(SettingsService);
 
   /** The promo battle scenes the hero plate cycles through. */
   protected readonly scenes: Scene[] = [
@@ -447,31 +443,10 @@ export class MenuPage implements OnInit, OnDestroy {
   ];
   protected readonly arsenalAlt = 'Concept art sheet of Iggy’s arsenal: four retro rayguns in teal steel and brass. 1, the Blaster, with a spiral coil barrel and heat fins. 2, the Twin blaster, with two spiral barrels and a second handle. 3, the Spread gun, with a three-nozzle emitter, a pump fore-end and an external power cell. 4, the Rocket launcher, with a flared exhaust, a scope and a rocket loaded at the front.';
 
-  /** the scene the hero plate is showing, and whether it moves on by itself (it doesn't with reduced motion) */
+  /** the scene the hero plate is showing; it only changes when the player picks one, so there's nothing to pause */
   protected readonly scene = signal(0);
-  protected readonly playing = signal(!this.reduceMotion());
-  /** paused while the pointer is over the plate or focus is inside it, so nothing changes under someone looking or tabbing */
-  protected hold = false;
-  private timer = 0;
-
-  ngOnInit() {
-    this.timer = window.setInterval(() => {
-      if (this.playing() && !this.hold && !document.hidden && !this.current()) this.scene.update((i) => (i + 1) % this.scenes.length);
-    }, 5000);
-  }
-  ngOnDestroy() {
-    window.clearInterval(this.timer);
-  }
-  private reduceMotion() {
-    return this.settings.settings().reducedMotion || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  }
-  protected togglePlay() {
-    this.playing.update((p) => !p);
-  }
-  /** choosing a scene stops the slideshow on it */
   protected pick(i: number) {
     this.scene.set(i);
-    this.playing.set(false);
   }
   protected readonly current = signal<{ src: string; alt: string; name: string } | null>(null);
 

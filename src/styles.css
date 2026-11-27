@@ -41,5 +41,5 @@ kbd { border: 1px solid currentColor; border-bottom-width: 2px; border-radius: 5
 @media (forced-colors: active) { .btn { border-color: ButtonText; } }
 .visually-hidden { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 /* Room for the "new version" banner, so it never hides the end of a page or a focused control (WCAG 2.4.11). */
-:root:has(.update) { scroll-padding-bottom: 7rem; }
-:root:has(.update) body { padding-bottom: 7rem; }
+:root:has(.update, .consent) { scroll-padding-bottom: 7rem; }
+:root:has(.update, .consent) body { padding-bottom: 7rem; }
