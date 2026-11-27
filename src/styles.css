@@ -40,3 +40,6 @@ h1[tabindex='-1']:focus-visible, h2[tabindex='-1']:focus-visible { outline: none
 kbd { border: 1px solid currentColor; border-bottom-width: 2px; border-radius: 5px; padding: 0 .4em; margin: 0 .1em; font: .85em/1.4 ui-monospace, monospace; white-space: nowrap; }
 @media (forced-colors: active) { .btn { border-color: ButtonText; } }
 .visually-hidden { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+/* Room for the "new version" banner, so it never hides the end of a page or a focused control (WCAG 2.4.11). */
+:root:has(.update) { scroll-padding-bottom: 7rem; }
+:root:has(.update) body { padding-bottom: 7rem; }

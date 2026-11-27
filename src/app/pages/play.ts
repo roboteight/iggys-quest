@@ -7,6 +7,7 @@ import { fmtTime } from '../format';
 import { Achievement } from '../achievements';
 import { OptionsPanel } from './options';
 import { ProgressService } from '../progress.service';
+import { UpdateService } from '../update.service';
 import type { GameOverState, HudState, TouchInput } from '../game/play.scene';
 import { LEVELS, levelById } from '../game/levels';
 
@@ -47,6 +48,8 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
     .overlay .panel:not(.wide) .stack { max-width: 24rem; margin-inline: auto; }
     .overlay h2 { margin: 0 0 .5rem; }
     .stats { margin: 0 0 1rem; display: grid; grid-template-columns: auto 1fr; gap: .15rem 1rem; }
+    .update-note { margin: 0 0 1rem; padding: .6rem .8rem; border: 2px solid var(--accent); border-radius: 8px; }
+    .update-note:empty { display: none; }
     .stats dt { opacity: .85; } .stats dd { margin: 0; font-weight: 700; }
     /* On-screen touch controls: a d-pad bottom-left, Fire and Jump bottom-right. Overlaid on the stage in landscape,
        below it in portrait. */
@@ -191,6 +194,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
                   @if (rank(); as r) { <dt>High scores</dt><dd>Place {{ r }} of 5</dd> }
                 </dl>
               }
+              <p class="update-note" role="status">@if (updates.ready()) {A new version of Iggy’s Quest is ready.@if (overlay() === 'paused') { Reloading restarts this level.}}</p>
               <div class="stack">
                 @if (overlay() === 'intro') {
                   <button class="btn primary" type="button" (click)="beginLevel()">Start level</button>
@@ -206,6 +210,7 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
                   }
                   <button class="btn" [class.primary]="overlay() === 'gameover' || !nextLevel()" type="button" (click)="restart()">{{ overlay() === 'complete' ? 'Replay this level' : 'Play again' }}</button>
                 }
+                @if (updates.ready()) { <button class="btn" type="button" (click)="updates.reload()">Reload to update</button> }
                 <a class="btn" routerLink="/">Quit to menu</a>
               </div>
             </div>
@@ -381,6 +386,7 @@ export class PlayPage implements OnDestroy {
   /** place on the level's high-score table for the run that just ended (null = not in the top five) */
   protected readonly rank = signal<number | null>(null);
   protected readonly progress = inject(ProgressService);
+  protected readonly updates = inject(UpdateService);
   protected readonly nextLevel = computed(() => {
     const o = this.over();
     const i = LEVELS.findIndex((l) => l.id === o?.level);
@@ -397,6 +403,7 @@ export class PlayPage implements OnDestroy {
   private game?: Phaser.Game;
 
   constructor() {
+    this.updates.inGame.set(true); // keeps the site-wide update banner from covering the game
     // keep the running game in step with the settings (volume, controls, assists) while paused or playing
     effect(() => {
       const st = this.settings.settings();
@@ -654,6 +661,7 @@ export class PlayPage implements OnDestroy {
   }
 
   ngOnDestroy() {
+    this.updates.inGame.set(false);
     if (this.padWatch) cancelAnimationFrame(this.padWatch);
     this.game?.destroy(true);
   }
