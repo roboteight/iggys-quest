@@ -1,0 +1,12 @@
+// Cloudflare Workers deploy settings (used by `npx wrangler deploy` in Cloudflare's build after `npm run build`).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "iggys-quest",
+  "compatibility_date": "2026-11-27",
+  "assets": {
+    // Angular puts the site in a nested folder; without this wrangler guesses dist/ and every page 404s.
+    "directory": "./dist/iggys-quest/browser",
+    // Addresses like /play/rooftops are app routes, so unknown paths get index.html.
+    "not_found_handling": "single-page-application"
+  }
+}
