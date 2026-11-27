@@ -18,10 +18,11 @@ type Overlay = 'none' | 'intro' | 'paused' | 'gameover' | 'complete';
   imports: [RouterLink, OptionsPanel],
   styles: `
     :host { display: block; padding: 1rem; }
-    main { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 1rem; width: min(100%, 1500px); margin: 0 auto;
+    main { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 1rem; width: 100%; margin: 0 auto;
            --stage-w: min(100%, max(480px, calc((100dvh - 13rem) * 16 / 9))); }
     .screen { display: grid; grid-template-columns: minmax(0, 1fr); gap: .75rem; justify-items: center; width: 100%; }
     .screen > * { width: var(--stage-w); box-sizing: border-box; }
+    .screen:not(.touch) > .hud { width: 100%; } /* the status bar spans the window, so it stays on one line where it can */
     .screen:fullscreen { background: var(--bg); padding: .75rem; align-content: center; justify-items: center; overflow: auto;
                          --stage-w: min(100%, calc((100dvh - 8.5rem) * 16 / 9)); }
     .hud { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: .5rem 1.25rem; align-items: start; margin: 0;

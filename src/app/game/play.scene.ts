@@ -1248,7 +1248,7 @@ export class PlayScene extends Phaser.Scene {
       // there's nothing to stomp from out on the piers: Iggy gets a blaster and plenty of shots
       this.gunLevel = Math.max(1, this.gunLevel);
       this.power.gun = Math.max(this.power.gun, 50);
-      this.announce('A blaster with 50 shots. Shoot the Kraken from the piers, and keep moving: some piers sink.');
+      this.announce('A blaster with 50 shots. Shoot the Kraken from the piers, and keep moving: the piers sink while you stand on them.');
     }
     this.banner(`Boss: ${def.name}`);
     this.announce(def.locks
@@ -1904,7 +1904,7 @@ export class PlayScene extends Phaser.Scene {
           const on = p.stood || (me.right > pb.left + 4 && me.left < pb.right - 4 && Math.abs(me.bottom - pb.top) < 6 && me.velocity.y >= -20);
           if (on) {
             p.timer = Math.min(3, p.timer + dt);
-            if (p.timer > 0.35) this.sayOnce('sinker', 'That pier is sinking! Jump to another one to stay out of the water.');
+            if (p.timer > 0.35) this.sayOnce('sinker', 'The pier is sinking! Jump to another one to stay out of the water. It floats back up once you leave it.');
           } else p.timer = Math.max(0, p.timer - dt * 0.8);
         }
         const sunk = p.sinker ? Math.max(0, p.timer - 0.35) * 36 : 0;
@@ -2657,14 +2657,14 @@ export class PlayScene extends Phaser.Scene {
   }
 
   // ------------------------------------------------------------------ levels 8 to 12
-  /** The Brass Kraken's lock: a wall to start on, then open water with floating piers (some sink) and the Kraken in the water. */
+  /** The Brass Kraken's lock: a wall to start on, then open water with floating piers (they all sink under Iggy) and the Kraken in the water. */
   private openLockArena(top: number) {
     const x = this.arenaX!;
     const wall = this.addBuilding(x, top, 280);
     const far = this.addBuilding(x + 1300, top, 200); // the lock's far wall, off the right edge: it holds the water in
     this.addPool(wall, far);
     const surface = top + 34;
-    [[340, false], [450, true], [545, false], [625, true]].forEach(([dx, sinker], i) => this.addPier(x + (dx as number), surface - 6, sinker as boolean, i));
+    [340, 450, 545, 625].forEach((dx, i) => this.addPier(x + dx, surface - 6, true, i)); // every pier sinks while Iggy stands on it
   }
 
   /** A floating pier: one-way like the other platforms. A sinker goes under while Iggy stands on it, and bobs back up after. */

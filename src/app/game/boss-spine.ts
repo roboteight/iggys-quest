@@ -51,7 +51,8 @@ const RIGS: Partial<Record<LevelStyle, RigDef>> = {
   drowned: { file: 'diver', scale: 0.21, footDrop: 0, facesRight: true, speed: 1 },
   void: { file: 'nwarden', scale: 0.21, footDrop: 0, facesRight: true, speed: 1 },
   spores: { file: 'spore', scale: 0.2, footDrop: 0, facesRight: true, speed: 1 },
-  war: { file: 'marshal', scale: 0.26, footDrop: 0, facesRight: true, speed: 1 },
+  // the Iron Marshal: about 1.4 times the others (half the Icebreaker's bulk), with a hit box over the hull and turret
+  war: { file: 'marshal', scale: 0.36, footDrop: 0, facesRight: true, speed: 1, hit: { hw: 100, top: 185, bottom: 0, dx: 0 } },
   // the Dust Scorpion (level 3): the sheet draws it facing right
   wastes: { file: 'scorpion', scale: 0.23, footDrop: 14, facesRight: true, speed: 1 }, // (its leg tips sit higher on the sheet than the claw it was measured from)
   // the Forgemaster (secret level 14): drawn front-on with the hammer on the left, so it already faces Iggy; its hit box is the

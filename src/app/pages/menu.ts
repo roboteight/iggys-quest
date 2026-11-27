@@ -20,10 +20,19 @@ interface Sheet {
   alt: string;
 }
 
-/** One of Iggy's suit sheets, with what the suit does. */
-interface SuitSheet extends Omit<Sheet, 'text'> {
+/** One of Iggy's suits, with what it does. */
+interface Suit {
+  name: string;
   rings: string;
   does: string;
+}
+
+/** A promo painting in /public/art/promo: a wide battle scene. `note` says which suit Iggy wears in it. */
+interface Scene {
+  file: string;
+  name: string;
+  note: string;
+  alt: string;
 }
 
 /** Which sheet belongs to which boss, by level look. */
@@ -63,7 +72,7 @@ const BOSS_ALT: Record<string, string> = {
     :host-context([data-contrast='high']) { --bg: #000; --plate: #000; --plate-2: #000; --line: #fff; --line-2: #fff; --verd: #fff; --copper: #ffd27a; --rust: #fff; --cream: #fff; --muted: #fff; --glow: #ffd27a; background: #000; }
     @media (forced-colors: active) { :host { background: Canvas; color: CanvasText; } }
 
-    .landing { width: 100%; max-width: 74rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; display: grid; gap: 4rem; box-sizing: border-box; }
+    .landing { width: 100%; max-width: 80rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; display: grid; gap: 4rem; box-sizing: border-box; }
     .hand { font-family: var(--hand); }
     h1, h2 { font-family: var(--display); font-weight: 400; letter-spacing: .02em; text-transform: uppercase; }
     h3 { font-family: var(--body); font-weight: 700; letter-spacing: .01em; }
@@ -77,7 +86,7 @@ const BOSS_ALT: Record<string, string> = {
     .sub { margin: .2rem 0 1.4rem; max-width: 62ch; color: var(--muted); }
 
     /* hero */
-    .hero { display: grid; gap: 2.5rem 3rem; align-items: center; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); }
+    .hero { display: grid; gap: 2.5rem 3rem; align-items: center; grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr); }
     .eyebrow { margin: 0 0 .6rem; font-family: var(--hand); font-size: 1.1rem; color: var(--verd); }
     .eyebrow::before { content: '⌖ '; color: var(--copper); }
     h1 { font-size: clamp(3.2rem, 9vw, 6.2rem); line-height: .92; margin: 0 0 1.1rem; color: var(--copper); text-shadow: 0 0 28px rgb(255 164 90 / .25); }
@@ -103,9 +112,11 @@ const BOSS_ALT: Record<string, string> = {
     .plate img { display: block; width: 100%; height: auto; aspect-ratio: 765 / 1024; object-fit: cover; background: #1a2a28; }
     @media (prefers-reduced-motion: no-preference) { .plate a.pic { transition: transform .15s, box-shadow .15s; } .plate a.pic:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgb(0 0 0 / .45); } }
 
-    /* the hero plate cycles through Iggy's suits */
-    .hero .plate { justify-self: center; width: min(26rem, 100%); }
-    .stack { position: relative; display: block; line-height: 0; border: 1px solid var(--line); }
+    /* the hero plate cycles through the promo battle scenes */
+    .hero .plate { justify-self: stretch; width: 100%; }
+    .wide img { aspect-ratio: 1024 / 572; }
+    .cover img { aspect-ratio: 1024 / 765; }
+    .stack { position: relative; display: block; max-width: none; line-height: 0; border: 1px solid var(--line); } /* (not the global .stack column) */
     .stack img { position: absolute; inset: 0; opacity: 0; }
     .stack img.on { position: relative; opacity: 1; }
     @media (prefers-reduced-motion: no-preference) { .stack img { transition: opacity .6s ease; } }
@@ -119,7 +130,9 @@ const BOSS_ALT: Record<string, string> = {
     .dot { min-width: 40px; min-height: 40px; padding: 0 .4rem; font: 1rem/1 var(--hand); color: var(--muted); background: transparent; border: 1px solid var(--line-2); border-radius: 2px; cursor: pointer; }
     .dot:hover { color: var(--cream); border-color: var(--verd); }
     .dot[aria-pressed='true'] { color: var(--on-copper); background: var(--copper); border-color: var(--copper); }
-    @media (max-width: 52rem) { .hero { grid-template-columns: 1fr; } .hero .plate { order: -1; width: min(21rem, 100%); } }
+    @media (max-width: 60rem) { .hero { grid-template-columns: 1fr; } .hero .plate { order: -1; } }
+    /* a wide painting opening a section */
+    .banner { margin: 0 0 1.6rem; }
 
     /* grids of plates */
     .plates { list-style: none; margin: 0; padding: 0; display: grid; gap: 2.2rem 1.6rem; grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr)); }
@@ -135,8 +148,10 @@ const BOSS_ALT: Record<string, string> = {
     .parts .no { grid-row: span 2; display: grid; place-items: center; width: 2.4rem; height: 2.4rem; border: 1.5px solid var(--copper); border-radius: 50%; font: 1.1rem/1 var(--hand); color: var(--copper); }
     .parts h3 { margin: 0; font-size: 1.1rem; }
     .parts p { margin: 0; color: var(--muted); font-size: .97rem; }
+    .parts .rings { font-family: var(--hand); color: var(--copper); font-size: 1rem; }
     .note { margin: 1rem 0 0; font-family: var(--hand); color: var(--verd); font-size: 1.05rem; }
-    @media (max-width: 52rem) { .arsenal { grid-template-columns: 1fr; } }
+    .arsenal.box { grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); } /* the box art gets the bigger share */
+    @media (max-width: 52rem) { .arsenal, .arsenal.box { grid-template-columns: 1fr; } }
 
     .features { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
     .features li { padding: 1rem 1.15rem; border: 1px solid var(--line); background: var(--plate); }
@@ -195,21 +210,21 @@ const BOSS_ALT: Record<string, string> = {
             <li>13 worlds</li><li>16 kinds of enemy</li><li>13 boss mechs</li><li>5 suits</li><li>4 guns</li><li>Keyboard, gamepad and touch</li><li>Works offline</li>
           </ul>
         </div>
-        <figure class="plate" (mouseenter)="hold = true" (mouseleave)="hold = false" (focusin)="hold = true" (focusout)="hold = false">
-          <p class="fig" aria-hidden="true"><span>Fig. 01: Iggy</span><span>Suit {{ suit() + 1 }} / {{ suits.length }}</span></p>
-          <a class="stack" [href]="'art/' + suits[suit()].file + '.webp'" aria-haspopup="dialog" (click)="show($event, 'art/' + suits[suit()].file + '.webp', suits[suit()].alt, suits[suit()].name)">
-            @for (x of suits; track x.file; let i = $index) {
-              <img [src]="'art/' + x.file + '.webp'" width="765" height="1024" [class.on]="i === suit()" [alt]="i === suit() ? x.alt : ''" [attr.aria-hidden]="i === suit() ? null : 'true'"/>
+        <figure class="plate wide" (mouseenter)="hold = true" (mouseleave)="hold = false" (focusin)="hold = true" (focusout)="hold = false">
+          <p class="fig" aria-hidden="true"><span>Fig. 01: On the road</span><span>Scene {{ scene() + 1 }} / {{ scenes.length }}</span></p>
+          <a class="stack" [href]="promo(scenes[scene()].file)" aria-haspopup="dialog" (click)="show($event, promo(scenes[scene()].file), scenes[scene()].alt, scenes[scene()].name)">
+            @for (x of scenes; track x.file; let i = $index) {
+              <img [src]="promo(x.file)" width="1024" height="572" [attr.fetchpriority]="i === 0 ? 'high' : null" [class.on]="i === scene()" [alt]="i === scene() ? x.alt : ''" [attr.aria-hidden]="i === scene() ? null : 'true'"/>
             }
-            <span class="visually-hidden">View the full-size concept sheet for {{ suits[suit()].name }}</span>
+            <span class="visually-hidden">View the full-size painting: {{ scenes[scene()].name }}</span>
           </a>
           <figcaption>
-            <p class="suit-now" [attr.aria-live]="playing() ? 'off' : 'polite'"><span class="n">Suit {{ suit() + 1 }} of {{ suits.length }}</span> <strong>{{ suits[suit()].name }}</strong> <span class="r">{{ suits[suit()].rings }}</span></p>
+            <p class="suit-now" [attr.aria-live]="playing() ? 'off' : 'polite'"><span class="n">Scene {{ scene() + 1 }} of {{ scenes.length }}</span> <strong>{{ scenes[scene()].name }}</strong> <span class="r">{{ scenes[scene()].note }}</span></p>
             <div class="suit-ctl">
-              <button type="button" class="btn" (click)="togglePlay()">{{ playing() ? 'Pause' : 'Play' }}<span class="visually-hidden"> the suit slideshow</span></button>
-              <ul class="dots" aria-label="Show a suit">
-                @for (x of suits; track x.file; let i = $index) {
-                  <li><button type="button" class="dot" [attr.aria-pressed]="i === suit()" (click)="pick(i)"><span aria-hidden="true">{{ i + 1 }}</span><span class="visually-hidden">{{ x.name }}</span></button></li>
+              <button type="button" class="btn" (click)="togglePlay()">{{ playing() ? 'Pause' : 'Play' }}<span class="visually-hidden"> the slideshow of scenes</span></button>
+              <ul class="dots" aria-label="Show a scene">
+                @for (x of scenes; track x.file; let i = $index) {
+                  <li><button type="button" class="dot" [attr.aria-pressed]="i === scene()" (click)="pick(i)"><span aria-hidden="true">{{ i + 1 }}</span><span class="visually-hidden">{{ x.name }}</span></button></li>
                 }
               </ul>
             </div>
@@ -264,20 +279,20 @@ const BOSS_ALT: Record<string, string> = {
       <section aria-labelledby="suits">
         <div class="head"><span class="sec" aria-hidden="true">§ 02</span><h2 id="suits">Iggy’s suits</h2></div>
         <p class="sub">Jump through rings to earn a better suit, and keep it from one level to the next in story mode. Every suit after the first takes a hit or a fall for him, dropping him back one suit instead of costing a life (he keeps his spare rings, so a few more win it back), and keeps the abilities of the suits before it. The Gold Circuit's plating takes one hit before it drops.</p>
-        <ul class="plates">
-          @for (x of suits; track x.file; let i = $index) {
-            <li>
-              <figure class="plate">
-                <p class="fig" aria-hidden="true"><span>Fig. 02.{{ i + 1 }}</span><span>{{ x.rings }}</span></p>
-                <a class="pic" [href]="'art/' + x.file + '.webp'" aria-haspopup="dialog" (click)="show($event, 'art/' + x.file + '.webp', x.alt, x.name)">
-                  <img [src]="'art/' + x.file + '.webp'" width="765" height="1024" loading="lazy" [alt]="x.alt"/>
-                  <span class="visually-hidden">View the full-size concept sheet for {{ x.name }}</span>
-                </a>
-              </figure>
-              <div class="caption"><p class="where">{{ x.rings }}</p><h3>{{ x.name }}</h3><p>{{ x.does }}</p></div>
-            </li>
-          }
-        </ul>
+        <div class="arsenal box">
+          <figure class="plate cover">
+            <p class="fig" aria-hidden="true"><span>Fig. 02: The box</span><span>Gold Circuit</span></p>
+            <a class="pic" [href]="promo('cover')" aria-haspopup="dialog" (click)="show($event, promo('cover'), coverAlt, 'Iggy’s Quest box art')">
+              <img [src]="promo('cover')" width="1024" height="765" loading="lazy" [alt]="coverAlt"/>
+              <span class="visually-hidden">View the box art full size</span>
+            </a>
+          </figure>
+          <ol class="parts">
+            @for (x of suits; track x.name; let i = $index) {
+              <li><span class="no" aria-hidden="true">{{ i + 1 }}</span><h3>{{ x.name }} <span class="rings">· {{ x.rings }}</span></h3><p>{{ x.does }}</p></li>
+            }
+          </ol>
+        </div>
       </section>
 
       <section aria-labelledby="arsenal">
@@ -324,6 +339,13 @@ const BOSS_ALT: Record<string, string> = {
       <section aria-labelledby="bosses">
         <div class="head"><span class="sec" aria-hidden="true">§ 05</span><h2 id="bosses">The boss mechs</h2></div>
         <p class="sub">One waits at the end of every world, with its own attacks and its own music.</p>
+        <figure class="plate wide banner">
+          <p class="fig" aria-hidden="true"><span>Fig. 05: The line-up</span><span>Gold Circuit</span></p>
+          <a class="pic" [href]="promo('scene-bosses')" aria-haspopup="dialog" (click)="show($event, promo('scene-bosses'), bossesAlt, 'The boss mechs')">
+            <img [src]="promo('scene-bosses')" width="1024" height="572" loading="lazy" [alt]="bossesAlt"/>
+            <span class="visually-hidden">View the painting of the boss mechs full size</span>
+          </a>
+        </figure>
         <ul class="plates">
           @for (b of bosses; track b.name) { @if (b.level !== 'The Foundry Below' || progress.unlocked('foundry')) {
             <li>
@@ -382,23 +404,40 @@ export class MenuPage implements OnInit, OnDestroy {
   private readonly viewer = viewChild.required<ElementRef<HTMLDialogElement>>('viewer');
   private readonly settings = inject(SettingsService);
 
-  /** Iggy's suits in the order he earns them (SUITS in game/art.ts); the hero plate cycles through their sheets. */
-  protected readonly suits: SuitSheet[] = [
-    { file: 'iggy', name: 'Rusty Original', rings: 'Starting suit',
-      does: 'No special ability, and he is at his clumsiest: he trips, sheds bolts and puffs smoke. A hit in this suit costs a life.',
-      alt: 'Concept art sheet for Iggy in his Rusty Original suit: a tall retro robot in cream and weathered teal metal with copper bands, a glass dome helmet holding a little green alien robot, a spring antenna with a bulb, a chest panel of dials, a tool belt and a raygun holster. Smaller drawings show his back, the raygun and the chest meter.' },
-    { file: 'iggy-patchwork', name: 'Patchwork', rings: 'Unlocks at 2 rings',
-      does: 'Takes a hit for him. Steadier on his feet, though he still trips and sheds parts now and then.',
-      alt: 'Concept art sheet for Patchwork Iggy: mismatched welded armour in rust, teal and brass, a ribbed brass shoulder plate, a reinforced dome cage with two antennae and a headlamp, a scrap battery, a scavenger tool strapped to one arm and tread boots. Smaller drawings show his back, the shoulder plate, the dome and the gauge cluster.' },
-    { file: 'iggy-steel-sentinel', name: 'Steel Sentinel', rings: 'Unlocks at 5 rings',
-      does: 'Dash: press Shoot when he has no gun for a burst forward that smashes pylons, walls and enemies. Hardly rattles.',
-      alt: 'Concept art sheet for Steel Sentinel Iggy: heavy riveted steel armour with bulky shoulder plates, a caged glass dome with a coiled transceiver, a shield plate on one forearm, a blaster arm with a copper coil and heavy hydraulic stomping boots. Smaller drawings show his back, the Sentinel blaster and a boot.' },
-    { file: 'iggy-night-guardian', name: 'Night Guardian', rings: 'Unlocks at 9 rings',
-      does: 'Ground pound: press Duck in mid-air to slam straight down and smash everything nearby. No more tripping or smoke.',
-      alt: 'Concept art sheet for Night Guardian Iggy: dark steel night-patrol armour with glowing amber lamps, a searchlight on the shoulder, a caged glass dome, a chain hanging from the belt and heavily weighted impact boots. Smaller drawings show his back, the night-ops blaster and a boot.' },
-    { file: 'iggy-gold-circuit', name: 'Gold Circuit', rings: 'Unlocks at 14 rings',
-      does: 'Fly: after a double jump, keep holding Jump to rise on jets for about three seconds, then glide down slowly. Landing refuels. Everything finally works, and nothing rattles.',
-      alt: 'Concept art sheet for Gold Circuit Iggy: gold and brass armour traced with glowing orange circuit lines, an ornate dome cage with coiled antennas and a beacon, amber lamps, a searchlight and heavy stabilising boots. Smaller drawings show his back, the gold blaster and a boot.' },
+  /** The promo battle scenes the hero plate cycles through. */
+  protected readonly scenes: Scene[] = [
+    { file: 'scene-wastes', name: 'Out in the wastes', note: 'Rusty Original',
+      alt: 'Promo painting: Iggy in his Rusty Original suit leaps across a moonlit scrapyard battlefield, firing a spiral blast from his raygun, while skeleton soldiers with rifles, a riveted crawler spider, a snarling rust hound, gearbats, a death-ray manta and a heavy twin-cannon mech close in on him.' },
+    { file: 'scene-spores', name: 'The Spore Garden', note: 'Rusty Original',
+      alt: 'Promo painting: Rusty Original Iggy fires his raygun across a cavern of glowing mushrooms at the Spore Mother, a towering mech under a domed mushroom cap with a claw arm and a spore cannon, while gearbats swoop overhead and a crawler scuttles at its feet.' },
+    { file: 'scene-works', name: 'The ruined works', note: 'Steel Sentinel',
+      alt: 'Promo painting: Iggy in heavy riveted Steel Sentinel armour fires a spiral blast through a smoky ruined factory of giant gears and chimneys at skeleton soldiers, a crawler, a rust hound, a bomb-throwing grenadier and a big twin-cannon mech, with a death-ray and gearbats above.' },
+    { file: 'scene-glacier', name: 'The Glacier Yards', note: 'Night Guardian',
+      alt: 'Promo painting: Iggy in dark Night Guardian armour with amber lamps fires across a snowy yard of icebergs and frozen cranes at skeleton soldiers, a crawler, a rust hound, a drill-armed diving-suit mech and a twin-cannon mech, with a death-ray and gearbats in the stormy sky.' },
+    { file: 'scene-skydocks', name: 'The Sky Docks', note: 'Gold Circuit',
+      alt: 'Promo painting: Iggy in gold Gold Circuit armour fires a heavy blaster from a rusty platform high above the clouds, among cranes swinging crates, at skeleton soldiers, an armoured mech, a bomb thrower, a crawler and a hound on a catwalk, with gearbats and death-rays in the sky.' },
+    { file: 'scene-marshal', name: 'The Iron Marshal', note: 'Rusty Original',
+      alt: 'Promo painting: Rusty Original Iggy stumbles backwards across a scaffold in a blazing foundry, firing his raygun at the Iron Marshal, a huge rusted siege tank with a dozer blade, a long cannon and a commander in a peaked cap, as it smashes through the wreckage in a burst of flame.' },
+  ];
+  protected readonly coverAlt = 'The Iggy’s Quest box art: Iggy in his gold Gold Circuit suit fires his raygun in the foreground under a chrome and orange “Iggy’s Quest” logo. Behind him, under a big moon, skeleton soldiers, crawlers, a rust hound and a burrower bursting out of the ground face him, with the Spore Mother, a twin-cannon mech, the Iron Marshal tank and a death-ray beyond. Labels read “Action series” and “Retro arcade adventure: the ultimate retro sci-fi experience!”';
+  protected readonly bossesAlt = 'Promo painting: Gold Circuit Iggy fires his raygun at a line-up of boss mechs on a frozen, burning battlefield: the Iron Marshal tank, the Spore Mother under its mushroom cap, a red-eyed mech, the Deep Diver with its drill arm, Grandfather Gloom’s clock tower and the Dust Scorpion, with a spinning drill top, a burrower, soldiers, a rust hound, gearbats and a death-ray around them.';
+  /** a promo painting's address */
+  protected promo(file: string) {
+    return `art/promo/${file}.webp`;
+  }
+
+  /** Iggy's suits in the order he earns them (SUITS in game/art.ts). */
+  protected readonly suits: Suit[] = [
+    { name: 'Rusty Original', rings: 'Starting suit',
+      does: 'No special ability, and he is at his clumsiest: he trips, sheds bolts and puffs smoke. A hit in this suit costs a life.', },
+    { name: 'Patchwork', rings: 'Unlocks at 2 rings',
+      does: 'Takes a hit for him. Steadier on his feet, though he still trips and sheds parts now and then.', },
+    { name: 'Steel Sentinel', rings: 'Unlocks at 5 rings',
+      does: 'Dash: press Shoot when he has no gun for a burst forward that smashes pylons, walls and enemies. Hardly rattles.', },
+    { name: 'Night Guardian', rings: 'Unlocks at 9 rings',
+      does: 'Ground pound: press Duck in mid-air to slam straight down and smash everything nearby. No more tripping or smoke.', },
+    { name: 'Gold Circuit', rings: 'Unlocks at 14 rings',
+      does: 'Fly: after a double jump, keep holding Jump to rise on jets for about three seconds, then glide down slowly. Landing refuels. Everything finally works, and nothing rattles.', },
   ];
   protected readonly guns = [
     { name: 'Blaster', text: 'Fires one bolt at a time. Shots fly low when he ducks, so they hit crawlers.' },
@@ -408,8 +447,8 @@ export class MenuPage implements OnInit, OnDestroy {
   ];
   protected readonly arsenalAlt = 'Concept art sheet of Iggy’s arsenal: four retro rayguns in teal steel and brass. 1, the Blaster, with a spiral coil barrel and heat fins. 2, the Twin blaster, with two spiral barrels and a second handle. 3, the Spread gun, with a three-nozzle emitter, a pump fore-end and an external power cell. 4, the Rocket launcher, with a flared exhaust, a scope and a rocket loaded at the front.';
 
-  /** the suit the hero plate is showing, and whether it moves on by itself (it doesn't with reduced motion) */
-  protected readonly suit = signal(0);
+  /** the scene the hero plate is showing, and whether it moves on by itself (it doesn't with reduced motion) */
+  protected readonly scene = signal(0);
   protected readonly playing = signal(!this.reduceMotion());
   /** paused while the pointer is over the plate or focus is inside it, so nothing changes under someone looking or tabbing */
   protected hold = false;
@@ -417,7 +456,7 @@ export class MenuPage implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.timer = window.setInterval(() => {
-      if (this.playing() && !this.hold && !document.hidden && !this.current()) this.suit.update((i) => (i + 1) % this.suits.length);
+      if (this.playing() && !this.hold && !document.hidden && !this.current()) this.scene.update((i) => (i + 1) % this.scenes.length);
     }, 5000);
   }
   ngOnDestroy() {
@@ -429,9 +468,9 @@ export class MenuPage implements OnInit, OnDestroy {
   protected togglePlay() {
     this.playing.update((p) => !p);
   }
-  /** choosing a suit stops the slideshow on it */
+  /** choosing a scene stops the slideshow on it */
   protected pick(i: number) {
-    this.suit.set(i);
+    this.scene.set(i);
     this.playing.set(false);
   }
   protected readonly current = signal<{ src: string; alt: string; name: string } | null>(null);

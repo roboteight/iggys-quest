@@ -53,7 +53,7 @@ export const BOSSES: Record<LevelStyle, BossDef> = {
   wastes: { name: 'Dust Scorpion', blurb: 'A four-legged walker with a cannon on its tail.', hp: 28, speed: 60, attacks: ['spread', 'volley', 'charge', 'stomp'], muzzle: [34, -128] },
   drowned: { name: 'Deep Diver', blurb: 'A diving-suit mech with a glass dome and heavy claws.', hp: 30, speed: 35, attacks: ['volley', 'mortar', 'charge', 'stomp'], muzzle: [-70, -92] },
   void: { name: 'Neon Warden', blurb: 'A hovering sentinel on a ring of light.', hp: 32, speed: 70, attacks: ['spread', 'ring', 'volley', 'stomp'], shield: 4, muzzle: [-72, -86] },
-  war: { name: 'Iron Marshal', blurb: 'A rolling siege tank with a long gun, the one that has been shelling the trenches.', hp: 36, speed: 38, attacks: ['mortar', 'rain', 'volley', 'spread', 'stomp'], muzzle: [-78, -88] },
+  war: { name: 'Iron Marshal', blurb: 'A rolling siege tank with a long gun, the one that has been shelling the trenches.', hp: 36, speed: 38, attacks: ['mortar', 'rain', 'volley', 'spread', 'stomp'], muzzle: [-108, -122] },
   spores: { name: 'Spore Mother', blurb: 'A tripod walker under a giant mushroom cap.', hp: 34, speed: 30, attacks: ['mortar', 'rain', 'spread', 'stomp'], muzzle: [-58, -108] },
   ice: { name: 'Icebreaker', blurb: 'An armoured icebreaker hull on spiked tracks, with a ram prow and frost-cannon turrets.', hp: 40, speed: 70, attacks: ['charge', 'volley', 'spread', 'ring', 'stomp'], shield: 5, muzzle: [-60, -120] },
   dunes: { name: 'Dune Dredger', blurb: 'A colossal mining dredge with a bucket wheel that reshapes the sand.', hp: 43, speed: 40, attacks: ['saw', 'mortar', 'rain', 'saw', 'charge', 'spread', 'stomp'], muzzle: [-84, -102] },
